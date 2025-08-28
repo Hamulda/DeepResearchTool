@@ -1,0 +1,563 @@
+# Deep Research Tool Configuration
+# Advanced Research Agent with Ollama Integration
+
+research_config:
+  # Ollama AI Configuration
+  ollama:
+    model: "llama3.2:8b"
+    host: "http://localhost:11434"
+    context_window: 4096
+    temperature: 0.7
+    timeout: 300  # seconds
+
+  # Specialized Sources Configuration
+  specialized_sources:
+    # Declassified Archives
+    declassified_archives:
+      cia_crest:
+        enabled: true
+        api_key: ${CIA_API_KEY}
+        rate_limit: 6  # requests per minute
+        max_results: 1000
+        classification_levels: ["DECLASSIFIED", "UNCLASSIFIED"]
+        time_range_years: 80
+
+      national_security_archive:
+        enabled: true
+        access_method: "web_scraping"
+        rate_limit: 10
+        max_results: 500
+
+      national_archives:
+        enabled: true
+        api_endpoint: "https://catalog.archives.gov/api/v1"
+        rate_limit: 20
+        collections: ["us_serial_set", "fold3_military", "proquest_history"]
+
+    # Deep Web/Dark Web Configuration
+    deep_web:
+      tor_integration:
+        enabled: true
+        proxy_rotation: true
+        safety_checks: true
+        max_depth: 3
+        content_validation: true
+
+      onion_crawlers:
+        - name: "torbot"
+          enabled: true
+          safety_level: "strict"
+        - name: "onionscan"
+          enabled: false  # More aggressive scanning
+        - name: "ahmia"
+          enabled: true
+          safety_level: "moderate"
+
+      deep_search:
+        enabled: true
+        max_onion_domains: 100
+        content_filters: ["malware", "illegal", "harmful"]
+
+    # Academic Specialized Sources
+    academic_specialized:
+      base_bielefeld:
+        enabled: true
+        api_endpoint: "https://www.base-search.net/about/download/"
+        search_limit: 1000
+        quality_filter: "academic"
+
+      digital_commons:
+        enabled: true
+        university_networks: ["harvard", "mit", "stanford", "berkeley", "cambridge"]
+        max_results_per_uni: 200
+
+      alternative_sources:
+        - name: "researchgate"
+          enabled: true
+          rate_limit: 30
+        - name: "independent_journals"
+          enabled: true
+          sources: ["acme", "peer_production", "radical_housing"]
+
+    # Historical Archives
+    historical_archives:
+      qatar_digital_library:
+        enabled: true
+        collections: ["middle_east_historical"]
+        rate_limit: 15
+
+      chinese_text_project:
+        enabled: true
+        collections: ["pre_modern", "ming_qing"]
+        language_support: ["zh", "en"]
+
+      european_archives:
+        adam_matthew:
+          enabled: true
+          collections: ["multidisciplinary_primary"]
+        arcanum:
+          enabled: true
+          language: "hungarian"
+          date_range: "1800-present"
+
+  # OSINT and Intelligence Sources
+  osint_sources:
+    professional_tools:
+      maltego_integration:
+        enabled: false  # Requires license
+        api_key: ${MALTEGO_API_KEY}
+
+      social_media_intel:
+        enabled: true
+        platforms: ["twitter", "linkedin", "facebook"]
+        api_limits: "respect_tos"
+
+      public_records:
+        enabled: true
+        sources: ["whitepages", "spokeo", "publicrecords"]
+        rate_limits: "conservative"
+
+    threat_intelligence:
+      misp_integration:
+        enabled: false  # Requires MISP instance
+        server_url: ${MISP_SERVER_URL}
+        api_key: ${MISP_API_KEY}
+
+      darkweb_monitoring:
+        enabled: true
+        safety_level: "high"
+
+  # Tor Network Configuration
+  tor:
+    enabled: true
+    socks_port: 9050
+    control_port: 9051
+    use_bridges: false
+    exit_nodes: []  # Specific exit nodes if needed
+    circuit_rotation_interval: 300  # seconds
+
+  # Enhanced Rate Limiting per Source
+  rate_limits:
+    wayback_machine: 1.0  # requests per second
+    arxiv: 0.5
+    rss_feeds: 2.0
+    pdf_sources: 1.0
+    tor_sources: 0.3
+    cia_crest: 0.1  # 6 requests per minute
+    base_bielefeld: 0.5
+    deep_web_crawler: 0.2
+    osint_collector: 1.0
+    default: 2.0
+
+  # FÁZE 2: Re-ranking and Compression Configuration
+  phase2:
+    # Pipeline Integration Settings
+    pipeline:
+      parallel_processing: true
+      enable_pipeline_caching: true
+      cache_ttl_hours: 24
+      fail_hard_on_quality: true
+
+      # Quality thresholds for fail-hard validation
+      quality_thresholds:
+        information_preservation: 0.75  # Minimum information retention
+        citation_precision: 0.80        # Minimum citation accuracy
+        entity_coverage: 0.65           # Minimum entity preservation
+        query_relevance: 0.70           # Minimum query relevance retention
+        nDCG_degradation_limit: 0.02    # Max 2 percentage points nDCG drop
+
+    # Audit and Logging
+    audit_logging: true
+    export_audit_trails: true
+    audit_output_dir: "./audit_trails"
+
+  # Gated Re-ranking Configuration
+  reranking:
+    # Pairwise Re-ranking Settings
+    pairwise:
+      enabled: true
+      strategy: "llm_rater"  # Options: cross_encoder, llm_rater, hybrid
+
+      # LLM-as-rater configuration
+      llm_rater:
+        model: "llama3.2:8b"
+        temperature: 0.1
+        max_tokens: 150
+        comparison_prompt_template: |
+          Compare these two passages for relevance to the query: "{query}"
+          
+          Passage A: {passage_a}
+          
+          Passage B: {passage_b}
+          
+          Which passage is more relevant? Respond with: A, B, or EQUAL
+          Provide margin of victory (0.0-1.0) and brief rationale.
+
+      # Cross-encoder fallback
+      cross_encoder:
+        model_name: "ms-marco-MiniLM-L-6-v2"
+        max_length: 512
+        batch_size: 8
+
+      # Processing parameters
+      max_comparisons: 1000
+      confidence_threshold: 0.6
+      margin_threshold: 0.1
+      enable_rationale_logging: true
+
+      # Calibration settings
+      calibration:
+        enabled: true
+        method: "platt_scaling"  # Options: platt_scaling, isotonic_regression
+        confidence_bins: 10
+        min_samples_per_bin: 5
+
+    # Quality gates
+    quality_gates:
+      min_ranking_quality: 0.75
+      max_processing_time: 300  # seconds
+      min_confidence_calibration: 0.70
+
+  # Discourse-aware Chunking Configuration
+  chunking:
+    # Discourse Analysis Settings
+    discourse:
+      enabled: true
+      chunk_strategy: "discourse_aware"  # Options: fixed, semantic, discourse_aware, adaptive
+
+      # Discourse markers and patterns
+      structural_markers:
+        headings: ["h1", "h2", "h3", "h4", "h5", "h6", "##", "###"]
+        lists: ["ul", "ol", "li", "1.", "2.", "-", "*"]
+        citations: ["[", "]", "(", ")", "et al.", "ibid", "op. cit."]
+        transitions: ["however", "therefore", "furthermore", "moreover", "consequently"]
+        emphasis: ["important", "significant", "crucial", "key", "critical"]
+
+      # Speech acts detection
+      speech_acts:
+        claims: ["claim", "argue", "propose", "assert", "conclude"]
+        evidence: ["evidence", "shows", "demonstrates", "indicates", "proves"]
+        analysis: ["analysis", "examine", "investigate", "study", "research"]
+        comparison: ["compare", "contrast", "versus", "unlike", "similar"]
+
+      # Entity density thresholds
+      entity_density:
+        high_threshold: 0.15    # 15% of tokens are entities
+        medium_threshold: 0.08  # 8% of tokens are entities
+        low_threshold: 0.03     # 3% of tokens are entities
+
+    # Adaptive Chunking Parameters
+    adaptive:
+      min_chunk_size: 100      # tokens
+      max_chunk_size: 800      # tokens
+      target_chunk_size: 400   # tokens
+      overlap_ratio: 0.1       # 10% overlap between chunks
+
+      # Chunk boundary preferences
+      boundary_preferences:
+        sentence_boundary: 1.0
+        paragraph_boundary: 0.8
+        section_boundary: 0.6
+        arbitrary_boundary: 0.2
+
+    # Quality metrics
+    quality_metrics:
+      coherence_threshold: 0.70
+      entity_preservation: 0.80
+      structural_integrity: 0.75
+
+  # Enhanced Contextual Compression Configuration
+  compression:
+    # Budget and Strategy
+    budget_tokens: 2000
+    strategy: "salience_novelty_redundancy"  # Include all scoring dimensions
+
+    # Source-aware Priorities
+    source_priorities:
+      academic: 1.0           # Primary literature highest priority
+      government: 0.9         # Official sources
+      news: 0.6              # Current events
+      wikipedia: 0.7          # Reliable aggregators
+      social_media: 0.3       # Social aggregators lowest
+      unknown: 0.5            # Default priority
+
+      # Legal and specialized sources
+      legal: 0.95
+      medical: 0.95
+      scientific: 1.0
+
+    # Salience Scoring Weights
+    salience_weights:
+      semantic: 0.4           # Query-content semantic similarity
+      tfidf: 0.3             # TF-IDF relevance
+      keyword: 0.3           # Entity and claims importance
+
+    # Strategy Parameters
+    novelty_threshold: 0.7      # Threshold for novelty detection
+    redundancy_threshold: 0.85  # Threshold for redundancy penalty
+
+    # Compression Quality Gates
+    quality_gates:
+      min_salience_preservation: 0.75
+      min_entity_coverage: 0.65
+      min_claims_coverage: 0.70
+      min_query_relevance_preservation: 0.75
+      min_context_usage_efficiency: 1.2  # Efficiency ratio
+
+  # FÁZE 3: Synthesis and Verification Configuration
+  phase3:
+    # Integration Pipeline Settings
+    integration:
+      parallel_processing: false  # Sequential due to dependencies
+      enable_audit_logging: true
+      audit_output_dir: "./audit_trails/phase3"
+
+    # Quality Gates - Fail-hard thresholds
+    quality_gates:
+      min_groundedness: 0.80           # Minimum groundedness score
+      max_hallucination_rate: 0.10     # Maximum 10% hallucination
+      min_disagreement_coverage: 0.30  # Minimum 30% disagreement coverage
+      min_citation_completeness: 0.80  # 80% claims need ≥2 citations
+      min_verification_completeness: 0.70  # 70% claims need verified citations
+
+    # Fail-hard enforcement
+    fail_hard_on_quality: true
+
+  # Enhanced Synthesis Configuration
+  synthesis:
+    # Citation Requirements
+    min_citations_per_claim: 2
+    require_independent_sources: true
+
+    # Citation Templates
+    citation_templates:
+      academic: "According to {source_title} ({doc_id}), {claim_text} [Citation: {slot_id}]"
+      evidence_based: "Research evidence shows that {claim_text}, as documented in {source_title} [Ref: {slot_id}]"
+      multi_source: "Multiple sources confirm that {claim_text} ({source_list}) [Citations: {slot_ids}]"
+      disputed: "While {claim_text} is supported by {supporting_sources}, this finding is disputed by {counter_sources} [Mixed evidence: {slot_ids}]"
+
+    # Verification Settings
+    verification:
+      enable_counter_evidence: true
+      adversarial_verification: true
+
+    # Quality Thresholds
+    quality_thresholds:
+      min_verification_score: 0.70
+      min_evidence_strength: 0.60
+
+    # Fail-hard on synthesis quality
+    fail_hard_on_quality: true
+
+  # Counter-Evidence Detection Configuration
+  counter_evidence:
+    enabled: true
+    min_confidence: 0.60              # Minimum confidence for counter-evidence
+    max_per_claim: 5                  # Maximum counter-evidence per claim
+
+    # Quality thresholds
+    quality_thresholds:
+      min_disagreement_coverage: 0.30  # Minimum disagreement coverage required
+
+    # Contradiction pattern weights
+    pattern_weights:
+      direct_negation: 0.9
+      methodological_criticism: 0.8
+      contrast_indicators: 0.7
+      questioning_validity: 0.6
+
+  # Adversarial Verification Configuration
+  adversarial_verification:
+    enabled: true
+    intensity: "moderate"             # low, moderate, high
+    min_challenges: 3                 # Minimum challenges per claim
+    max_challenges: 8                 # Maximum challenges per claim
+
+    # Challenge generation settings
+    challenge_types:
+      alternative_explanation:
+        enabled: true
+        difficulty: 0.7
+        weight: 1.0
+      methodological_flaw:
+        enabled: true
+        difficulty: 0.8
+        weight: 1.0
+      source_bias:
+        enabled: true
+        difficulty: 0.6
+        weight: 0.8
+      causal_confusion:
+        enabled: true
+        difficulty: 0.9
+        weight: 1.2
+      scale_generalization:
+        enabled: true
+        difficulty: 0.7
+        weight: 0.9
+
+    # Quality thresholds
+    quality_thresholds:
+      min_robustness: 0.60            # Minimum robustness score
+      max_gaps: 3                     # Maximum acceptable robustness gaps
+
+# FÁZE 4: Specialized Connectors Configuration
+phase4:
+  # Integration Pipeline Settings
+  integration:
+    parallel_processing: true        # Concurrent connector execution
+    timeout_per_connector: 300       # Timeout per connector (seconds)
+
+  # Diff Analysis Settings
+  diff_analysis:
+    enable_temporal_diff: true       # Enable temporal change analysis
+    enable_cross_source_diff: true   # Enable cross-source consistency analysis
+
+  # Stability Requirements
+  stability:
+    min_success_rate: 0.70          # Minimum 70% connector success rate
+    retry_failed_connectors: true   # Retry failed connectors once
+    fail_hard_on_instability: false # Fail hard if stability requirements not met
+
+# Common Crawl Configuration
+common_crawl:
+  enabled: true
+  index_api_base: "https://index.commoncrawl.org"
+  download_base: "https://data.commoncrawl.org"
+
+  # Cache settings
+  cache_enabled: true
+  cache_dir: "./cache/common_crawl"
+  cache_ttl_hours: 24
+
+  # Request settings
+  max_results: 1000
+  timeout: 30
+  max_retries: 3
+  retry_delay: 1.0
+
+  # Quality filters
+  min_content_length: 500
+  max_content_length: 100000
+  allowed_content_types: ["text/html", "text/plain"]
+
+  # Processing settings
+  concurrent_downloads: 5
+  enable_content_extraction: true
+
+# Memento Temporal Configuration
+memento:
+  enabled: true
+  aggregator: "http://timetravel.mementoweb.org"
+
+  # Archive endpoints
+  archive_endpoints:
+    wayback_machine: "http://web.archive.org/web"
+    archive_today: "http://archive.today"
+    library_congress: "http://webarchive.loc.gov"
+
+  # Temporal settings
+  milestone_intervals: ["1_year", "6_months", "3_months", "1_month", "1_week"]
+  max_snapshots: 20
+  min_content_change: 0.05          # 5% change threshold
+
+  # Request settings
+  timeout: 30
+  max_retries: 3
+  concurrent_requests: 3
+
+  # Diff settings
+  enable_content_diff: true
+  diff_context_lines: 3
+  max_diff_size: 50000             # characters
+
+  # Cache settings
+  cache_enabled: true
+  cache_dir: "./cache/memento"
+
+# Ahmia Tor Configuration
+ahmia:
+  enabled: true
+  api_base: "https://ahmia.fi/search"
+  onion_base: "http://juhanurmihxlp77nkq76byazjpd3faxuotxdf3rss4sfqnk4nfyaad.onion"
+
+  # Legal and safety settings
+  legal_only: true                 # CRITICAL: Only access whitelisted legal sources
+  legal_whitelist: "./configs/tor_legal_whitelist.json"
+  blocked_categories:
+    - "drugs"
+    - "weapons"
+    - "illegal_services"
+    - "fraud"
+    - "hacking"
+    - "child_exploitation"
+    - "violence"
+    - "terrorism"
+    - "illegal_content"
+
+  # Tor connection settings
+  tor_proxy: "socks5://127.0.0.1:9050"
+  tor_enabled: true
+  circuit_timeout: 60
+
+  # Request settings
+  max_results: 50
+  timeout: 30
+  rate_limit_delay: 2.0
+
+  # Content filtering
+  content_filters:
+    min_description_length: 20
+    require_english: false
+    block_suspicious_keywords: true
+
+# Legal APIs Configuration
+legal_apis:
+  enabled: true
+
+  # CourtListener settings
+  courtlistener:
+    enabled: true
+    api_base: "https://www.courtlistener.com/api/rest/v3"
+    api_key: ${COURTLISTENER_API_KEY}  # Optional but recommended
+
+  # SEC EDGAR settings
+  sec_edgar:
+    enabled: true
+    api_base: "https://data.sec.gov"
+    user_agent: "DeepResearchTool research@example.com"  # Required by SEC
+
+  # Search settings
+  max_results: 100
+  date_range_years: 5
+
+  # Request settings
+  timeout: 30
+  rate_limit_delay: 1.0
+  max_retries: 3
+
+  # Content filtering
+  content_filters:
+    min_content_length: 100
+    max_content_length: 50000
+    include_full_text: true
+
+# Environment Variables Template
+environment:
+  CIA_API_KEY: "your_cia_api_key_here"
+  MALTEGO_API_KEY: "your_maltego_api_key_here"
+  MISP_SERVER_URL: "your_misp_server_url_here"
+  MISP_API_KEY: "your_misp_api_key_here"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/deep_research_tool.log"
+  max_size_mb: 100
+  backup_count: 5
+
+  # Specialized logging
+  security_log: "logs/security_audit.log"
+  compliance_log: "logs/compliance.log"
+  correlation_log: "logs/correlations.log"

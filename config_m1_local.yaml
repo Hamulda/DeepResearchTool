@@ -1,0 +1,411 @@
+# Deep Research Tool v2.0 - M1 MacBook Local Configuration
+# Optimalizace pro čistě lokální provoz s hierarchickým retrievalem a claim graph
+
+# Global settings
+globals:
+  seeds: {python: 1337, numpy: 1337, torch: 1337}
+  checkpoints: {enabled: true, path: "./.checkpoints", save_after: ["retrieval", "synthesis"]}
+
+# Validation Gates Configuration - Fail-fast/fail-hard system
+validation_gates:
+  enabled: true
+  min_documents: 5
+  min_citations_per_claim: 2
+  min_confidence: 0.6
+  fail_on_critical: true
+  remediation_enabled: true
+
+  # Gate-specific settings
+  gates:
+    query_validation:
+      enabled: true
+      min_length: 10
+      max_length: 500
+      dangerous_patterns: ["DELETE", "DROP", "TRUNCATE", "<script>", "javascript:"]
+
+    retrieval_validation:
+      enabled: true
+      min_quality_threshold: 0.3
+      timeout_seconds: 30
+
+    evidence_validation:
+      enabled: true
+      strict_citation_check: true
+      per_claim_requirement: true
+
+    quality_validation:
+      enabled: true
+      confidence_threshold: 0.6
+      max_flagged_claims: 3
+
+# Profile-specific configurations
+profiles:
+  quick:
+    retrieval:
+      hierarchical: {enabled: true, levels: 2}
+      rrf_k: 40
+      dedup: true
+      compression: {enabled: true, budget_tokens: 2000, strategy: "salience"}
+    qdrant:
+      ef_search: 64
+      index_tier: {meta: "fp32", passage: "pq"}
+    llm:
+      verification:
+        primary_model: "qwen2.5:7b-q4_K_M"
+        fallback_model: "llama3.2:8b-q4_K_M"
+        confidence_threshold: 0.6
+        top_k: 4
+    query_refinement:
+      max_iterations: 2
+      confidence_threshold: 0.7
+      plateau_threshold: 0.05
+    claim_graph:
+      enabled: true
+      contradiction_detection: true
+
+  thorough:
+    retrieval:
+      hierarchical: {enabled: true, levels: 3}
+      rrf_k: 60
+      dedup: true
+      compression: {enabled: true, budget_tokens: 4000, strategy: "salience+novelty"}
+    qdrant:
+      ef_search: 96
+      index_tier: {meta: "fp32", passage: "pq"}
+    llm:
+      verification:
+        primary_model: "llama3.2:8b-q4_K_M"
+        fallback_model: "qwen2.5:7b-q4_K_M"
+        confidence_threshold: 0.7
+        top_k: 6
+    query_refinement:
+      max_iterations: 3
+      confidence_threshold: 0.6
+      plateau_threshold: 0.03
+    claim_graph:
+      enabled: true
+      contradiction_detection: true
+      conflict_resolution: true
+
+# Core DAG Workflow Configuration
+workflow:
+  phases:
+    retrieval:
+      enabled: true
+      max_depth: 3
+      parallel_subqueries: 4
+      max_documents_per_source: 50
+      budget_timeout_seconds: 300
+
+    reranking:
+      enabled: true
+      top_k_candidates: 100
+      final_k: 20
+      model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+    synthesis:
+      enabled: true
+      min_evidence_per_claim: 2
+      confidence_threshold: 0.7
+      model: "llama3.2:8b-q4_K_M"
+
+    verification:
+      enabled: true
+      independent_model: "qwen2.5:7b-q4_K_M"
+      verification_threshold: 0.8
+      contradiction_pass: true
+
+  human_checkpoints:
+    enabled: false
+    after_retrieval: false
+    after_synthesis: true
+
+# Hierarchical Retrieval Configuration
+retrieval:
+  # HyDE Query Expansion (FÁZE 1)
+  hyde:
+    enabled: true
+    max_length: 200
+    temperature: 0.7
+    fallback_enabled: true
+    combination_strategy: "append"  # append, weighted, interleave
+    generation_prompts:
+      academic: "Write a comprehensive academic paragraph that would answer this research question: {query}"
+      factual: "Provide a detailed factual response to this question: {query}"
+      technical: "Explain the technical aspects and details related to: {query}"
+      general: "Write an informative passage that addresses: {query}"
+
+  # MMR Diversification (FÁZE 1)
+  mmr:
+    enabled: true
+    lambda: 0.7  # Relevance vs diversity trade-off (0.5-0.9)
+    diversity_threshold: 0.8
+    max_iterations: 100
+
+  hierarchical:
+    enabled: true
+    levels: 2  # Will be overridden by profile
+    chunk_sizes:
+      document: 8000
+      section: 2000
+      passage: 512
+      sentence: 128
+    overlap_ratios:
+      section: 0.1
+      passage: 0.15
+      sentence: 0.2
+
+  # Enhanced RRF Configuration (FÁZE 1)
+  rrf:
+    k: 40  # Will be overridden by profile
+    profile_k:
+      quick: 40
+      thorough: 60
+    k_sweep_range: [20, 40, 60, 80]
+
+    # Per-source authority/recency priors (FÁZE 1)
+    authority_boost: 0.2
+    recency_boost: 0.15
+
+    source_priors:
+      academic:
+        authority_weight: 0.9
+        recency_weight: 0.6
+        base_authority: 0.8
+        recency_decay_days: 730
+        domain_expertise:
+          science: 0.95
+          technology: 0.85
+          medicine: 0.90
+      news:
+        authority_weight: 0.7
+        recency_weight: 0.9
+        base_authority: 0.6
+        recency_decay_days: 90
+      government:
+        authority_weight: 0.95
+        recency_weight: 0.5
+        base_authority: 0.9
+        recency_decay_days: 1095
+
+  # Deduplication (Enhanced FÁZE 1)
+  deduplication:
+    enabled: true
+    url_threshold: 0.8
+    content_threshold: 0.85
+    title_threshold: 0.9
+    strategy: "merge_scores"  # merge_scores, keep_best, penalize
+    penalty_factor: 0.8
+
+# Contextual Compression Configuration (Enhanced FÁZE 2)
+compression:
+  enabled: true
+  budget_tokens: 2000  # Will be overridden by profile
+  strategy: "salience+novelty+redundancy"  # Enhanced strategy
+
+  # Salience weights (FÁZE 2)
+  salience_weights:
+    semantic: 0.5
+    tfidf: 0.3
+    keyword: 0.2
+
+  # Strategy parameters
+  novelty_threshold: 0.7
+  redundancy_threshold: 0.85
+
+  # Source-aware budget priorities (FÁZE 2)
+  source_priorities:
+    academic: 1.0      # Primary literature highest priority
+    government: 0.9    # Official sources high priority
+    wikipedia: 0.7     # Reliable aggregator medium priority
+    news: 0.6          # Current events medium priority
+    social_media: 0.3  # Social aggregators lowest priority
+    unknown: 0.5       # Default medium priority
+
+  # Discourse-aware chunking (FÁZE 2)
+  discourse_chunking:
+    enabled: true
+    max_chunk_size: 512
+    min_chunk_size: 50
+    overlap_ratio: 0.1
+    detect_speech_acts: true
+    preserve_citations: true
+    respect_list_structure: true
+
+  # Adaptive chunking (FÁZE 2)
+  adaptive_chunking:
+    enabled: true
+    base_chunk_size: 512
+    min_chunk_size: 100
+    max_chunk_size: 1024
+    high_entity_threshold: 0.15    # 15 entities per 100 words
+    low_entity_threshold: 0.05     # 5 entities per 100 words
+    high_claim_threshold: 0.20     # 20 claim markers per 100 words
+    low_claim_threshold: 0.05      # 5 claim markers per 100 words
+    entity_adaptation_factor: 0.3
+    claim_adaptation_factor: 0.4
+    diversity_bonus: 0.2
+
+# Query Refinement Configuration
+query_refinement:
+  enabled: true
+  max_iterations: 3
+  confidence_threshold: 0.7
+  plateau_threshold: 0.05
+  max_subqueries: 3
+  ner_model: "dbmdz/bert-large-cased-finetuned-conll03-english"
+
+# Claim Graph Configuration
+claim_graph:
+  enabled: true
+  contradiction_detection:
+    enabled: true
+    semantic_threshold: 0.8
+    evidence_threshold: 0.7
+  conflict_resolution:
+    enabled: true
+    confidence_penalty: 0.7  # Multiply confidence by this for disputed claims
+
+# Qdrant Configuration
+qdrant:
+  url: "http://localhost:6333"
+  embedding_model: "all-MiniLM-L6-v2"
+
+  # Hierarchical collections
+  collections:
+    metadata: "documents_metadata"
+    sections: "documents_sections"
+    passages: "documents_passages"
+    sentences: "documents_sentences"
+
+  # Index configuration per tier
+  index_tiers:
+    metadata:
+      precision: "fp32"
+      hnsw_config: {ef_construct: 128, m: 16}
+      quantization: false
+    sections:
+      precision: "fp32"
+      hnsw_config: {ef_construct: 100, m: 16}
+      quantization: false
+    passages:
+      precision: "pq"  # Product Quantization for memory efficiency
+      hnsw_config: {ef_construct: 64, m: 12}
+      quantization: true
+    sentences:
+      precision: "pq"
+      hnsw_config: {ef_construct: 32, m: 8}
+      quantization: true
+
+  # Search parameters
+  ef_search: 64  # Will be overridden by profile
+
+# M1 MacBook Optimization
+m1_optimization:
+  ollama:
+    models:
+      primary: "qwen2.5:7b-q4_K_M"
+      fallback: "llama3.2:8b-q4_K_M"
+      embedding: "nomic-embed-text:v1.5"
+    context_window: 8192
+    metal_acceleration: true
+    batch_size: 4
+    streaming: true
+
+  pytorch:
+    device: "mps"  # Metal Performance Shaders
+    memory_management: "efficient"
+
+# Specialized Source Connectors
+specialized_sources:
+  academic:
+    openalex:
+      enabled: true
+      rate_limit: 10
+      prefer_peer_reviewed: true
+    crossref:
+      enabled: true
+      mailto: "research@deepresearchtool.local"
+    unpaywall:
+      enabled: true
+      email: "research@deepresearchtool.local"
+    europe_pmc:
+      enabled: true
+      rate_limit: 5
+
+  legal:
+    courtlistener:
+      enabled: false  # Requires API key
+      rate_limit: 5
+    sec_edgar:
+      enabled: true
+      user_agent: "DeepResearchTool/2.0"
+      rate_limit: 10
+
+  archives:
+    common_crawl:
+      enabled: true
+      index_servers: ["http://index.commoncrawl.org/"]
+      max_warc_files: 5
+    memento:
+      enabled: true
+      timegate_url: "http://timetravel.mementoweb.org/timegate/"
+    archivebox:
+      enabled: false  # Local archiving disabled by default
+      archive_path: "./archives"
+
+# Evidence Binding Schema Extensions
+evidence_schema:
+  required_fields:
+    - source_id
+    - canonical_url
+    - timestamp
+  enhanced_fields:
+    - memento_datetime
+    - snapshot_hash
+    - persistent_id
+  persistent_id_types:
+    - doi
+    - ecli  # European Case Law Identifier
+    - cik   # SEC Central Index Key
+    - docket
+
+# Evaluation Configuration
+evaluation:
+  enabled: true
+  regression_dataset: "./data/eval/regression_queries.json"
+  metrics:
+    retrieval: ["recall@10", "precision@10", "nDCG@10"]
+    synthesis: ["groundedness", "citation_precision", "context_usage_efficiency"]
+    verification: ["hallucination_rate", "confidence_calibration"]
+
+  # CI gate thresholds
+  ci_thresholds:
+    quick:
+      groundedness: 0.85
+      hallucination_rate: 0.10  # max allowed
+      citation_precision: 0.80
+    thorough:
+      groundedness: 0.90
+      hallucination_rate: 0.06  # max allowed
+      citation_precision: 0.85
+
+# Feature Flags
+features:
+  hierarchical_retrieval: true
+  contextual_compression: true
+  adaptive_query_refinement: true
+  claim_graph: true
+  contradiction_detection: true
+  mcp_qdrant_integration: true
+  streaming_inference: true
+  bayesian_optimization: false  # CPU intensive
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "./logs/deep_research_tool.log"
+  rotation: "1 day"
+  retention: "30 days"
+  audit_log: "./logs/audit.log"

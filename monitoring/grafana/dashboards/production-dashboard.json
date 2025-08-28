@@ -1,0 +1,123 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "DeepResearchTool - Production Dashboard",
+    "tags": ["deepresearch", "production", "ai", "security"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "30s",
+    "schemaVersion": 27,
+    "version": 1,
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "System Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"deepresearch-api\"}",
+            "legendFormat": "API Status"
+          },
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "Requests/sec"
+          },
+          {
+            "expr": "avg(http_request_duration_seconds)",
+            "legendFormat": "Avg Response Time"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Research Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(research_duration_seconds_bucket[5m]))",
+            "legendFormat": "95th percentile"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(research_duration_seconds_bucket[5m]))",
+            "legendFormat": "Median"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+      },
+      {
+        "id": 3,
+        "title": "Security Metrics",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(security_violations_total[5m])",
+            "legendFormat": "Violations/sec"
+          },
+          {
+            "expr": "rate(pii_redactions_total[5m])",
+            "legendFormat": "PII Redactions/sec"
+          },
+          {
+            "expr": "rate(rate_limit_blocks_total[5m])",
+            "legendFormat": "Rate Limit Blocks/sec"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+      },
+      {
+        "id": 4,
+        "title": "Database Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(postgres_queries_total[5m])",
+            "legendFormat": "Queries/sec"
+          },
+          {
+            "expr": "postgres_connections_active",
+            "legendFormat": "Active Connections"
+          }
+        ],
+        "gridPos": {"h": 6, "w": 8, "x": 0, "y": 12}
+      },
+      {
+        "id": 5,
+        "title": "Vector Database (Qdrant)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "qdrant_collections_total",
+            "legendFormat": "Collections"
+          },
+          {
+            "expr": "rate(qdrant_operations_total[5m])",
+            "legendFormat": "Operations/sec"
+          }
+        ],
+        "gridPos": {"h": 6, "w": 8, "x": 8, "y": 12}
+      },
+      {
+        "id": 6,
+        "title": "System Resources",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "legendFormat": "CPU Usage %"
+          },
+          {
+            "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+            "legendFormat": "Memory Usage %"
+          }
+        ],
+        "gridPos": {"h": 6, "w": 8, "x": 16, "y": 12}
+      }
+    ]
+  }
+}
+

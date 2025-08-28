@@ -1,0 +1,57 @@
+{
+  "version": "1.0",
+  "description": "Legal whitelist pro Tor proxy - pouze eticky schválené domény",
+  "last_updated": "2025-08-28",
+  "allowed_domains": [
+    "*.edu",
+    "*.gov",
+    "*.org",
+    "arxiv.org",
+    "scholar.google.com",
+    "pubmed.ncbi.nlm.nih.gov",
+    "ieee.org",
+    "acm.org",
+    "wikipedia.org",
+    "*.wikipedia.org",
+    "github.com",
+    "stackoverflow.com",
+    "*.stackexchange.com",
+    "news.ycombinator.com",
+    "reddit.com",
+    "medium.com",
+    "towards-data-science.medium.com",
+    "*.nature.com",
+    "*.science.org",
+    "*.springer.com",
+    "*.elsevier.com",
+    "*.wiley.com",
+    "docs.python.org",
+    "pytorch.org",
+    "tensorflow.org",
+    "huggingface.co",
+    "openai.com",
+    "anthropic.com"
+  ],
+  "blocked_categories": [
+    "adult_content",
+    "gambling",
+    "illegal_markets",
+    "malware_distribution",
+    "phishing",
+    "copyright_infringement"
+  ],
+  "ethical_guidelines": {
+    "research_only": true,
+    "respect_robots_txt": true,
+    "rate_limiting": true,
+    "user_agent_identification": true,
+    "no_personal_data_collection": true
+  },
+  "compliance": {
+    "gdpr": true,
+    "ccpa": true,
+    "academic_use": true,
+    "commercial_restrictions": "research_only"
+  }
+}
+

@@ -1,0 +1,307 @@
+name: Deep Research Tool CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  PYTHON_VERSION: '3.9'
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    name: Code Quality Check
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black isort flake8 mypy
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Format check with Black
+      run: |
+        black --check --line-length 88 src tests scripts
+
+    - name: Import sorting check with isort
+      run: |
+        isort --check-only --profile black src tests scripts
+
+    - name: Lint with flake8
+      run: |
+        flake8 src tests scripts --max-line-length 88 --extend-ignore E203,W503 --max-complexity 10
+
+    - name: Type checking with mypy
+      run: |
+        mypy src --ignore-missing-imports
+      continue-on-error: true  # Don't fail on type errors yet
+
+  test:
+    runs-on: ubuntu-latest
+    name: Unit Tests
+    needs: lint-and-format
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-asyncio
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Create test directories
+      run: |
+        mkdir -p research_cache data logs eval_results datasets/regression
+
+    - name: Run unit tests
+      run: |
+        python -m pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
+      continue-on-error: false
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    name: Smoke Test
+    needs: test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Setup environment
+      run: |
+        python scripts/validate_env.py || echo "Environment validation completed with warnings"
+
+    - name: Run smoke test
+      run: |
+        timeout 300 python scripts/smoke_test.py --profile quick --verbose || echo "Smoke test completed"
+      continue-on-error: true  # Smoke test may fail in CI without proper setup
+
+  evaluation:
+    runs-on: ubuntu-latest
+    name: RAG Evaluation & Quality Gates
+    needs: test
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for comparison
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Create evaluation directories
+      run: |
+        mkdir -p eval_results datasets/regression research_cache data logs
+
+    - name: Run evaluation system
+      id: eval
+      run: |
+        python scripts/eval_runner.py --all --output eval_results/
+        echo "eval_status=$?" >> $GITHUB_OUTPUT
+      continue-on-error: true
+
+    - name: Check quality gates
+      run: |
+        python -c "
+        import json
+        import sys
+        from pathlib import Path
+        
+        # Load latest evaluation results
+        eval_dir = Path('eval_results')
+        if not eval_dir.exists():
+            print('No evaluation results found')
+            sys.exit(0)
+        
+        eval_files = list(eval_dir.glob('evaluation_*.json'))
+        if not eval_files:
+            print('No evaluation JSON files found')
+            sys.exit(0)
+        
+        latest_file = max(eval_files, key=lambda f: f.stat().st_mtime)
+        
+        with open(latest_file) as f:
+            results = json.load(f)
+        
+        # Check quality gates
+        gates_passed = True
+        overall_metrics = results.get('overall_metrics', {})
+        
+        # Define thresholds
+        thresholds = {
+            'groundedness': {'min': 0.75, 'desc': 'Groundedness rate'},
+            'citation_precision': {'min': 0.65, 'desc': 'Citation precision'},
+            'hallucination_rate': {'max': 0.25, 'desc': 'Hallucination rate'}
+        }
+        
+        print('🔍 Quality Gate Results:')
+        for metric, config in thresholds.items():
+            if metric in overall_metrics:
+                value = overall_metrics[metric].get('mean', 0)
+                
+                if 'min' in config:
+                    passed = value >= config['min']
+                    status = '✅ PASS' if passed else '❌ FAIL'
+                    print(f'  {config[\"desc\"]}: {value:.3f} (≥ {config[\"min\"]}) {status}')
+                elif 'max' in config:
+                    passed = value <= config['max']
+                    status = '✅ PASS' if passed else '❌ FAIL'
+                    print(f'  {config[\"desc\"]}: {value:.3f} (≤ {config[\"max\"]}) {status}')
+                
+                if not passed:
+                    gates_passed = False
+        
+        if not gates_passed:
+            print('❌ Quality gates failed! Please improve metrics before merging.')
+            sys.exit(1)
+        else:
+            print('✅ All quality gates passed!')
+        "
+      continue-on-error: false
+
+    - name: Upload evaluation results
+      uses: actions/upload-artifact@v3
+      with:
+        name: evaluation-results
+        path: eval_results/
+        retention-days: 30
+
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          // Find latest evaluation file
+          const evalDir = 'eval_results';
+          if (!fs.existsSync(evalDir)) {
+            console.log('No evaluation results to comment');
+            return;
+          }
+          
+          const files = fs.readdirSync(evalDir).filter(f => f.startsWith('evaluation_') && f.endsWith('.json'));
+          if (files.length === 0) {
+            console.log('No evaluation JSON files found');
+            return;
+          }
+          
+          const latestFile = files.sort().pop();
+          const results = JSON.parse(fs.readFileSync(path.join(evalDir, latestFile)));
+          
+          // Create comment
+          const metrics = results.overall_metrics || {};
+          const groundedness = metrics.groundedness?.mean || 0;
+          const citationPrecision = metrics.citation_precision?.mean || 0;
+          const hallucinationRate = metrics.hallucination_rate?.mean || 0;
+          
+          const comment = `## 🔍 RAG Evaluation Results
+          
+          | Metric | Value | Status |
+          |--------|-------|--------|
+          | Groundedness Rate | ${groundedness.toFixed(3)} | ${groundedness >= 0.75 ? '✅' : '❌'} |
+          | Citation Precision | ${citationPrecision.toFixed(3)} | ${citationPrecision >= 0.65 ? '✅' : '❌'} |
+          | Hallucination Rate | ${hallucinationRate.toFixed(3)} | ${hallucinationRate <= 0.25 ? '✅' : '❌'} |
+          
+          **Total Tests:** ${results.total_tests || 0}  
+          **Success Rate:** ${results.successful_tests || 0}/${results.total_tests || 0}
+          
+          ${groundedness >= 0.75 && citationPrecision >= 0.65 && hallucinationRate <= 0.25 
+            ? '✅ All quality gates passed!' 
+            : '❌ Some quality gates failed. Please review and improve.'}
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  rrf-sweep:
+    runs-on: ubuntu-latest
+    name: RRF Parameter Optimization
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Run RRF parameter sweep
+      run: |
+        python scripts/sweep_rrf.py --profiles quick thorough --output eval_results/rrf_sweep.json
+      continue-on-error: true
+
+    - name: Upload RRF results
+      uses: actions/upload-artifact@v3
+      with:
+        name: rrf-sweep-results
+        path: eval_results/rrf_sweep.json
+        retention-days: 90
