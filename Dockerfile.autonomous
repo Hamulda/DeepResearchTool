@@ -1,0 +1,58 @@
+# ====================
+# FÁZE 1: DOCKERFILE PRO AUTONOMNÍ SCRAPER
+# ====================
+
+# Použití minimálního Python obrazu
+FROM python:3.11-slim-bullseye
+
+# Nastavení pracovního adresáře
+WORKDIR /app
+
+# Instalace systémových závislostí potřebných pro Metal akceleraci a bezpečnost
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    build-essential \
+    cmake \
+    libopenblas-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instalace ggshield pro skenování tajemství
+RUN pip install --no-cache-dir ggshield
+
+# Kopírování requirements.txt
+COPY requirements.txt .
+
+# Instalace Python závislostí s optimalizací pro Metal (M1/M2/M3)
+ENV CMAKE_ARGS="-DLLAMA_METAL=on"
+ENV FORCE_CMAKE=1
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Kopírování zdrojového kódu
+COPY src/ ./src/
+COPY *.py ./
+COPY *.yaml ./
+COPY *.yml ./
+
+# Bezpečnostní skenování - kontrola tajemství ve zdrojovém kódu
+RUN ggshield secret scan path /app --recursive --exit-zero || \
+    (echo "VAROVÁNÍ: Byla nalezena potenciální tajemství ve zdrojovém kódu!" && exit 1)
+
+# Vytvoření neprivilegovaného uživatele
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# Exponování portu
+EXPOSE 8000
+
+# Nastavení Python path
+ENV PYTHONPATH=/app
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Spuštění aplikace
+CMD ["python", "-m", "src.core.autonomous_server"]

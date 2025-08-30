@@ -1,0 +1,30 @@
+{
+  "legal_domains": [
+    "httpbin.org",
+    "example.com",
+    "jsonplaceholder.typicode.com",
+    "httpstat.us",
+    "reqres.in",
+    "postman-echo.com",
+    "news.ycombinator.com",
+    "reddit.com",
+    "github.com",
+    "stackoverflow.com"
+  ],
+  "onion_test_sites": [
+    "3g2upl4pq6kufc4m.onion",
+    "facebookcorewwwi.onion"
+  ],
+  "blocked_domains": [
+    "facebook.com",
+    "google.com",
+    "amazon.com",
+    "microsoft.com"
+  ],
+  "compliance_notes": {
+    "purpose": "Research and educational purposes only",
+    "restrictions": "Only access publicly available information",
+    "legal_disclaimer": "Users are responsible for compliance with local laws"
+  }
+}
+

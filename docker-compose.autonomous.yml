@@ -1,0 +1,135 @@
+version: '3.8'
+
+services:
+  # Hlavní aplikace - scraper služba
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.autonomous
+    container_name: autonomous_scraper
+    environment:
+      - PYTHONPATH=/app
+      - TOR_PROXY_HOST=tor_proxy
+      - TOR_PROXY_PORT=8118
+      - FLARESOLVERR_HOST=flaresolverr
+      - FLARESOLVERR_PORT=8191
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./research_cache:/app/research_cache
+      - ./artifacts:/app/artifacts
+    networks:
+      - autonomous_network
+    depends_on:
+      - tor_proxy
+      - flaresolverr
+      - milvus
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Anonymizační vrstva - Tor proxy
+  tor_proxy:
+    image: dockage/tor-privoxy:latest
+    container_name: autonomous_tor_proxy
+    ports:
+      - "8118:8118"  # Privoxy HTTP proxy
+      - "9050:9050"  # Tor SOCKS proxy
+    environment:
+      - TOR_NICKNAME=AutonomousResearch
+      - TOR_RELAY=0
+      - TOR_BRIDGES=0
+    networks:
+      - autonomous_network
+    restart: unless-stopped
+    volumes:
+      - tor_data:/var/lib/tor
+      - ./configs/tor_legal_whitelist.json:/etc/tor/legal_whitelist.json:ro
+
+  # Obcházení anti-bot ochran
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: autonomous_flaresolverr
+    environment:
+      - LOG_LEVEL=info
+      - LOG_HTML=false
+      - CAPTCHA_SOLVER=none
+      - TZ=Europe/Prague
+    ports:
+      - "8191:8191"
+    networks:
+      - autonomous_network
+    restart: unless-stopped
+
+  # Vektorová databáze Milvus Lite
+  milvus:
+    image: milvusdb/milvus:v2.3.0
+    container_name: autonomous_milvus
+    command: ["milvus", "run", "standalone"]
+    environment:
+      - ETCD_USE_EMBED=true
+      - ETCD_DATA_DIR=/var/lib/milvus/etcd
+      - COMMON_STORAGETYPE=local
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    networks:
+      - autonomous_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # DuckDB pro analytické dotazy (přistupný přes web interface)
+  duckdb-web:
+    image: davidgasquez/duckdb:latest
+    container_name: autonomous_duckdb_web
+    volumes:
+      - ./data:/data
+    ports:
+      - "8080:8080"
+    networks:
+      - autonomous_network
+    restart: unless-stopped
+
+  # Prometheus monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: autonomous_prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - autonomous_network
+    restart: unless-stopped
+
+networks:
+  autonomous_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  tor_data:
+  milvus_data:
+  prometheus_data:

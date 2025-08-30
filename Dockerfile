@@ -1,16 +1,46 @@
-# Krok 1: Použijeme oficiální odlehčený Python image jako základ
 FROM python:3.11-slim
 
-# Krok 2: Nastavíme pracovní adresář uvnitř kontejneru
+# Set working directory
 WORKDIR /app
 
-# Krok 3: Zkopírujeme soubor se závislostmi a nainstalujeme je
-# (Děláme to odděleně, aby Docker mohl využít cache, pokud se změní jen kód)
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    wget \
+    chromium \
+    chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV CHROME_BINARY=/usr/bin/chromium
+ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
+
+# Copy requirements first for better caching
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Krok 4: Zkopírujeme zbytek aplikace do kontejneru
+# Copy application code
 COPY . .
 
-# Krok 5: Definujeme výchozí příkaz, který se spustí při startu kontejneru
-CMD ["python", "main.py"]
+# Create necessary directories
+RUN mkdir -p /app/data/qdrant_storage \
+    /app/data/archivebox \
+    /app/data/recoll \
+    /app/data/cache \
+    /app/logs \
+    /app/evaluation_results
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run the application
+CMD ["python", "api_server.py"]

@@ -1,0 +1,69 @@
+{
+  "timestamp": 1756559146.419105,
+  "phase": "Phase 1 - Core Stabilization",
+  "tests": [
+    {
+      "name": "Core Imports",
+      "status": "FAILED",
+      "success": false,
+      "message": "Neočekávaná chyba: 1 validation error for AppConfig\nollama_host\n  Extra inputs are not permitted [type=extra_forbidden, input_value='http://localhost:11434', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.11/v/extra_forbidden",
+      "duration": 0.415
+    },
+    {
+      "name": "Configuration System",
+      "status": "FAILED",
+      "success": false,
+      "message": "Chyba konfigurace: 1 validation error for AppConfig\nollama_host\n  Extra inputs are not permitted [type=extra_forbidden, input_value='http://localhost:11434', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.11/v/extra_forbidden",
+      "duration": 0.003
+    },
+    {
+      "name": "Pipeline Structure",
+      "status": "FAILED",
+      "success": false,
+      "message": "Chyba pipeline: 1 validation error for AppConfig\nollama_host\n  Extra inputs are not permitted [type=extra_forbidden, input_value='http://localhost:11434', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.11/v/extra_forbidden",
+      "duration": 0.003
+    },
+    {
+      "name": "Vector Store",
+      "status": "FAILED",
+      "success": false,
+      "message": "Chyba vector store: 1 validation error for AppConfig\nollama_host\n  Extra inputs are not permitted [type=extra_forbidden, input_value='http://localhost:11434', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.11/v/extra_forbidden",
+      "duration": 0.003
+    },
+    {
+      "name": "Error Handling",
+      "status": "FAILED",
+      "success": false,
+      "message": "Chyba error handling: 1 validation error for AppConfig\nollama_host\n  Extra inputs are not permitted [type=extra_forbidden, input_value='http://localhost:11434', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.11/v/extra_forbidden",
+      "duration": 0.004
+    },
+    {
+      "name": "Memory System",
+      "status": "FAILED",
+      "success": false,
+      "message": "Chyba memory systému: 1 validation error for AppConfig\nollama_host\n  Extra inputs are not permitted [type=extra_forbidden, input_value='http://localhost:11434', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.11/v/extra_forbidden",
+      "duration": 0.004
+    },
+    {
+      "name": "Main Entry Point",
+      "status": "FAILED",
+      "success": false,
+      "message": "Chyba main entry point: 1 validation error for AppConfig\nollama_host\n  Extra inputs are not permitted [type=extra_forbidden, input_value='http://localhost:11434', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.11/v/extra_forbidden",
+      "duration": 0.005
+    },
+    {
+      "name": "CLI Interface",
+      "status": "PASSED",
+      "success": true,
+      "message": "CLI rozhraní validováno",
+      "duration": 0.0
+    }
+  ],
+  "overall_status": "FAILED",
+  "summary": {
+    "total_tests": 8,
+    "passed": 1,
+    "failed": 7,
+    "skipped": 0
+  }
+}

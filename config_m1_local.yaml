@@ -1,0 +1,101 @@
+# DeepResearchTool - M1 Optimized Configuration
+# Konfigurace optimalizovaná pro MacBook Air M1 (8GB RAM)
+
+# Obecné nastavení
+debug: false
+log_level: "INFO"
+apple_silicon_optimizations: true
+memory_pressure_monitoring: true
+
+# Qdrant Vector Database Configuration (fallback - preferujeme ChromaDB)
+qdrant:
+  url: "http://localhost:6333"
+  collection_name: "research_docs_m1"
+  vector_size: 384  # Menší dimenze pro M1 optimalizaci
+  distance: "Cosine"
+  quantization:
+    enabled: true
+    type: "int8"  # Agresivní kvantizace pro úsporu paměti
+    always_ram: true
+  prefer_grpc: false  # HTTP pro jednoduchost
+  timeout: 30  # Kratší timeout
+  retries: 2
+
+# DuckDB Configuration - Analytical database
+duckdb:
+  db_path: "data/warehouse_m1.duckdb"
+  memory_limit: "1.5GB"  # Konzervativní limit pro M1
+  threads: 4  # Využití všech P-cores
+  enable_object_cache: true
+  temp_directory: "/tmp/duckdb_m1"
+
+# Model Routing - Kaskádové modely pro efektivitu
+model_routing:
+  classification_model: "sentence-transformers/all-MiniLM-L6-v2"
+  synthesis_model: "models/llama-3-8b-instruct-q4_k_m.gguf"
+  classification_device: "cpu"
+  synthesis_device: "mps"  # Metal Performance Shaders pro M1
+
+# Resource Management - M1 specifické optimalizace
+resource_management:
+  high_priority_gpu_layers: -1  # Všechny vrstvy na GPU pro důležité úlohy
+  low_priority_gpu_layers: 0    # CPU pro méně důležité úlohy
+  max_context_tokens: 4096      # Menší kontext pro M1
+  batch_size: 2                 # Malé dávky pro stabilitu
+  metal_performance_shaders: true
+  unified_memory_optimization: true
+
+# Re-ranking Configuration - Dvoufázový systém
+reranking:
+  bm25_candidates: 50     # Menší počet kandidátů pro M1
+  llm_candidates: 10      # Více agresivní filtrace (80% redukce)
+  bm25_k1: 1.2
+  bm25_b: 0.75
+  relevance_threshold: 0.4  # Vyšší práh pro lepší kvalitu
+  uncertainty_threshold: 0.15
+
+# Adaptive Control - Inteligentní řízení hloubky
+adaptive_control:
+  max_iterations: 3       # Méně iterací pro M1
+  information_gain_threshold: 0.2  # Vyšší práh pro brzké zastavení
+  similarity_threshold: 0.85
+  enable_early_stopping: true
+  min_iterations: 1
+
+# ChromaDB Configuration (preferovaná pro M1)
+chromadb:
+  persist_directory: "./chroma_db_m1"
+  collection_name: "research_docs"
+  embedding_dimension: 384
+  max_batch_size: 1000    # Rozumná velikost dávky
+
+# Network Configuration
+network:
+  tor:
+    enabled: false  # Vypnuto ve výchozím stavu pro performance
+    control_port: 9051
+    socks_port: 9050
+  i2p:
+    enabled: false
+  proxy_rotation_interval: 300  # 5 minut
+
+# Security Configuration
+security:
+  sandbox_enabled: true
+  max_file_size: "100MB"
+  allowed_file_types: ["pdf", "txt", "html", "json", "xml"]
+  pii_redaction_enabled: true
+
+# Performance Monitoring
+monitoring:
+  memory_threshold: 6.0  # GB - práh pro M1 (8GB RAM)
+  cpu_threshold: 80      # Procenta
+  disk_threshold: 85
+  metrics_collection_interval: 60  # sekundy
+
+# Development Settings
+development:
+  hot_reload: true
+  debug_toolbar: false
+  profiling_enabled: false
+  test_data_generation: true

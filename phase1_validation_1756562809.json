@@ -1,0 +1,69 @@
+{
+  "timestamp": 1756562802.75012,
+  "phase": "Phase 1 - Core Stabilization",
+  "tests": [
+    {
+      "name": "Core Imports",
+      "status": "PASSED",
+      "success": true,
+      "message": "Všechny základní importy úspěšné",
+      "duration": 6.552
+    },
+    {
+      "name": "Configuration System",
+      "status": "PASSED",
+      "success": true,
+      "message": "Konfigurace validována: {'has_llm_api_key': False, 'has_database_config': True, 'has_security_config': True, 'environment_set': True}",
+      "duration": 0.0
+    },
+    {
+      "name": "Pipeline Structure",
+      "status": "PASSED",
+      "success": true,
+      "message": "Pipeline struktura validována",
+      "duration": 0.001
+    },
+    {
+      "name": "Vector Store",
+      "status": "PASSED",
+      "success": true,
+      "message": "Vector store implementace dostupná",
+      "duration": 0.0
+    },
+    {
+      "name": "Error Handling",
+      "status": "PASSED",
+      "success": true,
+      "message": "Error handling systém validován",
+      "duration": 0.0
+    },
+    {
+      "name": "Memory System",
+      "status": "FAILED",
+      "success": false,
+      "message": "Chyba memory systému: No module named 'psutil'",
+      "duration": 0.002
+    },
+    {
+      "name": "Main Entry Point",
+      "status": "FAILED",
+      "success": false,
+      "message": "Chyba main entry point: No module named 'langchain_core'",
+      "duration": 0.009
+    },
+    {
+      "name": "CLI Interface",
+      "status": "PASSED",
+      "success": true,
+      "message": "CLI rozhraní validováno",
+      "duration": 0.0
+    }
+  ],
+  "overall_status": "PARTIAL",
+  "summary": {
+    "total_tests": 8,
+    "passed": 6,
+    "failed": 2,
+    "skipped": 0
+  }
+}

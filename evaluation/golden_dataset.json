@@ -1,0 +1,348 @@
+"""
+Golden Dataset pro Research Agent evaluaci
+20 reprezentativních výzkumných otázek s ideálními odpověďmi
+"""
+
+[
+  {
+    "id": "academic_research_01",
+    "query": "Jaké jsou nejnovější pokroky v oblasti kvantového počítání pro rok 2024?",
+    "expected_answer": "V roce 2024 došlo k významným pokrokům v kvantovém počítání, zejména v oblasti kvantové korekce chyb, kde IBM představilo své 1000+ qubit procesory s vylepšenou stabilitou. Google pokračuje v rozvoji svého Sycamore procesoru s fokusem na kvantovou supremacii. Významné jsou také pokroky v kvantových algoritmech pro optimalizaci a strojové učení.",
+    "relevant_sources": [
+      "arxiv.org/quant-ph",
+      "nature.com/quantum-information",
+      "ibm.com/quantum",
+      "ai.google/quantum"
+    ],
+    "category": "academic",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "quantum_computing",
+      "time_sensitive": true,
+      "requires_recent_data": true
+    }
+  },
+  {
+    "id": "business_analysis_01",
+    "query": "Analyzuj současné trendy v oblasti AI startupů v roce 2024",
+    "expected_answer": "AI startup ekosystém v roce 2024 se zaměřuje primárně na generativní AI aplikace, enterprise AI řešení a AI infrastrukturu. Významný nárůst investic směřuje do oblastí jako jsou AI agenti, multimodální modely a edge AI. Klíčoví hráči zahrnují Anthropic, OpenAI, Stability AI a řadu menších specializovaných firem.",
+    "relevant_sources": [
+      "crunchbase.com",
+      "pitchbook.com",
+      "cbinsights.com",
+      "techcrunch.com"
+    ],
+    "category": "business",
+    "difficulty": "hard",
+    "metadata": {
+      "field": "startup_analysis",
+      "requires_financial_data": true,
+      "time_sensitive": true
+    }
+  },
+  {
+    "id": "technical_comparison_01",
+    "query": "Porovnej výkon velkých jazykových modelů GPT-4, Claude-3 a Gemini Pro",
+    "expected_answer": "GPT-4 vyniká v obecném porozumění a kreativitě, Claude-3 má silné stránky v bezpečnosti a dlouhých kontextech (200k tokenů), zatímco Gemini Pro kombinuje multimodální schopnosti s integrací do Google ekosystému. V benchmarcích jako MMLU dosahují podobných výsledků (~85-90%), ale liší se v specifických úlohách.",
+    "relevant_sources": [
+      "openai.com/research",
+      "anthropic.com/research",
+      "deepmind.google/gemini",
+      "paperswithcode.com/sota"
+    ],
+    "category": "technical",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "llm_comparison",
+      "requires_benchmarks": true
+    }
+  },
+  {
+    "id": "policy_research_01",
+    "query": "Jaké jsou aktuální regulace AI v Evropské unii podle AI Act?",
+    "expected_answer": "EU AI Act, který vstoupil v platnost v 2024, zavádí rizikově orientovaný přístup k regulaci AI. Systémy jsou kategorizovány podle rizika: zakázané (social scoring), vysokorizikové (biometrické systémy), omezeného rizika (chatboty) a minimálního rizika. Obsahuje požadavky na transparentnost, lidský dohled a hodnocení dopadu.",
+    "relevant_sources": [
+      "europa.eu/digital-strategy",
+      "eur-lex.europa.eu",
+      "ec.europa.eu/ai-act"
+    ],
+    "category": "policy",
+    "difficulty": "hard",
+    "metadata": {
+      "field": "ai_regulation",
+      "requires_legal_sources": true
+    }
+  },
+  {
+    "id": "scientific_discovery_01",
+    "query": "Jaké nové objevy v oblasti CRISPR technologie byly publikovány v roce 2024?",
+    "expected_answer": "V roce 2024 byly publikovány významné pokroky v CRISPR technologii, včetně vylepšení přesnosti base editingu, nových Cas enzymů s menšími rozměry pro in vivo aplikace, a pokroků v epigenetickém editingu. Důležité jsou také klinické studie CRISPR terapií pro genetické choroby.",
+    "relevant_sources": [
+      "pubmed.ncbi.nlm.nih.gov",
+      "nature.com/biotech",
+      "science.org",
+      "cell.com"
+    ],
+    "category": "scientific",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "biotechnology",
+      "requires_peer_reviewed": true
+    }
+  },
+  {
+    "id": "market_analysis_01",
+    "query": "Analyzuj vliv inflace na technologický sektor v roce 2024",
+    "expected_answer": "Inflace v roce 2024 ovlivnila technologický sektor zejména prostřednictvím vyšších úrokových sazeb, což snížilo ocenění růstových technologických akcií. Firmy se zaměřují na profitabilitu místo růstu, dochází k konsolidaci a snižování nákladů. Současně inflace stimuluje adopci automatizačních technologií.",
+    "relevant_sources": [
+      "federalreserve.gov",
+      "bloomberg.com",
+      "reuters.com/markets",
+      "wsj.com/tech"
+    ],
+    "category": "market",
+    "difficulty": "hard",
+    "metadata": {
+      "field": "economic_analysis",
+      "requires_financial_data": true
+    }
+  },
+  {
+    "id": "environmental_research_01",
+    "query": "Jaký je aktuální stav výzkumu v oblasti carbon capture technologií?",
+    "expected_answer": "Výzkum carbon capture technologií v roce 2024 se zaměřuje na Direct Air Capture (DAC), enhanced weathering a biologické metody. Klíčové jsou pokroky v snižování energetických nákladů DAC systémů, nové materiály pro CO2 absorpci a integrace s obnovitelnými zdroji energie. Významné investice směřují do škálování technologií.",
+    "relevant_sources": [
+      "ipcc.ch",
+      "iea.org",
+      "nature.com/climate",
+      "carbondirect.com"
+    ],
+    "category": "environmental",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "climate_tech",
+      "requires_technical_data": true
+    }
+  },
+  {
+    "id": "healthcare_innovation_01",
+    "query": "Jaké jsou nejnovější trendy v personalizované medicíně pro rok 2024?",
+    "expected_answer": "Personalizovaná medicína v roce 2024 se rozvíjí směrem k multi-omics přístupům, kombinujícím genomiku, proteomiku a metabolomiku. Významný je rozvoj AI-powered drug discovery, liquid biopsies pro early detection rakoviny a personalizované imunoterapie. Pokračuje integrace real-world evidence do klinického rozhodování.",
+    "relevant_sources": [
+      "nejm.org",
+      "nature.com/medicine",
+      "fda.gov/precision-medicine",
+      "nih.gov/precision-medicine"
+    ],
+    "category": "healthcare",
+    "difficulty": "hard",
+    "metadata": {
+      "field": "precision_medicine",
+      "requires_clinical_data": true
+    }
+  },
+  {
+    "id": "cybersecurity_trends_01",
+    "query": "Analyzuj hlavní cybersecurity hrozby a trendy pro rok 2024",
+    "expected_answer": "Hlavní cybersecurity hrozby v roce 2024 zahrnují AI-powered útoky, ransomware-as-a-service, supply chain útoky a kvantové hrozby. Trendy v obraně se zaměřují na zero-trust architektury, AI-enhanced detection, quantum-safe kryptografii a automatizované incident response. Roste význam cloud security a IoT zabezpečení.",
+    "relevant_sources": [
+      "cisa.gov",
+      "nist.gov/cybersecurity",
+      "sans.org",
+      "crowdstrike.com/resources"
+    ],
+    "category": "cybersecurity",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "information_security",
+      "requires_threat_intelligence": true
+    }
+  },
+  {
+    "id": "education_technology_01",
+    "query": "Jak AI transformuje vzdělávání v roce 2024?",
+    "expected_answer": "AI transformuje vzdělávání prostřednictvím personalizovaných learning pathways, intelligent tutoring systémů a automatizovaného hodnocení. Klíčové jsou adaptive learning platformy, AI-assisted content creation a real-time feedback systémy. Roste využití VR/AR pro immersive learning a AI chatbotů pro student support.",
+    "relevant_sources": [
+      "educause.edu",
+      "unesco.org/artificial-intelligence",
+      "ed.gov/ai",
+      "edtechmagazine.com"
+    ],
+    "category": "education",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "educational_technology",
+      "requires_pedagogical_research": true
+    }
+  },
+  {
+    "id": "space_technology_01",
+    "query": "Jaké jsou nejnovější vývoje v komerční kosmonautice v roce 2024?",
+    "expected_answer": "Komerční kosmonautika v roce 2024 se zaměřuje na lunar economy, satellite constellations a space manufacturing. SpaceX pokračuje v Starship development, Blue Origin rozvíjí New Glenn raketu, a nové společnosti se zaměřují na asteroid mining a orbital manufacturing. Významný je rozvoj space turismu a lunar missions.",
+    "relevant_sources": [
+      "nasa.gov/commercial",
+      "spacex.com",
+      "blueorigin.com",
+      "spacenews.com"
+    ],
+    "category": "space",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "aerospace",
+      "requires_technical_specs": true
+    }
+  },
+  {
+    "id": "energy_transition_01",
+    "query": "Analyzuj pokrok v oblasti clean energy transition globálně v roce 2024",
+    "expected_answer": "Clean energy transition v roce 2024 akceleruje díky poklesům nákladů na renewables, pokrokům v battery storage a grid modernization. Klíčové jsou investments do green hydrogen, offshore wind expansion a nuclear renaissance s malými modulárními reaktory. Geopolitické faktory ovlivňují supply chains pro clean tech.",
+    "relevant_sources": [
+      "irena.org",
+      "iea.org/energy-transition",
+      "bnef.com",
+      "rmi.org"
+    ],
+    "category": "energy",
+    "difficulty": "hard",
+    "metadata": {
+      "field": "renewable_energy",
+      "requires_market_data": true
+    }
+  },
+  {
+    "id": "fintech_innovation_01",
+    "query": "Jaké jsou hlavní inovace ve fintech sektoru pro rok 2024?",
+    "expected_answer": "Fintech inovace v roce 2024 se zaměřují na embedded finance, AI-powered risk assessment, decentralized finance (DeFi) 2.0 a central bank digital currencies (CBDCs). Významné jsou pokroky v real-time payments, AI fraud detection a sustainable finance solutions. Roste adopce blockchain pro trade finance.",
+    "relevant_sources": [
+      "bis.org",
+      "federalreserve.gov/fintech",
+      "fintechnews.com",
+      "cbinsights.com/fintech"
+    ],
+    "category": "fintech",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "financial_technology",
+      "requires_regulatory_info": true
+    }
+  },
+  {
+    "id": "biotech_research_01",
+    "query": "Jaké jsou breakthrough objevy v oblasti longevity research v roce 2024?",
+    "expected_answer": "Longevity research v roce 2024 přináší pokroky v cellular reprogramming, senolytic therapies a epigenetic clocks. Klíčové jsou studie NAD+ supplementation, metformin pro healthy aging a nové biomarkery aging. Významné jsou také pokroky v organ regeneration a stem cell therapies pro age-related diseases.",
+    "relevant_sources": [
+      "aging-us.com",
+      "nature.com/aging",
+      "pubmed.ncbi.nlm.nih.gov",
+      "buck.edu"
+    ],
+    "category": "biotech",
+    "difficulty": "hard",
+    "metadata": {
+      "field": "gerontology",
+      "requires_clinical_studies": true
+    }
+  },
+  {
+    "id": "manufacturing_automation_01",
+    "query": "Jak pokročila průmyslová automatizace a Industry 4.0 v roce 2024?",
+    "expected_answer": "Industry 4.0 v roce 2024 se charakterizuje integrací AI do manufacturing processes, collaborative robotics a digital twins. Klíčové jsou pokroky v predictive maintenance, automated quality control a flexible manufacturing systems. Roste využití edge computing, 5G connectivity a augmented reality pro training.",
+    "relevant_sources": [
+      "manufacturing.net",
+      "industryweek.com",
+      "siemens.com/industry4",
+      "mckinsey.com/manufacturing"
+    ],
+    "category": "manufacturing",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "industrial_automation",
+      "requires_technical_specs": true
+    }
+  },
+  {
+    "id": "social_media_research_01",
+    "query": "Analyzuj dopad AI generovaného obsahu na sociální média v roce 2024",
+    "expected_answer": "AI generovaný obsah v roce 2024 významně ovlivňuje sociální média prostřednictvím deepfakes, AI influencers a automated content creation. Platformy implementují detection tools, watermarking a disclosure requirements. Roste concern ohledně misinformation, authenticity a psychological impacts na uživatele.",
+    "relevant_sources": [
+      "pew Research.org",
+      "reuters.com/technology",
+      "meta.com/research",
+      "x.com/safety"
+    ],
+    "category": "social_media",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "digital_sociology",
+      "requires_platform_data": true
+    }
+  },
+  {
+    "id": "agricultural_tech_01",
+    "query": "Jaké technologické inovace transformují zemědělství v roce 2024?",
+    "expected_answer": "Zemědělské inovace v roce 2024 zahrnují precision agriculture s AI-powered crop monitoring, autonomous farming equipment a vertical farming systems. Klíčové jsou pokroky v soil sensors, drone technology, gene editing pro crop improvement a alternative protein production. Roste využití satellite imagery a IoT devices.",
+    "relevant_sources": [
+      "usda.gov/technology",
+      "nature.com/food",
+      "agriculture.com",
+      "futurefarming.com"
+    ],
+    "category": "agriculture",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "agtech",
+      "requires_technical_data": true
+    }
+  },
+  {
+    "id": "urban_planning_01",
+    "query": "Jak smart cities technologie vyvíjejí v roce 2024?",
+    "expected_answer": "Smart cities v roce 2024 se zaměřují na AI-driven traffic optimization, IoT sensor networks a citizen engagement platforms. Klíčové jsou pokroky v smart grid management, waste optimization, air quality monitoring a predictive policing. Roste význam data privacy, digital equity a sustainable urban development.",
+    "relevant_sources": [
+      "smartcitiesworld.net",
+      "itu.int/smart-cities",
+      "mckinsey.com/smart-cities",
+      "c40.org"
+    ],
+    "category": "urban_planning",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "smart_cities",
+      "requires_policy_data": true
+    }
+  },
+  {
+    "id": "pharmaceutical_research_01",
+    "query": "Jaké jsou nejnovější pokroky v AI-driven drug discovery v roce 2024?",
+    "expected_answer": "AI-driven drug discovery v roce 2024 využívá foundation models pro protein structure prediction, generative chemistry pro novel compounds a machine learning pro clinical trial optimization. Klíčové jsou pokroky v target identification, lead optimization a patient stratification. Významné jsou také AI tools pro regulatory submission.",
+    "relevant_sources": [
+      "nature.com/drug-discovery",
+      "fda.gov/drugs/ai",
+      "deepmind.com/alphafold",
+      "biopharma-reporter.com"
+    ],
+    "category": "pharmaceutical",
+    "difficulty": "hard",
+    "metadata": {
+      "field": "drug_discovery",
+      "requires_clinical_data": true
+    }
+  },
+  {
+    "id": "transportation_innovation_01",
+    "query": "Analyzuj pokrok v autonomous vehicles a mobility v roce 2024",
+    "expected_answer": "Autonomous vehicles v roce 2024 dosahují Level 3-4 autonomie v omezeních prostředích, s fokusem na robotaxis a freight applications. Klíčové jsou pokroky v sensor fusion, edge computing a V2X communication. Významné jsou také developments v electric aviation, hyperloop technology a micro-mobility solutions.",
+    "relevant_sources": [
+      "sae.org/autonomous",
+      "nhtsa.gov/automated-vehicles",
+      "mckinsey.com/mobility",
+      "automotive-iq.com"
+    ],
+    "category": "transportation",
+    "difficulty": "medium",
+    "metadata": {
+      "field": "autonomous_systems",
+      "requires_regulatory_updates": true
+    }
+  }
+]

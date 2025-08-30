@@ -1,0 +1,64 @@
+FROM python:3.11-slim-bookworm
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for Playwright and Tor
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    build-essential \
+    wget \
+    gnupg \
+    ca-certificates \
+    # Playwright dependencies
+    libnss3 \
+    libnspr4 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libxss1 \
+    libasound2 \
+    # Tor client for stem integration
+    tor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Dramatiq, Playwright and enhanced scraping libraries
+RUN pip install --no-cache-dir \
+    dramatiq[redis] \
+    redis \
+    playwright \
+    playwright-stealth \
+    stem \
+    pysocks \
+    aiohttp-socks \
+    fake-useragent \
+    beautifulsoup4
+
+# Install Playwright browsers
+RUN playwright install chromium firefox webkit
+RUN playwright install-deps
+
+# Copy source code
+COPY src/ ./src/
+COPY workers/ ./workers/
+COPY configs/ ./configs/
+
+# Create data directories
+RUN mkdir -p /app/data /app/cache /app/personas
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV WORKER_TYPE=acquisition
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# Run acquisition worker
+CMD ["python", "-m", "workers.acquisition_worker"]
