@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""
-LTR (Learning to Rank) Fusion Engine
+"""LTR (Learning to Rank) Fusion Engine
 LightGBM-based fusion with RRF fallback for robust ranking
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, List, Any, Optional, Tuple, Union
-import numpy as np
-import logging
 from dataclasses import dataclass
+from datetime import datetime
+import logging
 from pathlib import Path
 import pickle
-import json
-from datetime import datetime, timedelta
+from typing import Any
+
+import numpy as np
 
 try:
     import lightgbm as lgb
+
     LIGHTGBM_AVAILABLE = True
 except ImportError:
     LIGHTGBM_AVAILABLE = False
@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RankingFeatures:
     """Feature set for LTR ranking"""
+
     bm25_score: float = 0.0
     vector_distance: float = 0.0
     vector_score: float = 0.0
@@ -45,36 +46,46 @@ class RankingFeatures:
 
     def to_array(self) -> np.ndarray:
         """Convert to numpy array for model input"""
-        return np.array([
-            self.bm25_score,
-            self.vector_distance,
-            self.vector_score,
-            self.domain_authority,
-            self.recency_score,
-            self.source_diversity,
-            self.reference_depth,
-            self.content_length,
-            self.query_overlap,
-            self.semantic_relevance,
-            self.citation_count,
-            self.source_reliability
-        ])
+        return np.array(
+            [
+                self.bm25_score,
+                self.vector_distance,
+                self.vector_score,
+                self.domain_authority,
+                self.recency_score,
+                self.source_diversity,
+                self.reference_depth,
+                self.content_length,
+                self.query_overlap,
+                self.semantic_relevance,
+                self.citation_count,
+                self.source_reliability,
+            ]
+        )
 
     @classmethod
-    def feature_names(cls) -> List[str]:
+    def feature_names(cls) -> list[str]:
         """Get feature names for model training"""
         return [
-            "bm25_score", "vector_distance", "vector_score",
-            "domain_authority", "recency_score", "source_diversity",
-            "reference_depth", "content_length", "query_overlap",
-            "semantic_relevance", "citation_count", "source_reliability"
+            "bm25_score",
+            "vector_distance",
+            "vector_score",
+            "domain_authority",
+            "recency_score",
+            "source_diversity",
+            "reference_depth",
+            "content_length",
+            "query_overlap",
+            "semantic_relevance",
+            "citation_count",
+            "source_reliability",
         ]
 
 
 class LTRFusion:
     """Learning to Rank fusion engine with LightGBM"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.fusion_config = config.get("fusion", {})
         self.ltr_config = self.fusion_config.get("ltr", {})
@@ -84,7 +95,7 @@ class LTRFusion:
         self.model_path.parent.mkdir(exist_ok=True)
 
         # LightGBM model
-        self.model: Optional[lgb.Booster] = None
+        self.model: lgb.Booster | None = None
         self.model_trained = False
 
         # RRF fallback
@@ -101,13 +112,12 @@ class LTRFusion:
 
     def extract_features(
         self,
-        document: Dict[str, Any],
+        document: dict[str, Any],
         query: str,
-        rankings: List[Dict[str, Any]],
-        rank_position: int
+        rankings: list[dict[str, Any]],
+        rank_position: int,
     ) -> RankingFeatures:
         """Extract ranking features from document and context"""
-
         features = RankingFeatures()
 
         # BM25 score (from ranking)
@@ -173,16 +183,11 @@ class LTRFusion:
             "who.int": 0.85,
             "cdc.gov": 0.85,
             "wikipedia.org": 0.7,
-            "scholar.google.com": 0.8
+            "scholar.google.com": 0.8,
         }
 
         # TLD-based scoring
-        tld_scores = {
-            ".edu": 0.8,
-            ".gov": 0.85,
-            ".org": 0.6,
-            ".com": 0.5
-        }
+        tld_scores = {".edu": 0.8, ".gov": 0.85, ".org": 0.6, ".com": 0.5}
 
         score = authority_scores.get(domain, 0.5)
 
@@ -200,6 +205,7 @@ class LTRFusion:
         """Extract domain from URL"""
         try:
             from urllib.parse import urlparse
+
             return urlparse(url).netloc.lower()
         except:
             return ""
@@ -210,20 +216,24 @@ class LTRFusion:
 
         # High reliability sources
         high_reliability = {
-            "pubmed.ncbi.nlm.nih.gov", "arxiv.org", "nature.com",
-            "science.org", "who.int", "cdc.gov", "fda.gov"
+            "pubmed.ncbi.nlm.nih.gov",
+            "arxiv.org",
+            "nature.com",
+            "science.org",
+            "who.int",
+            "cdc.gov",
+            "fda.gov",
         }
 
         if domain in high_reliability:
             return 0.9
-        elif domain.endswith(('.edu', '.gov')):
+        if domain.endswith((".edu", ".gov")):
             return 0.8
-        elif domain.endswith('.org'):
+        if domain.endswith(".org"):
             return 0.6
-        else:
-            return 0.5
+        return 0.5
 
-    def _calculate_recency_score(self, document: Dict[str, Any]) -> float:
+    def _calculate_recency_score(self, document: dict[str, Any]) -> float:
         """Calculate recency score based on publication date"""
         pub_date_str = document.get("metadata", {}).get("publication_date")
 
@@ -253,9 +263,7 @@ class LTRFusion:
             return 0.5
 
     def _calculate_source_diversity(
-        self,
-        document: Dict[str, Any],
-        rankings: List[Dict[str, Any]]
+        self, document: dict[str, Any], rankings: list[dict[str, Any]]
     ) -> float:
         """Calculate source diversity bonus"""
         current_domain = self._extract_domain(document.get("source_url", ""))
@@ -271,21 +279,20 @@ class LTRFusion:
                 domains_seen.add(domain)
 
         # Diversity bonus: less common domains get higher scores
-        domain_frequency = sum(1 for rank_doc in rankings[:20]
-                             if self._extract_domain(rank_doc.get("source_url", "")) == current_domain)
+        domain_frequency = sum(
+            1
+            for rank_doc in rankings[:20]
+            if self._extract_domain(rank_doc.get("source_url", "")) == current_domain
+        )
 
         # Inverse frequency bonus
         diversity_score = 1.0 / (1.0 + domain_frequency - 1)
         return min(diversity_score, 1.0)
 
     def fuse_rankings(
-        self,
-        rankings: List[List[Dict[str, Any]]],
-        query: str,
-        use_ab_test: bool = False
-    ) -> List[Dict[str, Any]]:
+        self, rankings: list[list[dict[str, Any]]], query: str, use_ab_test: bool = False
+    ) -> list[dict[str, Any]]:
         """Fuse multiple rankings using LTR or RRF fallback"""
-
         if not rankings or not any(rankings):
             return []
 
@@ -306,9 +313,8 @@ class LTRFusion:
             logger.info("Using RRF fusion (LTR not available/trained)")
             return self.rrf.fuse_rankings(rankings)
 
-    def _ltr_fuse(self, rankings: List[List[Dict[str, Any]]], query: str) -> List[Dict[str, Any]]:
+    def _ltr_fuse(self, rankings: list[list[dict[str, Any]]], query: str) -> list[dict[str, Any]]:
         """Perform LTR-based fusion"""
-
         # Merge all rankings
         all_docs = {}
         for ranking in rankings:
@@ -338,9 +344,8 @@ class LTRFusion:
         logger.info(f"LTR fusion completed: {len(scored_docs)} documents ranked")
         return scored_docs
 
-    def train_model(self, training_data: List[Dict[str, Any]]) -> bool:
+    def train_model(self, training_data: list[dict[str, Any]]) -> bool:
         """Train the LTR model on provided data"""
-
         if not LIGHTGBM_AVAILABLE:
             logger.error("Cannot train LTR model: LightGBM not available")
             return False
@@ -355,15 +360,15 @@ class LTRFusion:
 
             # LightGBM parameters for ranking
             params = {
-                'objective': 'lambdarank',
-                'metric': 'ndcg',
-                'ndcg_eval_at': [5, 10, 20],
-                'num_leaves': 31,
-                'learning_rate': 0.05,
-                'feature_fraction': 0.9,
-                'bagging_fraction': 0.8,
-                'bagging_freq': 5,
-                'verbose': -1
+                "objective": "lambdarank",
+                "metric": "ndcg",
+                "ndcg_eval_at": [5, 10, 20],
+                "num_leaves": 31,
+                "learning_rate": 0.05,
+                "feature_fraction": 0.9,
+                "bagging_fraction": 0.8,
+                "bagging_freq": 5,
+                "verbose": -1,
             }
 
             # Create dataset
@@ -375,13 +380,13 @@ class LTRFusion:
                 train_data,
                 num_boost_round=100,
                 valid_sets=[train_data],
-                callbacks=[lgb.early_stopping(stopping_rounds=10)]
+                callbacks=[lgb.early_stopping(stopping_rounds=10)],
             )
 
             self.model_trained = True
 
             # Save model
-            with open(self.model_path, 'wb') as f:
+            with open(self.model_path, "wb") as f:
                 pickle.dump(self.model, f)
 
             logger.info(f"LTR model trained successfully and saved to {self.model_path}")
@@ -392,11 +397,9 @@ class LTRFusion:
             return False
 
     def _prepare_training_data(
-        self,
-        training_data: List[Dict[str, Any]]
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        self, training_data: list[dict[str, Any]]
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Prepare training data for LightGBM ranking"""
-
         X, y, groups = [], [], []
 
         for query_data in training_data:
@@ -405,7 +408,7 @@ class LTRFusion:
             relevance_scores = query_data["relevance_scores"]
 
             group_size = 0
-            for doc, score in zip(documents, relevance_scores):
+            for doc, score in zip(documents, relevance_scores, strict=False):
                 features = self.extract_features(doc, query, documents, group_size)
                 X.append(features.to_array())
                 y.append(score)
@@ -417,32 +420,30 @@ class LTRFusion:
 
     def load_model(self) -> bool:
         """Load trained LTR model from disk"""
-
         if not LIGHTGBM_AVAILABLE:
             return False
 
         try:
             if self.model_path.exists():
-                with open(self.model_path, 'rb') as f:
+                with open(self.model_path, "rb") as f:
                     self.model = pickle.load(f)
                 self.model_trained = True
                 logger.info(f"LTR model loaded from {self.model_path}")
                 return True
-            else:
-                logger.info("No saved LTR model found")
-                return False
+            logger.info("No saved LTR model found")
+            return False
         except Exception as e:
             logger.error(f"Failed to load LTR model: {e}")
             return False
 
-    def get_fusion_stats(self) -> Dict[str, Any]:
+    def get_fusion_stats(self) -> dict[str, Any]:
         """Get fusion statistics and model info"""
         stats = {
             "ltr_available": LIGHTGBM_AVAILABLE,
             "ltr_enabled": self.use_ltr,
             "model_trained": self.model_trained,
             "ab_test_ratio": self.ab_test_ratio,
-            "fallback_method": "RRF"
+            "fallback_method": "RRF",
         }
 
         if self.model_trained and self.model is not None:
@@ -452,7 +453,7 @@ class LTRFusion:
         return stats
 
 
-def create_ltr_fusion(config: Dict[str, Any]) -> LTRFusion:
+def create_ltr_fusion(config: dict[str, Any]) -> LTRFusion:
     """Factory function for LTR fusion engine"""
     fusion = LTRFusion(config)
     fusion.load_model()  # Try to load existing model
@@ -462,13 +463,8 @@ def create_ltr_fusion(config: Dict[str, Any]) -> LTRFusion:
 # Usage example
 if __name__ == "__main__":
     config = {
-        "fusion": {
-            "ltr": {
-                "enabled": True,
-                "ab_test_ratio": 0.1
-            }
-        },
-        "model_cache_dir": "models"
+        "fusion": {"ltr": {"enabled": True, "ab_test_ratio": 0.1}},
+        "model_cache_dir": "models",
     }
 
     fusion = LTRFusion(config)
@@ -476,12 +472,12 @@ if __name__ == "__main__":
     # Example rankings
     ranking1 = [
         {"id": "doc1", "content": "COVID vaccine effectiveness", "bm25_score": 0.8},
-        {"id": "doc2", "content": "Vaccine side effects study", "bm25_score": 0.6}
+        {"id": "doc2", "content": "Vaccine side effects study", "bm25_score": 0.6},
     ]
 
     ranking2 = [
         {"id": "doc2", "content": "Vaccine side effects study", "vector_score": 0.9},
-        {"id": "doc3", "content": "mRNA vaccine research", "vector_score": 0.7}
+        {"id": "doc3", "content": "mRNA vaccine research", "vector_score": 0.7},
     ]
 
     result = fusion.fuse_rankings([ranking1, ranking2], "COVID vaccine effectiveness")

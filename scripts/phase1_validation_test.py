@@ -22,13 +22,18 @@ sys.path.insert(0, parent_dir)
 # Direct import of gates without complex dependencies
 try:
     from src.utils.gates import (
-        GateManager, GateConfig, GateType,
-        EvidenceGateError, ComplianceGateError, MetricsGateError,
-        create_default_gate_config
+        GateManager,
+        GateConfig,
+        GateType,
+        EvidenceGateError,
+        ComplianceGateError,
+        MetricsGateError,
+        create_default_gate_config,
     )
 except ImportError as e:
     print(f"❌ Import error: {e}")
     print("Running standalone validation test...")
+
 
 async def test_validation_gates_standalone():
     """Standalone test validačních bran"""
@@ -51,32 +56,30 @@ async def test_validation_gates_standalone():
                 "text": "Test claim 1",
                 "citations": [
                     {"source_id": "source1", "passage": "Evidence 1"},
-                    {"source_id": "source2", "passage": "Evidence 2"}
-                ]
+                    {"source_id": "source2", "passage": "Evidence 2"},
+                ],
             },
             {
                 "text": "Test claim 2",
                 "citations": [
                     {"source_id": "source3", "passage": "Evidence 3"},
-                    {"source_id": "source4", "passage": "Evidence 4"}
-                ]
-            }
+                    {"source_id": "source4", "passage": "Evidence 4"},
+                ],
+            },
         ],
         "retrieval_metadata": {
             "robots_violations": [],
             "rate_limit_violations": [],
-            "accessed_domains": ["example.com"]
+            "accessed_domains": ["example.com"],
         },
-        "metrics": {
-            "recall_at_10": 0.75,
-            "ndcg_at_10": 0.65,
-            "citation_precision": 0.85
-        }
+        "metrics": {"recall_at_10": 0.75, "ndcg_at_10": 0.65, "citation_precision": 0.85},
     }
 
     try:
         report = await gate_manager.validate_single(GateType.EVIDENCE, valid_data)
-        print(f"✅ Evidence gate passed: {report['total_claims']} claims, {report['total_citations']} citations")
+        print(
+            f"✅ Evidence gate passed: {report['total_claims']} claims, {report['total_citations']} citations"
+        )
     except Exception as e:
         print(f"❌ Evidence gate failed: {e}")
         return False
@@ -122,8 +125,12 @@ async def test_validation_gates_standalone():
     print("\n💥 Testing Fail-Hard Behavior...")
     invalid_data = {
         "claims": [],  # This should fail evidence gate
-        "retrieval_metadata": {"robots_violations": [], "rate_limit_violations": [], "accessed_domains": []},
-        "metrics": {"recall_at_10": 0.75, "ndcg_at_10": 0.65, "citation_precision": 0.85}
+        "retrieval_metadata": {
+            "robots_violations": [],
+            "rate_limit_violations": [],
+            "accessed_domains": [],
+        },
+        "metrics": {"recall_at_10": 0.75, "ndcg_at_10": 0.65, "citation_precision": 0.85},
     }
 
     try:
@@ -137,6 +144,7 @@ async def test_validation_gates_standalone():
         return False
 
     return True
+
 
 async def test_mock_research_pipeline():
     """Mock test celého research pipeline pro FÁZI 1"""
@@ -157,28 +165,36 @@ async def test_mock_research_pipeline():
             {
                 "text": "Large language models have shown significant improvements in reasoning capabilities",
                 "citations": [
-                    {"source_id": "arxiv_2023_001", "passage": "Recent studies demonstrate enhanced logical reasoning"},
-                    {"source_id": "nature_2023_015", "passage": "Breakthrough in mathematical problem solving"}
-                ]
+                    {
+                        "source_id": "arxiv_2023_001",
+                        "passage": "Recent studies demonstrate enhanced logical reasoning",
+                    },
+                    {
+                        "source_id": "nature_2023_015",
+                        "passage": "Breakthrough in mathematical problem solving",
+                    },
+                ],
             },
             {
                 "text": "Efficiency optimizations have reduced computational costs",
                 "citations": [
-                    {"source_id": "acl_2023_042", "passage": "Novel attention mechanisms reduce memory usage"},
-                    {"source_id": "icml_2023_128", "passage": "Quantization techniques maintain performance"}
-                ]
-            }
+                    {
+                        "source_id": "acl_2023_042",
+                        "passage": "Novel attention mechanisms reduce memory usage",
+                    },
+                    {
+                        "source_id": "icml_2023_128",
+                        "passage": "Quantization techniques maintain performance",
+                    },
+                ],
+            },
         ],
         "retrieval_metadata": {
             "robots_violations": [],
             "rate_limit_violations": [],
-            "accessed_domains": ["arxiv.org", "nature.com", "aclweb.org"]
+            "accessed_domains": ["arxiv.org", "nature.com", "aclweb.org"],
         },
-        "metrics": {
-            "recall_at_10": 0.78,
-            "ndcg_at_10": 0.72,
-            "citation_precision": 0.89
-        }
+        "metrics": {"recall_at_10": 0.78, "ndcg_at_10": 0.72, "citation_precision": 0.89},
     }
 
     elapsed_time = time.time() - start_time
@@ -205,6 +221,7 @@ async def test_mock_research_pipeline():
     except Exception as e:
         print(f"❌ Mock research validation failed: {e}")
         return False, None, None
+
 
 async def main():
     """Main test runner"""
@@ -242,10 +259,7 @@ async def main():
         "phase": "FÁZE 1",
         "test_suite": "validation_gates_and_pipeline",
         "success": success,
-        "tests": {
-            "validation_gates": test1_success,
-            "mock_pipeline": test2_success
-        }
+        "tests": {"validation_gates": test1_success, "mock_pipeline": test2_success},
     }
 
     if test2_success:
@@ -271,6 +285,7 @@ async def main():
         print("💥 FÁZE 1 VALIDATION TEST SUITE - FAILED")
         print("❌ Některé akceptační kritéria nesplněna")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

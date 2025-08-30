@@ -1,53 +1,54 @@
 #!/usr/bin/env python3
-"""
-Graph-Augmented RAG Module (Optional Feature)
+"""Graph-Augmented RAG Module (Optional Feature)
 Knowledge graph extraction and subgraph querying for enhanced consistency
 
 Author: Senior IT Specialist
 """
 
-import asyncio
-import logging
-import json
-import re
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple, Set
-from dataclasses import dataclass, field
 from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime
+import logging
+import re
+from typing import Any
+
 import networkx as nx
 
 
 @dataclass
 class Entity:
     """Knowledge graph entity"""
+
     entity_id: str
     name: str
     entity_type: str  # "person", "organization", "concept", "location", "date"
     confidence: float = 0.0
-    aliases: List[str] = field(default_factory=list)
-    attributes: Dict[str, Any] = field(default_factory=dict)
-    source_evidence: List[str] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
+    attributes: dict[str, Any] = field(default_factory=dict)
+    source_evidence: list[str] = field(default_factory=list)
 
 
 @dataclass
 class Relation:
     """Knowledge graph relation"""
+
     relation_id: str
     subject_id: str
     predicate: str
     object_id: str
     confidence: float = 0.0
-    evidence: List[str] = field(default_factory=list)
-    temporal_info: Optional[str] = None
+    evidence: list[str] = field(default_factory=list)
+    temporal_info: str | None = None
 
 
 @dataclass
 class KnowledgeGraph:
     """Knowledge graph structure"""
-    entities: Dict[str, Entity] = field(default_factory=dict)
-    relations: Dict[str, Relation] = field(default_factory=dict)
+
+    entities: dict[str, Entity] = field(default_factory=dict)
+    relations: dict[str, Relation] = field(default_factory=dict)
     graph: nx.DiGraph = field(default_factory=nx.DiGraph)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class EntityExtractor:
@@ -84,7 +85,7 @@ class EntityExtractor:
             ]
         }
 
-    def extract_entities(self, text: str, evidence_id: str) -> List[Entity]:
+    def extract_entities(self, text: str, evidence_id: str) -> list[Entity]:
         """Extract entities from text"""
         entities = []
         entity_count = defaultdict(int)
@@ -176,7 +177,7 @@ class RelationExtractor:
             }
         ]
 
-    def extract_relations(self, text: str, entities: List[Entity], evidence_id: str) -> List[Relation]:
+    def extract_relations(self, text: str, entities: list[Entity], evidence_id: str) -> list[Relation]:
         """Extract relations from text using entities"""
         relations = []
 
@@ -219,7 +220,7 @@ class RelationExtractor:
         self.logger.debug(f"Extracted {len(relations)} relations")
         return relations
 
-    def _extract_cooccurrence_relations(self, entities: List[Entity], text: str, evidence_id: str) -> List[Relation]:
+    def _extract_cooccurrence_relations(self, entities: list[Entity], text: str, evidence_id: str) -> list[Relation]:
         """Extract relations based on entity co-occurrence"""
         relations = []
 
@@ -256,7 +257,7 @@ class RelationExtractor:
 class KnowledgeGraphBuilder:
     """Builds and manages knowledge graphs"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
 
@@ -268,7 +269,7 @@ class KnowledgeGraphBuilder:
         self.min_relation_confidence = config.get("min_relation_confidence", 0.4)
         self.max_entities_per_doc = config.get("max_entities_per_doc", 50)
 
-    def build_graph_from_documents(self, documents: List[Dict[str, Any]]) -> KnowledgeGraph:
+    def build_graph_from_documents(self, documents: list[dict[str, Any]]) -> KnowledgeGraph:
         """Build knowledge graph from document collection"""
         self.logger.info(f"Building knowledge graph from {len(documents)} documents")
 
@@ -319,7 +320,7 @@ class KnowledgeGraphBuilder:
         self.logger.info(f"Built knowledge graph: {len(kg.entities)} entities, {len(kg.relations)} relations")
         return kg
 
-    def _merge_duplicate_entities(self, entities: List[Entity]) -> Dict[str, Entity]:
+    def _merge_duplicate_entities(self, entities: list[Entity]) -> dict[str, Entity]:
         """Merge duplicate entities by name similarity"""
         merged_entities = {}
         entity_groups = defaultdict(list)
@@ -349,7 +350,7 @@ class KnowledgeGraphBuilder:
 
         return merged_entities
 
-    def _build_networkx_graph(self, entities: Dict[str, Entity], relations: Dict[str, Relation]) -> nx.DiGraph:
+    def _build_networkx_graph(self, entities: dict[str, Entity], relations: dict[str, Relation]) -> nx.DiGraph:
         """Build NetworkX graph from entities and relations"""
         graph = nx.DiGraph()
 
@@ -374,7 +375,7 @@ class KnowledgeGraphBuilder:
 class GraphAugmentedRAG:
     """Graph-Augmented RAG system with subgraph querying"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
 
@@ -392,7 +393,7 @@ class GraphAugmentedRAG:
         self.subgraph_radius = config.get("graph", {}).get("subgraph_radius", 2)
         self.min_subgraph_nodes = config.get("graph", {}).get("min_subgraph_nodes", 3)
 
-    async def enhance_retrieval_with_graph(self, query: str, retrieved_docs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def enhance_retrieval_with_graph(self, query: str, retrieved_docs: list[dict[str, Any]]) -> dict[str, Any]:
         """Enhance retrieval using knowledge graph"""
         if not self.enabled:
             return {
@@ -437,7 +438,7 @@ class GraphAugmentedRAG:
             }
         }
 
-    def _find_relevant_subgraph(self, query_entities: List[Entity]) -> Set[str]:
+    def _find_relevant_subgraph(self, query_entities: list[Entity]) -> set[str]:
         """Find relevant subgraph based on query entities"""
         if not self.knowledge_graph or not self.knowledge_graph.graph:
             return set()
@@ -468,8 +469,8 @@ class GraphAugmentedRAG:
         self.logger.debug(f"Found subgraph with {len(subgraph_nodes)} nodes")
         return subgraph_nodes
 
-    def _enhance_documents_with_graph_context(self, docs: List[Dict[str, Any]],
-                                            subgraph_nodes: Set[str]) -> List[Dict[str, Any]]:
+    def _enhance_documents_with_graph_context(self, docs: list[dict[str, Any]],
+                                            subgraph_nodes: set[str]) -> list[dict[str, Any]]:
         """Enhance documents with graph context information"""
         enhanced_docs = []
 
@@ -501,8 +502,8 @@ class GraphAugmentedRAG:
 
         return enhanced_docs
 
-    def _calculate_graph_consistency(self, enhanced_docs: List[Dict[str, Any]],
-                                   subgraph_nodes: Set[str]) -> float:
+    def _calculate_graph_consistency(self, enhanced_docs: list[dict[str, Any]],
+                                   subgraph_nodes: set[str]) -> float:
         """Calculate consistency score based on graph structure"""
         if not subgraph_nodes or not enhanced_docs:
             return 0.0
@@ -530,6 +531,6 @@ class GraphAugmentedRAG:
         return min(1.0, consistency)
 
 
-def create_graph_augmented_rag(config: Dict[str, Any]) -> GraphAugmentedRAG:
+def create_graph_augmented_rag(config: dict[str, Any]) -> GraphAugmentedRAG:
     """Factory function for Graph-Augmented RAG"""
     return GraphAugmentedRAG(config)

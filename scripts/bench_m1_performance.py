@@ -32,9 +32,9 @@ class M1BenchmarkSuite:
         self.streaming_engine = create_m1_streaming_engine(config)
         self.benchmark_results = []
 
-    async def run_comprehensive_benchmarks(self,
-                                         profiles: Optional[List[str]] = None,
-                                         iterations: int = 3) -> Dict[str, Any]:
+    async def run_comprehensive_benchmarks(
+        self, profiles: Optional[List[str]] = None, iterations: int = 3
+    ) -> Dict[str, Any]:
         """Spustí komprehenzivní M1 benchmarks"""
 
         print("🏁 Spouštím M1 Performance Benchmark Suite...")
@@ -53,7 +53,7 @@ class M1BenchmarkSuite:
                 "performance_results": {},
                 "streaming_results": {},
                 "aggregate_analysis": {},
-                "recommendations": []
+                "recommendations": [],
             }
         }
 
@@ -90,20 +90,29 @@ class M1BenchmarkSuite:
                 results["m1_benchmark_suite"]["performance_results"][profile] = {
                     "iterations": len(profile_metrics),
                     "metrics": [self._metrics_to_dict(m) for m in profile_metrics],
-                    "avg_execution_time": sum(m.execution_time_s for m in profile_metrics) / len(profile_metrics),
-                    "avg_memory_peak": sum(m.memory_peak_mb for m in profile_metrics) / len(profile_metrics),
-                    "avg_tokens_per_second": sum(m.tokens_per_second for m in profile_metrics) / len(profile_metrics),
-                    "avg_memory_efficiency": sum(m.memory_efficiency for m in profile_metrics) / len(profile_metrics),
-                    "success_rate": sum(1 for m in profile_metrics if m.error_rate < 0.1) / len(profile_metrics)
+                    "avg_execution_time": sum(m.execution_time_s for m in profile_metrics)
+                    / len(profile_metrics),
+                    "avg_memory_peak": sum(m.memory_peak_mb for m in profile_metrics)
+                    / len(profile_metrics),
+                    "avg_tokens_per_second": sum(m.tokens_per_second for m in profile_metrics)
+                    / len(profile_metrics),
+                    "avg_memory_efficiency": sum(m.memory_efficiency for m in profile_metrics)
+                    / len(profile_metrics),
+                    "success_rate": sum(1 for m in profile_metrics if m.error_rate < 0.1)
+                    / len(profile_metrics),
                 }
 
             results["m1_benchmark_suite"]["streaming_results"][profile] = streaming_result
 
         # Aggregate analysis
-        results["m1_benchmark_suite"]["aggregate_analysis"] = await self._analyze_benchmark_results(results)
+        results["m1_benchmark_suite"]["aggregate_analysis"] = await self._analyze_benchmark_results(
+            results
+        )
 
         # Generate recommendations
-        results["m1_benchmark_suite"]["recommendations"] = self._generate_benchmark_recommendations(results)
+        results["m1_benchmark_suite"]["recommendations"] = self._generate_benchmark_recommendations(
+            results
+        )
 
         total_benchmark_time = time.time() - benchmark_start
         results["m1_benchmark_suite"]["total_benchmark_time_s"] = total_benchmark_time
@@ -120,14 +129,14 @@ class M1BenchmarkSuite:
         test_queries = [
             "What are the latest advances in quantum computing?",
             "Explain machine learning optimization techniques",
-            "Recent developments in sustainable energy"
+            "Recent developments in sustainable energy",
         ]
 
         streaming_config = {
             "model": profile_config.ollama_model,
             "context_window": profile_config.context_window,
             "max_tokens": profile_config.max_tokens // 2,  # Smaller for benchmarking
-            "memory_limit_mb": profile_config.memory_limit_mb
+            "memory_limit_mb": profile_config.memory_limit_mb,
         }
 
         try:
@@ -137,10 +146,7 @@ class M1BenchmarkSuite:
             return streaming_result["streaming_benchmark"]
 
         except Exception as e:
-            return {
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
+            return {"error": str(e), "timestamp": datetime.now().isoformat()}
 
     def _metrics_to_dict(self, metrics: M1PerformanceMetrics) -> Dict[str, Any]:
         """Převede metrics na dictionary"""
@@ -155,7 +161,7 @@ class M1BenchmarkSuite:
             "early_exit_rate": metrics.early_exit_rate,
             "streaming_chunks": metrics.streaming_chunks,
             "error_rate": metrics.error_rate,
-            "timestamp": metrics.timestamp.isoformat()
+            "timestamp": metrics.timestamp.isoformat(),
         }
 
     async def _analyze_benchmark_results(self, results: Dict[str, Any]) -> Dict[str, Any]:
@@ -167,7 +173,7 @@ class M1BenchmarkSuite:
             "profile_comparison": {},
             "performance_trends": {},
             "bottleneck_analysis": {},
-            "m1_optimization_effectiveness": {}
+            "m1_optimization_effectiveness": {},
         }
 
         # Profile comparison
@@ -181,7 +187,7 @@ class M1BenchmarkSuite:
                 "time_efficiency": min(1.0, target_time / actual_time) if actual_time > 0 else 0,
                 "memory_efficiency": data["avg_memory_efficiency"],
                 "throughput_tokens_per_s": data["avg_tokens_per_second"],
-                "meets_target": actual_time <= target_time
+                "meets_target": actual_time <= target_time,
             }
 
         # Performance trends
@@ -190,12 +196,18 @@ class M1BenchmarkSuite:
             thorough_perf = performance_results.get("thorough", {})
 
             if quick_perf and thorough_perf:
-                scaling_factor = thorough_perf["avg_execution_time"] / quick_perf["avg_execution_time"] if quick_perf["avg_execution_time"] > 0 else 0
+                scaling_factor = (
+                    thorough_perf["avg_execution_time"] / quick_perf["avg_execution_time"]
+                    if quick_perf["avg_execution_time"] > 0
+                    else 0
+                )
 
                 analysis["performance_trends"]["scaling_analysis"] = {
                     "quick_to_thorough_time_ratio": scaling_factor,
                     "expected_ratio": 2.0,  # Thorough should be ~2x slower
-                    "scaling_efficiency": min(1.0, 2.0 / scaling_factor) if scaling_factor > 0 else 0
+                    "scaling_efficiency": (
+                        min(1.0, 2.0 / scaling_factor) if scaling_factor > 0 else 0
+                    ),
                 }
 
         # M1 optimization effectiveness
@@ -204,7 +216,9 @@ class M1BenchmarkSuite:
 
         for profile_data in performance_results.values():
             if profile_data["metrics"]:
-                avg_mps_utilization += sum(m.get("mps_utilization", 0) for m in profile_data["metrics"]) / len(profile_data["metrics"])
+                avg_mps_utilization += sum(
+                    m.get("mps_utilization", 0) for m in profile_data["metrics"]
+                ) / len(profile_data["metrics"])
 
         if performance_results:
             avg_mps_utilization /= len(performance_results)
@@ -212,7 +226,7 @@ class M1BenchmarkSuite:
         analysis["m1_optimization_effectiveness"] = {
             "mps_available": mps_available,
             "avg_mps_utilization": avg_mps_utilization,
-            "hardware_optimization_score": avg_mps_utilization if mps_available else 0.5
+            "hardware_optimization_score": avg_mps_utilization if mps_available else 0.5,
         }
 
         return analysis
@@ -271,18 +285,21 @@ class M1BenchmarkSuite:
                     )
 
         if not recommendations:
-            recommendations.append("🎉 All profiles performing optimally! No immediate optimizations needed.")
+            recommendations.append(
+                "🎉 All profiles performing optimally! No immediate optimizations needed."
+            )
 
         return recommendations
 
-    async def export_benchmark_results(self, results: Dict[str, Any],
-                                     output_path: str = "docs/m1_benchmark_results.json"):
+    async def export_benchmark_results(
+        self, results: Dict[str, Any], output_path: str = "docs/m1_benchmark_results.json"
+    ):
         """Exportuje benchmark výsledky"""
 
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             json.dump(results, f, indent=2)
 
         # Create summary report
@@ -306,7 +323,7 @@ class M1BenchmarkSuite:
             "## Performance Summary",
             "",
             "| Profile | Target Time | Actual Time | Efficiency | Memory Peak | Tokens/s |",
-            "|---------|-------------|-------------|------------|-------------|----------|"
+            "|---------|-------------|-------------|------------|-------------|----------|",
         ]
 
         performance_results = results["m1_benchmark_suite"]["performance_results"]
@@ -322,38 +339,37 @@ class M1BenchmarkSuite:
                 f"{data['avg_memory_peak']:.0f}MB | {data['avg_tokens_per_second']:.1f} |"
             )
 
-        report_lines.extend([
-            "",
-            "## Recommendations",
-            ""
-        ])
+        report_lines.extend(["", "## Recommendations", ""])
 
         for rec in results["m1_benchmark_suite"]["recommendations"]:
             report_lines.append(f"- {rec}")
 
-        report_lines.extend([
-            "",
-            f"## Benchmark Details",
-            "",
-            f"**Total Benchmark Time:** {results['m1_benchmark_suite']['total_benchmark_time_s']:.1f}s",
-            f"**Profiles Tested:** {', '.join(results['m1_benchmark_suite']['profiles_tested'])}",
-            f"**Iterations per Profile:** {results['m1_benchmark_suite']['iterations_per_profile']}",
-            "",
-            "For detailed results, see `m1_benchmark_results.json`"
-        ])
+        report_lines.extend(
+            [
+                "",
+                f"## Benchmark Details",
+                "",
+                f"**Total Benchmark Time:** {results['m1_benchmark_suite']['total_benchmark_time_s']:.1f}s",
+                f"**Profiles Tested:** {', '.join(results['m1_benchmark_suite']['profiles_tested'])}",
+                f"**Iterations per Profile:** {results['m1_benchmark_suite']['iterations_per_profile']}",
+                "",
+                "For detailed results, see `m1_benchmark_results.json`",
+            ]
+        )
 
-        with open(output_path, 'w') as f:
-            f.write('\n'.join(report_lines))
+        with open(output_path, "w") as f:
+            f.write("\n".join(report_lines))
 
 
 async def main():
     """Main function pro M1 benchmark"""
-    parser = argparse.ArgumentParser(description='M1 Performance Benchmark Suite')
-    parser.add_argument('--config', default='config_m1_local.yaml', help='Config file')
-    parser.add_argument('--profiles', nargs='+', default=['quick', 'thorough'],
-                       help='Profiles to benchmark')
-    parser.add_argument('--iterations', type=int, default=3, help='Iterations per profile')
-    parser.add_argument('--output', default='docs/m1_benchmark_results.json', help='Output file')
+    parser = argparse.ArgumentParser(description="M1 Performance Benchmark Suite")
+    parser.add_argument("--config", default="config_m1_local.yaml", help="Config file")
+    parser.add_argument(
+        "--profiles", nargs="+", default=["quick", "thorough"], help="Profiles to benchmark"
+    )
+    parser.add_argument("--iterations", type=int, default=3, help="Iterations per profile")
+    parser.add_argument("--output", default="docs/m1_benchmark_results.json", help="Output file")
 
     args = parser.parse_args()
 
@@ -364,14 +380,13 @@ async def main():
             config = yaml.safe_load(f)
 
     # Add M1 optimization config
-    config.setdefault('m1_optimization', {})
-    config.setdefault('streaming', {})
+    config.setdefault("m1_optimization", {})
+    config.setdefault("streaming", {})
 
     # Run benchmark
     suite = M1BenchmarkSuite(config)
     results = await suite.run_comprehensive_benchmarks(
-        profiles=args.profiles,
-        iterations=args.iterations
+        profiles=args.profiles, iterations=args.iterations
     )
 
     await suite.export_benchmark_results(results, args.output)
@@ -381,9 +396,13 @@ async def main():
     print("M1 BENCHMARK SUMMARY")
     print("=" * 60)
 
-    for profile, comparison in results["m1_benchmark_suite"]["aggregate_analysis"]["profile_comparison"].items():
+    for profile, comparison in results["m1_benchmark_suite"]["aggregate_analysis"][
+        "profile_comparison"
+    ].items():
         status = "✅ PASS" if comparison["meets_target"] else "❌ FAIL"
-        print(f"{profile:10} {status} | {comparison['actual_time_s']:6.1f}s | {comparison['time_efficiency']:6.1%}")
+        print(
+            f"{profile:10} {status} | {comparison['actual_time_s']:6.1f}s | {comparison['time_efficiency']:6.1%}"
+        )
 
     print("\nRecommendations:")
     for rec in results["m1_benchmark_suite"]["recommendations"]:

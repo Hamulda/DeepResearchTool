@@ -1,0 +1,54 @@
+FROM python:3.11-slim-bookworm
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for ML/NLP processing
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    build-essential \
+    libhdf5-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install additional processing dependencies
+RUN pip install --no-cache-dir \
+    dramatiq[redis] \
+    redis \
+    lancedb \
+    polars \
+    pyarrow \
+    # Advanced text processing (PHASE 3)
+    trafilatura>=1.6.0 \
+    spacy>=3.7.0 \
+    sentence-transformers>=2.2.2 \
+    torch>=2.0.0 \
+    transformers>=4.35.0 \
+    # NLP and entity extraction
+    dateparser>=1.1.8 \
+    cryptography>=41.0.0 \
+    simhash>=2.1.2
+
+# Download spaCy models for multiple languages
+RUN python -m spacy download en_core_web_sm
+RUN python -m spacy download en_core_web_lg
+
+# Copy source code
+COPY src/ ./src/
+COPY workers/ ./workers/
+
+# Create data directories
+RUN mkdir -p /app/data /app/cache
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV WORKER_TYPE=processing
+
+# Run processing worker
+CMD ["python", "-m", "workers.processing_worker"]

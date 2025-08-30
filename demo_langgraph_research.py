@@ -12,8 +12,7 @@ from pathlib import Path
 
 # Nastavení logování
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -67,32 +66,36 @@ async def demo_langgraph_research():
         print("=" * 50)
 
         print(f"\n📝 Vygenerovaný plán ({len(result['plan'])} kroků):")
-        for i, step in enumerate(result['plan'], 1):
+        for i, step in enumerate(result["plan"], 1):
             print(f"   {i}. {step}")
 
         print(f"\n📚 Získané dokumenty: {len(result['retrieved_docs'])}")
-        for i, doc in enumerate(result['retrieved_docs'][:3], 1):
-            source = doc.get('source', 'unknown')
-            step = doc.get('step', 'general')
-            content_preview = doc.get('content', '')[:100] + "..."
+        for i, doc in enumerate(result["retrieved_docs"][:3], 1):
+            source = doc.get("source", "unknown")
+            step = doc.get("step", "general")
+            content_preview = doc.get("content", "")[:100] + "..."
             print(f"   {i}. [{source}] {step}: {content_preview}")
 
         print(f"\n✅ Validační skóre:")
-        for metric, score in result['validation_scores'].items():
+        for metric, score in result["validation_scores"].items():
             print(f"   - {metric}: {score:.2f}")
 
         print(f"\n📄 Syntéza (délka: {len(result['synthesis'])} znaků):")
         # Zobrazí pouze první část syntézy
-        synthesis_preview = result['synthesis'][:500] + "..." if len(result['synthesis']) > 500 else result['synthesis']
+        synthesis_preview = (
+            result["synthesis"][:500] + "..."
+            if len(result["synthesis"]) > 500
+            else result["synthesis"]
+        )
         print(f"   {synthesis_preview}")
 
         print(f"\n⏱️  Celkový čas zpracování: {result['processing_time']:.2f} sekund")
         print(f"🏗️  Architektura: {result['metadata']['architecture']}")
         print(f"🔗 RAG enabled: {result['metadata']['rag_enabled']}")
 
-        if result['errors']:
+        if result["errors"]:
             print(f"\n⚠️  Chyby během zpracování:")
-            for error in result['errors']:
+            for error in result["errors"]:
                 print(f"   - {error}")
 
         return result
@@ -129,12 +132,12 @@ async def demo_rag_pipeline():
         test_documents = [
             {
                 "content": "Umělá inteligence v roce 2024 se zaměřuje na velké jazykové modely jako GPT-4, Claude a jejich aplikace.",
-                "metadata": {"source": "test_doc_1", "topic": "AI_trends"}
+                "metadata": {"source": "test_doc_1", "topic": "AI_trends"},
             },
             {
                 "content": "ChromaDB je vektorová databáze optimalizovaná pro ukládání a vyhledávání embeddingů v AI aplikacích.",
-                "metadata": {"source": "test_doc_2", "topic": "vector_db"}
-            }
+                "metadata": {"source": "test_doc_2", "topic": "vector_db"},
+            },
         ]
 
         print(f"\n📥 Ingestuji {len(test_documents)} testovacích dokumentů...")
@@ -148,7 +151,7 @@ async def demo_rag_pipeline():
 
         print(f"Nalezeno {len(results)} relevantních dokumentů:")
         for i, doc in enumerate(results, 1):
-            distance = doc.metadata.get('distance', 'N/A')
+            distance = doc.metadata.get("distance", "N/A")
             print(f"   {i}. Distance: {distance}, Content: {doc.content[:80]}...")
 
         return True
@@ -169,12 +172,13 @@ async def demo_tools():
 
         # Test document analysis tool
         print("📊 Test nástroje pro analýzu dokumentů...")
-        test_text = "Toto je ukázkový text pro analýzu. Obsahuje informace o moderních technologiích."
+        test_text = (
+            "Toto je ukázkový text pro analýzu. Obsahuje informace o moderních technologiích."
+        )
 
-        analysis_result = await document_analysis_tool.ainvoke({
-            "text": test_text,
-            "analysis_type": "summary"
-        })
+        analysis_result = await document_analysis_tool.ainvoke(
+            {"text": test_text, "analysis_type": "summary"}
+        )
 
         print("✅ Analýza dokončena:")
         print(f"   Typ: {analysis_result['analysis_type']}")
@@ -194,7 +198,7 @@ async def comprehensive_demo():
     print("=" * 60)
 
     # Kontrola environment variables
-    required_env_vars = ['OPENAI_API_KEY']
+    required_env_vars = ["OPENAI_API_KEY"]
     missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 
     if missing_vars:
@@ -209,7 +213,7 @@ async def comprehensive_demo():
     demos = [
         ("RAG Pipeline", demo_rag_pipeline),
         ("Nástroje", demo_tools),
-        ("Kompletní Research Agent", demo_langgraph_research)
+        ("Kompletní Research Agent", demo_langgraph_research),
     ]
 
     results = {}

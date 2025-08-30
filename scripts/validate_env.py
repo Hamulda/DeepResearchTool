@@ -37,7 +37,7 @@ def check_dependencies() -> List[Tuple[bool, str]]:
         "numpy",
         "pandas",
         "yaml",
-        "asyncio"
+        "asyncio",
     ]
 
     results = []
@@ -106,7 +106,7 @@ def check_directories() -> List[Tuple[bool, str]]:
         "data",
         "logs",
         "artifacts",
-        "research_cache"
+        "research_cache",
     ]
 
     results = []
@@ -127,11 +127,7 @@ def check_directories() -> List[Tuple[bool, str]]:
 
 def check_config_files() -> List[Tuple[bool, str]]:
     """Zkontroluj konfigurační soubory"""
-    config_files = [
-        "config.yaml",
-        "config_m1_local.yaml",
-        "requirements.txt"
-    ]
+    config_files = ["config.yaml", "config_m1_local.yaml", "requirements.txt"]
 
     results = []
     for config_file in config_files:
@@ -166,10 +162,7 @@ def generate_validation_report() -> Dict[str, Any]:
     print("🔧 Validating DeepResearchTool Environment")
     print("=" * 50)
 
-    report = {
-        "timestamp": str(Path.cwd()),
-        "validation_results": {}
-    }
+    report = {"timestamp": str(Path.cwd()), "validation_results": {}}
 
     # Python version
     success, msg = check_python_version()
@@ -183,7 +176,7 @@ def generate_validation_report() -> Dict[str, Any]:
         print(f"  {msg}")
     report["validation_results"]["dependencies"] = {
         "success": all_deps_ok,
-        "details": [{"success": s, "message": m} for s, m in dep_results]
+        "details": [{"success": s, "message": m} for s, m in dep_results],
     }
 
     print("\n🔥 PyTorch Backend:")
@@ -203,7 +196,7 @@ def generate_validation_report() -> Dict[str, Any]:
         print(f"  {msg}")
     report["validation_results"]["directories"] = {
         "success": all_dirs_ok,
-        "details": [{"success": s, "message": m} for s, m in dir_results]
+        "details": [{"success": s, "message": m} for s, m in dir_results],
     }
 
     print("\n⚙️ Configuration Files:")
@@ -213,7 +206,7 @@ def generate_validation_report() -> Dict[str, Any]:
         print(f"  {msg}")
     report["validation_results"]["config_files"] = {
         "success": all_configs_ok,
-        "details": [{"success": s, "message": m} for s, m in config_results]
+        "details": [{"success": s, "message": m} for s, m in config_results],
     }
 
     print("\n🔀 Git Setup:")
@@ -225,7 +218,7 @@ def generate_validation_report() -> Dict[str, Any]:
     critical_checks = [
         report["validation_results"]["python_version"]["success"],
         all_deps_ok,
-        all_dirs_ok
+        all_dirs_ok,
     ]
 
     overall_success = all(critical_checks)

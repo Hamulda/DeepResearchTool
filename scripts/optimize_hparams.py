@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 @dataclass
 class OptimizationResult:
     """Výsledek optimalizace"""
+
     parameters: Dict[str, Any]
     score: float
     metrics: Dict[str, float]
@@ -42,23 +43,18 @@ class HyperparameterOptimizer:
         self.parameter_space = {
             # RRF parameters
             "rrf_k": [20, 40, 60, 80],
-
             # Hierarchical retrieval
             "hierarchy_levels": [2, 3, 4],
-
             # Compression parameters
             "budget_tokens": [1500, 2000, 3000, 4000],
             "compression_strategy": ["salience", "salience+novelty"],
-
             # Qdrant search parameters
             "ef_search": [32, 64, 96, 128],
-
             # Verification thresholds
             "confidence_threshold": [0.6, 0.7, 0.8],
-
             # Query refinement
             "max_iterations": [2, 3, 4],
-            "plateau_threshold": [0.03, 0.05, 0.07]
+            "plateau_threshold": [0.03, 0.05, 0.07],
         }
 
         # Test queries for optimization
@@ -67,7 +63,7 @@ class HyperparameterOptimizer:
             "machine learning bias detection methods",
             "climate change adaptation strategies",
             "artificial intelligence safety research",
-            "renewable energy storage technologies"
+            "renewable energy storage technologies",
         ]
 
         # Optimization strategy
@@ -100,7 +96,7 @@ class HyperparameterOptimizer:
                 parameters=parameters,
                 score=overall_score,
                 metrics=aggregated_metrics,
-                execution_time=execution_time
+                execution_time=execution_time,
             )
 
         except Exception as e:
@@ -109,7 +105,7 @@ class HyperparameterOptimizer:
                 score=0.0,
                 metrics={},
                 execution_time=time.time() - start_time,
-                error=str(e)
+                error=str(e),
             )
 
     def _create_config_with_parameters(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
@@ -122,7 +118,9 @@ class HyperparameterOptimizer:
             config.setdefault("retrieval", {}).setdefault("rrf", {})["k"] = parameters["rrf_k"]
 
         if "hierarchy_levels" in parameters:
-            config.setdefault("retrieval", {}).setdefault("hierarchical", {})["levels"] = parameters["hierarchy_levels"]
+            config.setdefault("retrieval", {}).setdefault("hierarchical", {})["levels"] = (
+                parameters["hierarchy_levels"]
+            )
 
         if "budget_tokens" in parameters:
             config.setdefault("compression", {})["budget_tokens"] = parameters["budget_tokens"]
@@ -134,13 +132,19 @@ class HyperparameterOptimizer:
             config.setdefault("qdrant", {})["ef_search"] = parameters["ef_search"]
 
         if "confidence_threshold" in parameters:
-            config.setdefault("workflow", {}).setdefault("verification", {})["confidence_threshold"] = parameters["confidence_threshold"]
+            config.setdefault("workflow", {}).setdefault("verification", {})[
+                "confidence_threshold"
+            ] = parameters["confidence_threshold"]
 
         if "max_iterations" in parameters:
-            config.setdefault("query_refinement", {})["max_iterations"] = parameters["max_iterations"]
+            config.setdefault("query_refinement", {})["max_iterations"] = parameters[
+                "max_iterations"
+            ]
 
         if "plateau_threshold" in parameters:
-            config.setdefault("query_refinement", {})["plateau_threshold"] = parameters["plateau_threshold"]
+            config.setdefault("query_refinement", {})["plateau_threshold"] = parameters[
+                "plateau_threshold"
+            ]
 
         return config
 
@@ -177,11 +181,14 @@ class HyperparameterOptimizer:
         efficiency = max(0.5, 1.0 - (budget_tokens - 1500) / 5000)
 
         # Confidence threshold affects groundedness
-        confidence_threshold = config.get("workflow", {}).get("verification", {}).get("confidence_threshold", 0.7)
+        confidence_threshold = (
+            config.get("workflow", {}).get("verification", {}).get("confidence_threshold", 0.7)
+        )
         groundedness = min(0.95, confidence_threshold + 0.1)
 
         # Add some realistic noise
         import random
+
         random.seed(hash(query + str(config)))
 
         recall += random.uniform(-0.05, 0.05)
@@ -195,7 +202,9 @@ class HyperparameterOptimizer:
         efficiency = max(0.0, min(1.0, efficiency))
         groundedness = max(0.0, min(1.0, groundedness))
 
-        f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        f1_score = (
+            2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        )
 
         return {
             "recall": recall,
@@ -203,7 +212,7 @@ class HyperparameterOptimizer:
             "f1_score": f1_score,
             "efficiency": efficiency,
             "groundedness": groundedness,
-            "processing_time": processing_time
+            "processing_time": processing_time,
         }
 
     def _calculate_overall_score(self, results: List[Dict[str, float]]) -> float:
@@ -217,7 +226,7 @@ class HyperparameterOptimizer:
             "f1_score": 0.3,
             "efficiency": 0.2,
             "groundedness": 0.3,
-            "processing_time": -0.2  # Negative weight (lower is better)
+            "processing_time": -0.2,  # Negative weight (lower is better)
         }
 
         total_score = 0.0
@@ -242,7 +251,14 @@ class HyperparameterOptimizer:
             return {}
 
         aggregated = {}
-        metrics = ["recall", "precision", "f1_score", "efficiency", "groundedness", "processing_time"]
+        metrics = [
+            "recall",
+            "precision",
+            "f1_score",
+            "efficiency",
+            "groundedness",
+            "processing_time",
+        ]
 
         for metric in metrics:
             values = [r[metric] for r in results if metric in r]
@@ -271,7 +287,7 @@ class HyperparameterOptimizer:
             "parameter_space": self.parameter_space,
             "optimization_strategy": self.optimization_strategy,
             "total_combinations": len(combinations),
-            "results": []
+            "results": [],
         }
 
         # Evaluate each combination
@@ -298,7 +314,7 @@ class HyperparameterOptimizer:
             optimization_results["best_parameters"] = {
                 "parameters": best_result.parameters,
                 "score": best_result.score,
-                "metrics": best_result.metrics
+                "metrics": best_result.metrics,
             }
 
         # Generate recommendations
@@ -308,7 +324,9 @@ class HyperparameterOptimizer:
 
         return optimization_results
 
-    def _generate_optimization_recommendations(self, results: List[OptimizationResult]) -> List[str]:
+    def _generate_optimization_recommendations(
+        self, results: List[OptimizationResult]
+    ) -> List[str]:
         """Generování doporučení z optimalizace"""
 
         valid_results = [r for r in results if not r.error]
@@ -365,7 +383,12 @@ async def main():
     parser = argparse.ArgumentParser(description="Hyperparameter Optimization")
     parser.add_argument("--config", "-c", default="config_m1_local.yaml", help="Configuration file")
     parser.add_argument("--output", "-o", help="Output JSON file")
-    parser.add_argument("--strategy", choices=["grid_search", "random"], default="grid_search", help="Optimization strategy")
+    parser.add_argument(
+        "--strategy",
+        choices=["grid_search", "random"],
+        default="grid_search",
+        help="Optimization strategy",
+    )
     parser.add_argument("--max-combinations", type=int, help="Limit number of combinations")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
@@ -373,7 +396,7 @@ async def main():
 
     # Load configuration
     try:
-        with open(args.config, 'r') as f:
+        with open(args.config, "r") as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
         print(f"❌ Configuration file {args.config} not found")
@@ -403,14 +426,14 @@ async def main():
     print(f"\n✅ Hyperparameter optimization completed!")
     print(f"🏆 Best score: {best_params['score']:.3f}")
     print(f"📊 Best parameters:")
-    for param, value in best_params['parameters'].items():
+    for param, value in best_params["parameters"].items():
         print(f"  {param}: {value}")
 
     # Print key metrics
-    if 'metrics' in best_params:
+    if "metrics" in best_params:
         print(f"\n📈 Performance metrics:")
-        for metric, value in best_params['metrics'].items():
-            if 'avg_' in metric:
+        for metric, value in best_params["metrics"].items():
+            if "avg_" in metric:
                 print(f"  {metric.replace('avg_', '')}: {value:.3f}")
 
     # Print recommendations
@@ -425,16 +448,18 @@ async def main():
         # Convert OptimizationResult objects to dicts for JSON serialization
         serializable_results = []
         for result in results["results"]:
-            serializable_results.append({
-                "parameters": result.parameters,
-                "score": result.score,
-                "metrics": result.metrics,
-                "execution_time": result.execution_time,
-                "error": result.error
-            })
+            serializable_results.append(
+                {
+                    "parameters": result.parameters,
+                    "score": result.score,
+                    "metrics": result.metrics,
+                    "execution_time": result.execution_time,
+                    "error": result.error,
+                }
+            )
         results["results"] = serializable_results
 
-        with open(args.output, 'w') as f:
+        with open(args.output, "w") as f:
             json.dump(results, f, indent=2, default=str)
         print(f"💾 Results saved to {args.output}")
 

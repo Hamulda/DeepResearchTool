@@ -38,28 +38,28 @@ class RRFParameterSweep:
                 "queries": [
                     "What is the melting point of gold?",
                     "When was the first quantum computer built?",
-                    "Who invented the transistor?"
+                    "Who invented the transistor?",
                 ],
-                "expected_behavior": "high_precision"
+                "expected_behavior": "high_precision",
             },
             {
                 "name": "broad_conceptual",
                 "queries": [
                     "How does machine learning work?",
                     "What are the effects of climate change?",
-                    "Explain quantum computing principles"
+                    "Explain quantum computing principles",
                 ],
-                "expected_behavior": "high_recall"
+                "expected_behavior": "high_recall",
             },
             {
                 "name": "research_synthesis",
                 "queries": [
                     "Recent advances in artificial intelligence safety",
                     "Current state of renewable energy technology",
-                    "Modern approaches to cancer treatment"
+                    "Modern approaches to cancer treatment",
                 ],
-                "expected_behavior": "balanced"
-            }
+                "expected_behavior": "balanced",
+            },
         ]
 
         # Simulated retrieval sources (in real implementation, these would be actual retrievers)
@@ -110,12 +110,14 @@ class RRFParameterSweep:
                     ranked_docs, scenario["expected_behavior"], k
                 )
 
-                scenario_results.append({
-                    "query": query,
-                    "top_10_docs": [doc for doc, score in ranked_docs[:10]],
-                    "rrf_scores": dict(ranked_docs[:20]),  # Top 20 for analysis
-                    **quality_metrics
-                })
+                scenario_results.append(
+                    {
+                        "query": query,
+                        "top_10_docs": [doc for doc, score in ranked_docs[:10]],
+                        "rrf_scores": dict(ranked_docs[:20]),  # Top 20 for analysis
+                        **quality_metrics,
+                    }
+                )
 
             # Aggregate scenario results
             avg_precision = statistics.mean([r["precision"] for r in scenario_results])
@@ -133,11 +135,15 @@ class RRFParameterSweep:
                     "precision": avg_precision,
                     "recall": avg_recall,
                     "ndcg": avg_ndcg,
-                    "f1_score": 2 * (avg_precision * avg_recall) / (avg_precision + avg_recall) if (avg_precision + avg_recall) > 0 else 0,
-                    "fusion_quality": avg_fusion_quality
+                    "f1_score": (
+                        2 * (avg_precision * avg_recall) / (avg_precision + avg_recall)
+                        if (avg_precision + avg_recall) > 0
+                        else 0
+                    ),
+                    "fusion_quality": avg_fusion_quality,
                 },
                 "processing_time": processing_time,
-                "error": None
+                "error": None,
             }
 
         except Exception as e:
@@ -145,7 +151,7 @@ class RRFParameterSweep:
                 "scenario": scenario["name"],
                 "k_value": k,
                 "error": str(e),
-                "processing_time": time.time() - start_time
+                "processing_time": time.time() - start_time,
             }
 
     def _generate_mock_rankings(self, query: str) -> List[List[str]]:
@@ -181,8 +187,9 @@ class RRFParameterSweep:
 
         return rankings
 
-    def _calculate_quality_metrics(self, ranked_docs: List[Tuple[str, float]],
-                                 expected_behavior: str, k: int) -> Dict[str, float]:
+    def _calculate_quality_metrics(
+        self, ranked_docs: List[Tuple[str, float]], expected_behavior: str, k: int
+    ) -> Dict[str, float]:
         """Výpočet metrik kvality pro RRF výsledky"""
 
         # Simulate ground truth relevance (mock)
@@ -192,7 +199,7 @@ class RRFParameterSweep:
         if expected_behavior == "high_precision":
             # Precision-focused: fewer but more relevant results
             precision = max(0.7, 1.0 - (k - 20) / 100)  # Lower k = higher precision
-            recall = min(0.9, 0.6 + (k - 20) / 150)     # Higher k = higher recall
+            recall = min(0.9, 0.6 + (k - 20) / 150)  # Higher k = higher recall
         elif expected_behavior == "high_recall":
             # Recall-focused: more comprehensive results
             precision = min(0.9, 0.5 + (k - 20) / 120)
@@ -206,6 +213,7 @@ class RRFParameterSweep:
 
         # Add some noise for realism
         import random
+
         random.seed(hash(str(ranked_docs[:5])))  # Deterministic but varied
         precision += random.uniform(-0.05, 0.05)
         recall += random.uniform(-0.05, 0.05)
@@ -225,7 +233,7 @@ class RRFParameterSweep:
             "precision": precision,
             "recall": recall,
             "ndcg": ndcg,
-            "fusion_quality": fusion_quality
+            "fusion_quality": fusion_quality,
         }
 
     async def run_parameter_sweep(self) -> Dict[str, Any]:
@@ -238,7 +246,7 @@ class RRFParameterSweep:
             "config": self.rrf_config,
             "k_values_tested": self.k_values,
             "test_scenarios": [s["name"] for s in self.test_scenarios],
-            "results": []
+            "results": [],
         }
 
         total_tests = len(self.test_scenarios) * len(self.k_values)
@@ -259,9 +267,11 @@ class RRFParameterSweep:
                     print(f"    ❌ Error: {result['error']}")
                 else:
                     metrics = result["aggregated_metrics"]
-                    print(f"    ✅ F1: {metrics['f1_score']:.3f}, "
-                          f"P: {metrics['precision']:.3f}, "
-                          f"R: {metrics['recall']:.3f}")
+                    print(
+                        f"    ✅ F1: {metrics['f1_score']:.3f}, "
+                        f"P: {metrics['precision']:.3f}, "
+                        f"R: {metrics['recall']:.3f}"
+                    )
 
                 print(f"    Progress: {completed_tests}/{total_tests}")
 
@@ -293,15 +303,14 @@ class RRFParameterSweep:
 
         # Find best k for each scenario
         for scenario, scenario_results in by_scenario.items():
-            best_result = max(scenario_results,
-                            key=lambda x: x["aggregated_metrics"]["f1_score"])
+            best_result = max(scenario_results, key=lambda x: x["aggregated_metrics"]["f1_score"])
 
             optimal_k[scenario] = {
                 "k_value": best_result["k_value"],
                 "f1_score": best_result["aggregated_metrics"]["f1_score"],
                 "precision": best_result["aggregated_metrics"]["precision"],
                 "recall": best_result["aggregated_metrics"]["recall"],
-                "fusion_quality": best_result["aggregated_metrics"]["fusion_quality"]
+                "fusion_quality": best_result["aggregated_metrics"]["fusion_quality"],
             }
 
         # Find overall best k (averaged across scenarios)
@@ -312,16 +321,12 @@ class RRFParameterSweep:
                 k_performance[k] = []
             k_performance[k].append(result["aggregated_metrics"]["f1_score"])
 
-        overall_best_k = max(k_performance.keys(),
-                           key=lambda x: statistics.mean(k_performance[x]))
+        overall_best_k = max(k_performance.keys(), key=lambda x: statistics.mean(k_performance[x]))
         overall_best_f1 = statistics.mean(k_performance[overall_best_k])
 
         return {
             "by_scenario": optimal_k,
-            "overall_best": {
-                "k_value": overall_best_k,
-                "avg_f1_score": overall_best_f1
-            }
+            "overall_best": {"k_value": overall_best_k, "avg_f1_score": overall_best_f1},
         }
 
     def _generate_recommendations(self, results: List[Dict[str, Any]]) -> List[str]:
@@ -346,7 +351,9 @@ class RRFParameterSweep:
         best_k = max(k_performance.keys(), key=lambda x: statistics.mean(k_performance[x]))
         best_f1 = statistics.mean(k_performance[best_k])
 
-        recommendations.append(f"OPTIMAL: Use k={best_k} for best overall performance (F1: {best_f1:.3f})")
+        recommendations.append(
+            f"OPTIMAL: Use k={best_k} for best overall performance (F1: {best_f1:.3f})"
+        )
 
         # Scenario-specific recommendations
         scenario_performance = {}
@@ -359,16 +366,22 @@ class RRFParameterSweep:
 
         for scenario, k_scores in scenario_performance.items():
             best_scenario_k = max(k_scores.keys(), key=lambda x: k_scores[x])
-            recommendations.append(f"{scenario.upper()}: Use k={best_scenario_k} (F1: {k_scores[best_scenario_k]:.3f})")
+            recommendations.append(
+                f"{scenario.upper()}: Use k={best_scenario_k} (F1: {k_scores[best_scenario_k]:.3f})"
+            )
 
         # Performance analysis
         low_k_avg = statistics.mean([statistics.mean(k_performance[k]) for k in [10, 20, 30]])
         high_k_avg = statistics.mean([statistics.mean(k_performance[k]) for k in [70, 80, 90, 100]])
 
         if low_k_avg > high_k_avg:
-            recommendations.append("PATTERN: Lower k values generally perform better (precision-focused)")
+            recommendations.append(
+                "PATTERN: Lower k values generally perform better (precision-focused)"
+            )
         else:
-            recommendations.append("PATTERN: Higher k values generally perform better (recall-focused)")
+            recommendations.append(
+                "PATTERN: Higher k values generally perform better (recall-focused)"
+            )
 
         # Configuration recommendations
         k_range = max(k_performance.keys()) - min(k_performance.keys())
@@ -390,7 +403,7 @@ async def main():
 
     # Load configuration
     try:
-        with open(args.config, 'r') as f:
+        with open(args.config, "r") as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
         print(f"❌ Configuration file {args.config} not found")
@@ -438,7 +451,7 @@ async def main():
 
     # Save results
     if args.output:
-        with open(args.output, 'w') as f:
+        with open(args.output, "w") as f:
             json.dump(results, f, indent=2, default=str)
         print(f"💾 Results saved to {args.output}")
 

@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""
-Adaptive Qdrant Parameters
+"""Adaptive Qdrant Parameters
 Per-query SearchParams optimization based on query type and profile
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, Any, Optional, Tuple
+from dataclasses import dataclass
 from enum import Enum
 import logging
-from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class QueryType(Enum):
     """Query classification for parameter optimization"""
+
     EXPLORATORY = "exploratory"  # Broad discovery, needs high recall
     NAVIGATIONAL = "navigational"  # Specific fact finding, needs precision
     VERIFICATION = "verification"  # Cross-checking claims, needs exhaustive search
@@ -25,19 +25,20 @@ class QueryType(Enum):
 @dataclass
 class SearchParams:
     """Qdrant search parameters with adaptive optimization"""
-    hnsw_ef: Optional[int] = None
+
+    hnsw_ef: int | None = None
     exact: bool = False
     limit: int = 100
-    score_threshold: Optional[float] = None
+    score_threshold: float | None = None
     with_payload: bool = True
     with_vectors: bool = False
 
-    def to_qdrant_params(self) -> Dict[str, Any]:
+    def to_qdrant_params(self) -> dict[str, Any]:
         """Convert to Qdrant API parameters"""
         params = {
             "limit": self.limit,
             "with_payload": self.with_payload,
-            "with_vectors": self.with_vectors
+            "with_vectors": self.with_vectors,
         }
 
         if self.score_threshold is not None:
@@ -56,23 +57,15 @@ class SearchParams:
 class AdaptiveQdrantParams:
     """Adaptive parameter selection for Qdrant searches"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.retrieval_config = config.get("retrieval", {})
         self.qdrant_config = config.get("qdrant", {})
 
         # Default parameters by profile
         self.profile_defaults = {
-            "quick": {
-                "hnsw_ef": 64,
-                "limit": 50,
-                "exact_fallback_threshold": 0.3
-            },
-            "thorough": {
-                "hnsw_ef": 256,
-                "limit": 200,
-                "exact_fallback_threshold": 0.5
-            }
+            "quick": {"hnsw_ef": 64, "limit": 50, "exact_fallback_threshold": 0.3},
+            "thorough": {"hnsw_ef": 256, "limit": 200, "exact_fallback_threshold": 0.5},
         }
 
         # Query type specific parameters
@@ -80,30 +73,30 @@ class AdaptiveQdrantParams:
             QueryType.EXPLORATORY: {
                 "hnsw_ef_multiplier": 1.5,
                 "limit_multiplier": 1.2,
-                "score_threshold": 0.3
+                "score_threshold": 0.3,
             },
             QueryType.NAVIGATIONAL: {
                 "hnsw_ef_multiplier": 1.0,
                 "limit_multiplier": 0.8,
-                "score_threshold": 0.5
+                "score_threshold": 0.5,
             },
             QueryType.VERIFICATION: {
                 "hnsw_ef_multiplier": 2.0,
                 "limit_multiplier": 1.5,
                 "score_threshold": 0.2,
-                "prefer_exact": True
+                "prefer_exact": True,
             },
             QueryType.TEMPORAL: {
                 "hnsw_ef_multiplier": 1.2,
                 "limit_multiplier": 1.0,
                 "score_threshold": 0.4,
-                "recency_boost": True
-            }
+                "recency_boost": True,
+            },
         }
 
         logger.info("Initialized adaptive Qdrant parameters")
 
-    def classify_query(self, query: str, context: Optional[Dict[str, Any]] = None) -> QueryType:
+    def classify_query(self, query: str, context: dict[str, Any] | None = None) -> QueryType:
         """Classify query type for parameter optimization"""
         query_lower = query.lower()
 
@@ -113,7 +106,15 @@ class AdaptiveQdrantParams:
             return QueryType.TEMPORAL
 
         # Verification indicators
-        verification_keywords = ["verify", "check", "confirm", "validate", "true", "false", "accuracy"]
+        verification_keywords = [
+            "verify",
+            "check",
+            "confirm",
+            "validate",
+            "true",
+            "false",
+            "accuracy",
+        ]
         if any(keyword in query_lower for keyword in verification_keywords):
             return QueryType.VERIFICATION
 
@@ -129,11 +130,10 @@ class AdaptiveQdrantParams:
         self,
         query: str,
         profile: str = "quick",
-        context: Optional[Dict[str, Any]] = None,
-        iteration: int = 1
+        context: dict[str, Any] | None = None,
+        iteration: int = 1,
     ) -> SearchParams:
         """Get adaptive search parameters based on query and context"""
-
         # Get base parameters for profile
         base_params = self.profile_defaults.get(profile, self.profile_defaults["quick"])
 
@@ -162,7 +162,7 @@ class AdaptiveQdrantParams:
             hnsw_ef=hnsw_ef if not exact else None,
             exact=exact,
             limit=limit,
-            score_threshold=score_threshold
+            score_threshold=score_threshold,
         )
 
         logger.info(
@@ -173,13 +173,9 @@ class AdaptiveQdrantParams:
         return params
 
     def should_fallback_to_exact(
-        self,
-        results: list,
-        params: SearchParams,
-        query_type: QueryType
+        self, results: list, params: SearchParams, query_type: QueryType
     ) -> bool:
         """Determine if fallback to exact search is needed"""
-
         if params.exact:
             return False  # Already using exact search
 
@@ -200,23 +196,23 @@ class AdaptiveQdrantParams:
             QueryType.EXPLORATORY: 0.3,
             QueryType.NAVIGATIONAL: 0.5,
             QueryType.VERIFICATION: 0.6,
-            QueryType.TEMPORAL: 0.4
+            QueryType.TEMPORAL: 0.4,
         }
 
         threshold = fallback_thresholds.get(query_type, 0.4)
 
         return max_score < threshold or avg_score < threshold * 0.7
 
-    def get_temporal_boost_params(self, recency_weight: float = 0.3) -> Dict[str, Any]:
+    def get_temporal_boost_params(self, recency_weight: float = 0.3) -> dict[str, Any]:
         """Get parameters for temporal boosting"""
         return {
             "recency_weight": recency_weight,
             "time_decay_days": 365,  # 1 year decay
-            "boost_recent_threshold": 30  # Boost docs newer than 30 days
+            "boost_recent_threshold": 30,  # Boost docs newer than 30 days
         }
 
 
-def create_adaptive_qdrant_params(config: Dict[str, Any]) -> AdaptiveQdrantParams:
+def create_adaptive_qdrant_params(config: dict[str, Any]) -> AdaptiveQdrantParams:
     """Factory function for adaptive Qdrant parameters"""
     return AdaptiveQdrantParams(config)
 
@@ -226,7 +222,7 @@ if __name__ == "__main__":
     # Example configuration
     config = {
         "retrieval": {"hierarchical": {"enabled": True}},
-        "qdrant": {"collection_name": "research_docs"}
+        "qdrant": {"collection_name": "research_docs"},
     }
 
     adapter = AdaptiveQdrantParams(config)
@@ -234,9 +230,9 @@ if __name__ == "__main__":
     # Test different query types
     test_queries = [
         "COVID-19 vaccine effectiveness comparison",  # exploratory
-        "What is the mortality rate of COVID-19?",   # navigational
-        "Verify claims about vaccine side effects",   # verification
-        "Latest COVID-19 research findings 2024"     # temporal
+        "What is the mortality rate of COVID-19?",  # navigational
+        "Verify claims about vaccine side effects",  # verification
+        "Latest COVID-19 research findings 2024",  # temporal
     ]
 
     for query in test_queries:

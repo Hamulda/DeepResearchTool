@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
-"""
-Enhanced Contextual Compression System
+"""Enhanced Contextual Compression System
 Pokročilá komprese kontextu s salience scoring a source-aware budget management
 
 Author: Senior Python/MLOps Agent
 """
 
-import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple
-from dataclasses import dataclass
-import numpy as np
-import re
 from collections import Counter
+from dataclasses import dataclass
+import logging
 import math
+import re
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SalienceScores:
     """Salience scores pro různé komponenty"""
+
     semantic_score: float
     tfidf_score: float
     keyword_score: float
@@ -32,6 +30,7 @@ class SalienceScores:
 @dataclass
 class CompressionUnit:
     """Jednotka pro kompresi (sentence/chunk)"""
+
     id: str
     text: str
     position: int
@@ -39,7 +38,7 @@ class CompressionUnit:
     source_priority: float
     salience_scores: SalienceScores
     token_count: int
-    entities: List[str]
+    entities: list[str]
     claims_indicators: int
     selected_for_compression: bool
     selection_rationale: str
@@ -48,20 +47,21 @@ class CompressionUnit:
 @dataclass
 class CompressionResult:
     """Výsledek komprese"""
-    original_units: List[CompressionUnit]
-    selected_units: List[CompressionUnit]
+
+    original_units: list[CompressionUnit]
+    selected_units: list[CompressionUnit]
     compression_ratio: float
     token_budget_used: int
     token_budget_total: int
-    source_distribution: Dict[str, int]
-    quality_metrics: Dict[str, float]
+    source_distribution: dict[str, int]
+    quality_metrics: dict[str, float]
     compression_strategy: str
 
 
 class EnhancedContextualCompressor:
     """Enhanced contextual compression engine"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.compression_config = config.get("compression", {})
 
@@ -93,19 +93,18 @@ class EnhancedContextualCompressor:
         self.tfidf_cache = {}
         self.embedding_cache = {}
 
-    def _load_source_priorities(self) -> Dict[str, float]:
+    def _load_source_priorities(self) -> dict[str, float]:
         """Načtení source priorities pro budget allocation"""
-
         source_config = self.compression_config.get("source_priorities", {})
 
         # Default priorities (higher = more important)
         defaults = {
-            "academic": 1.0,      # Primary literature highest priority
-            "government": 0.9,    # Official sources high priority
-            "wikipedia": 0.7,     # Reliable aggregator medium priority
-            "news": 0.6,          # Current events medium priority
+            "academic": 1.0,  # Primary literature highest priority
+            "government": 0.9,  # Official sources high priority
+            "wikipedia": 0.7,  # Reliable aggregator medium priority
+            "news": 0.6,  # Current events medium priority
             "social_media": 0.3,  # Social aggregators lowest priority
-            "unknown": 0.5        # Default medium priority
+            "unknown": 0.5,  # Default medium priority
         }
 
         # Merge with config overrides
@@ -113,7 +112,6 @@ class EnhancedContextualCompressor:
 
     async def initialize(self):
         """Inicializace kompresoru"""
-
         logger.info("Initializing Enhanced Contextual Compressor...")
 
         try:
@@ -133,6 +131,7 @@ class EnhancedContextualCompressor:
         """Inicializace NLP modelů"""
         try:
             import spacy
+
             self.nlp = spacy.load("en_core_web_sm")
         except:
             logger.warning("spaCy not available, using simplified processing")
@@ -142,18 +141,57 @@ class EnhancedContextualCompressor:
         """Načtení stopwords"""
         # Basic English stopwords
         self.stopwords = {
-            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
-            'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
-            'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must',
-            'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they'
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "this",
+            "that",
+            "these",
+            "those",
+            "i",
+            "you",
+            "he",
+            "she",
+            "it",
+            "we",
+            "they",
         }
 
-    async def compress_context(self,
-                              texts: List[Dict[str, Any]],
-                              query: str,
-                              token_budget: Optional[int] = None) -> CompressionResult:
-        """
-        Hlavní compression funkce
+    async def compress_context(
+        self, texts: list[dict[str, Any]], query: str, token_budget: int | None = None
+    ) -> CompressionResult:
+        """Hlavní compression funkce
 
         Args:
             texts: Seznam textů s metadata (source_type, content, etc.)
@@ -162,8 +200,8 @@ class EnhancedContextualCompressor:
 
         Returns:
             CompressionResult s compressed content
-        """
 
+        """
         logger.info(f"Starting contextual compression for {len(texts)} texts")
 
         if not self.nlp:
@@ -189,15 +227,17 @@ class EnhancedContextualCompressor:
             compression_units, selected_units, budget, quality_metrics
         )
 
-        logger.info(f"Compression completed: {result.compression_ratio:.1%} compression, "
-                   f"{result.token_budget_used}/{result.token_budget_total} tokens used")
+        logger.info(
+            f"Compression completed: {result.compression_ratio:.1%} compression, "
+            f"{result.token_budget_used}/{result.token_budget_total} tokens used"
+        )
 
         return result
 
-    async def _create_compression_units(self, texts: List[Dict[str, Any]],
-                                      query: str) -> List[CompressionUnit]:
+    async def _create_compression_units(
+        self, texts: list[dict[str, Any]], query: str
+    ) -> list[CompressionUnit]:
         """Vytvoření compression units ze vstupních textů"""
-
         units = []
         unit_counter = 0
 
@@ -231,7 +271,7 @@ class EnhancedContextualCompressor:
                     entities=entities,
                     claims_indicators=claims_indicators,
                     selected_for_compression=False,
-                    selection_rationale=""
+                    selection_rationale="",
                 )
 
                 units.append(unit)
@@ -239,9 +279,8 @@ class EnhancedContextualCompressor:
 
         return units
 
-    def _split_into_sentences(self, text: str) -> List[str]:
+    def _split_into_sentences(self, text: str) -> list[str]:
         """Rozdělení textu na věty"""
-
         if self.nlp:
             try:
                 doc = self.nlp(text[:5000])  # Limit for performance
@@ -250,7 +289,7 @@ class EnhancedContextualCompressor:
                 pass
 
         # Fallback sentence splitting
-        sentences = re.split(r'[.!?]+\s+', text)
+        sentences = re.split(r"[.!?]+\s+", text)
         return [s.strip() for s in sentences if s.strip()]
 
     def _estimate_tokens(self, text: str) -> int:
@@ -258,9 +297,8 @@ class EnhancedContextualCompressor:
         words = len(text.split())
         return int(words * self.tokens_per_word)
 
-    async def _extract_entities_simple(self, text: str) -> List[str]:
+    async def _extract_entities_simple(self, text: str) -> list[str]:
         """Jednoduchá extrakce entit"""
-
         if self.nlp:
             try:
                 doc = self.nlp(text)
@@ -272,22 +310,21 @@ class EnhancedContextualCompressor:
         entities = []
 
         # Proper nouns
-        proper_nouns = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', text)
+        proper_nouns = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", text)
         entities.extend(proper_nouns)
 
         # Numbers and dates
-        numbers = re.findall(r'\b\d+(?:\.\d+)?%?\b', text)
+        numbers = re.findall(r"\b\d+(?:\.\d+)?%?\b", text)
         entities.extend(numbers)
 
         return entities[:10]  # Limit for performance
 
     def _count_claim_indicators(self, text: str) -> int:
         """Počítání indikátorů tvrzení"""
-
         claim_patterns = [
-            r'\b(shows?|indicates?|suggests?|demonstrates?|proves?)\b',
-            r'\b(evidence|research|study|analysis)\b',
-            r'\b(claim|argue|propose|assert|conclude)\b'
+            r"\b(shows?|indicates?|suggests?|demonstrates?|proves?)\b",
+            r"\b(evidence|research|study|analysis)\b",
+            r"\b(claim|argue|propose|assert|conclude)\b",
         ]
 
         count = 0
@@ -297,10 +334,10 @@ class EnhancedContextualCompressor:
 
         return count
 
-    async def _calculate_salience_scores(self, units: List[CompressionUnit],
-                                       query: str) -> List[CompressionUnit]:
+    async def _calculate_salience_scores(
+        self, units: list[CompressionUnit], query: str
+    ) -> list[CompressionUnit]:
         """Výpočet salience scores pro všechny units"""
-
         # Prepare query terms
         query_terms = self._extract_keywords(query)
 
@@ -327,9 +364,9 @@ class EnhancedContextualCompressor:
 
             # Combined score
             combined_score = (
-                semantic_score * self.semantic_weight +
-                tfidf_score * self.tfidf_weight +
-                keyword_score * self.keyword_weight
+                semantic_score * self.semantic_weight
+                + tfidf_score * self.tfidf_weight
+                + keyword_score * self.keyword_weight
             )
 
             # Apply novelty and redundancy adjustments based on strategy
@@ -337,7 +374,7 @@ class EnhancedContextualCompressor:
                 combined_score *= novelty_score
 
             if "redundancy" in self.strategy:
-                combined_score *= (1 - redundancy_penalty)
+                combined_score *= 1 - redundancy_penalty
 
             # Apply source priority
             combined_score *= unit.source_priority
@@ -348,21 +385,19 @@ class EnhancedContextualCompressor:
                 keyword_score=keyword_score,
                 novelty_score=novelty_score,
                 redundancy_penalty=redundancy_penalty,
-                combined_score=combined_score
+                combined_score=combined_score,
             )
 
         return units
 
-    def _extract_keywords(self, text: str) -> List[str]:
+    def _extract_keywords(self, text: str) -> list[str]:
         """Extrakce klíčových slov"""
-
-        words = re.findall(r'\b\w+\b', text.lower())
+        words = re.findall(r"\b\w+\b", text.lower())
         keywords = [w for w in words if w not in self.stopwords and len(w) > 2]
         return keywords
 
-    def _calculate_tfidf_scores(self, texts: List[str], query: str) -> List[float]:
+    def _calculate_tfidf_scores(self, texts: list[str], query: str) -> list[float]:
         """Výpočet TF-IDF scores"""
-
         # Simple TF-IDF implementation
         query_terms = set(self._extract_keywords(query))
 
@@ -388,9 +423,8 @@ class EnhancedContextualCompressor:
         max_score = max(scores) if scores else 1
         return [s / max_score for s in scores]
 
-    def _calculate_semantic_score(self, text: str, query_terms: List[str]) -> float:
+    def _calculate_semantic_score(self, text: str, query_terms: list[str]) -> float:
         """Výpočet semantic similarity score"""
-
         text_terms = set(self._extract_keywords(text))
         query_term_set = set(query_terms)
 
@@ -405,7 +439,6 @@ class EnhancedContextualCompressor:
 
     def _calculate_keyword_score(self, unit: CompressionUnit) -> float:
         """Výpočet keyword importance score"""
-
         score = 0.0
 
         # Entity score (more entities = more important)
@@ -418,10 +451,10 @@ class EnhancedContextualCompressor:
 
         return score
 
-    def _calculate_novelty_score(self, unit: CompressionUnit,
-                                previous_units: List[CompressionUnit]) -> float:
+    def _calculate_novelty_score(
+        self, unit: CompressionUnit, previous_units: list[CompressionUnit]
+    ) -> float:
         """Výpočet novelty score (how different from previous content)"""
-
         if not previous_units:
             return 1.0
 
@@ -441,10 +474,10 @@ class EnhancedContextualCompressor:
         novelty = 1.0 - max_similarity
         return max(novelty, 0.1)  # Minimum novelty threshold
 
-    def _calculate_redundancy_penalty(self, unit: CompressionUnit,
-                                     all_units: List[CompressionUnit]) -> float:
+    def _calculate_redundancy_penalty(
+        self, unit: CompressionUnit, all_units: list[CompressionUnit]
+    ) -> float:
         """Výpočet redundancy penalty"""
-
         current_terms = set(self._extract_keywords(unit.text))
 
         redundancy_count = 0
@@ -465,10 +498,10 @@ class EnhancedContextualCompressor:
         penalty = min(redundancy_count * 0.2, 0.8)  # Max 80% penalty
         return penalty
 
-    async def _apply_compression_strategy(self, units: List[CompressionUnit],
-                                        budget: int) -> List[CompressionUnit]:
+    async def _apply_compression_strategy(
+        self, units: list[CompressionUnit], budget: int
+    ) -> list[CompressionUnit]:
         """Aplikace compression strategy pro výběr units"""
-
         logger.info(f"Applying compression strategy '{self.strategy}' with budget {budget} tokens")
 
         # Sort by combined salience score (highest first)
@@ -481,15 +514,17 @@ class EnhancedContextualCompressor:
         source_budgets = self._allocate_source_budgets(sorted_units, budget)
 
         # Track source usage
-        source_usage = {source: 0 for source in source_budgets.keys()}
+        source_usage = dict.fromkeys(source_budgets.keys(), 0)
 
         for unit in sorted_units:
             source_type = unit.source_type
             source_budget = source_budgets.get(source_type, 0)
 
             # Check if we can add this unit
-            if (used_tokens + unit.token_count <= budget and
-                source_usage[source_type] + unit.token_count <= source_budget):
+            if (
+                used_tokens + unit.token_count <= budget
+                and source_usage[source_type] + unit.token_count <= source_budget
+            ):
 
                 unit.selected_for_compression = True
                 unit.selection_rationale = (
@@ -505,22 +540,26 @@ class EnhancedContextualCompressor:
             else:
                 unit.selected_for_compression = False
                 if used_tokens + unit.token_count > budget:
-                    unit.selection_rationale = f"Exceeded total budget ({used_tokens + unit.token_count} > {budget})"
+                    unit.selection_rationale = (
+                        f"Exceeded total budget ({used_tokens + unit.token_count} > {budget})"
+                    )
                 else:
                     unit.selection_rationale = f"Exceeded source budget for {source_type}"
 
-        logger.info(f"Selected {len(selected_units)}/{len(units)} units, "
-                   f"using {used_tokens}/{budget} tokens")
+        logger.info(
+            f"Selected {len(selected_units)}/{len(units)} units, "
+            f"using {used_tokens}/{budget} tokens"
+        )
 
         # Sort selected units back to original order for coherence
         selected_units.sort(key=lambda u: u.position)
 
         return selected_units
 
-    def _allocate_source_budgets(self, units: List[CompressionUnit],
-                               total_budget: int) -> Dict[str, int]:
+    def _allocate_source_budgets(
+        self, units: list[CompressionUnit], total_budget: int
+    ) -> dict[str, int]:
         """Alokace budget per source type based on priorities"""
-
         # Count tokens per source type
         source_tokens = {}
         source_priorities = {}
@@ -560,11 +599,10 @@ class EnhancedContextualCompressor:
 
         return source_budgets
 
-    def _calculate_quality_metrics(self, all_units: List[CompressionUnit],
-                                 selected_units: List[CompressionUnit],
-                                 query: str) -> Dict[str, float]:
+    def _calculate_quality_metrics(
+        self, all_units: list[CompressionUnit], selected_units: list[CompressionUnit], query: str
+    ) -> dict[str, float]:
         """Výpočet quality metrics pro compression"""
-
         metrics = {}
 
         # Basic compression metrics
@@ -577,7 +615,9 @@ class EnhancedContextualCompressor:
         # Salience preservation
         total_salience = sum(u.salience_scores.combined_score for u in all_units)
         preserved_salience = sum(u.salience_scores.combined_score for u in selected_units)
-        metrics["salience_preservation"] = preserved_salience / total_salience if total_salience else 0
+        metrics["salience_preservation"] = (
+            preserved_salience / total_salience if total_salience else 0
+        )
 
         # Entity coverage
         all_entities = set()
@@ -588,7 +628,9 @@ class EnhancedContextualCompressor:
         for unit in selected_units:
             selected_entities.update(unit.entities)
 
-        metrics["entity_coverage"] = len(selected_entities) / len(all_entities) if all_entities else 0
+        metrics["entity_coverage"] = (
+            len(selected_entities) / len(all_entities) if all_entities else 0
+        )
 
         # Claims coverage
         total_claims = sum(u.claims_indicators for u in all_units)
@@ -614,16 +656,22 @@ class EnhancedContextualCompressor:
         )
 
         # Context usage efficiency
-        metrics["context_usage_efficiency"] = metrics["salience_preservation"] / metrics["token_compression_ratio"] if metrics["token_compression_ratio"] > 0 else 0
+        metrics["context_usage_efficiency"] = (
+            metrics["salience_preservation"] / metrics["token_compression_ratio"]
+            if metrics["token_compression_ratio"] > 0
+            else 0
+        )
 
         return metrics
 
-    def _create_compression_result(self, all_units: List[CompressionUnit],
-                                 selected_units: List[CompressionUnit],
-                                 budget: int,
-                                 quality_metrics: Dict[str, float]) -> CompressionResult:
+    def _create_compression_result(
+        self,
+        all_units: list[CompressionUnit],
+        selected_units: list[CompressionUnit],
+        budget: int,
+        quality_metrics: dict[str, float],
+    ) -> CompressionResult:
         """Vytvoření compression result"""
-
         # Calculate source distribution
         source_distribution = {}
         for unit in selected_units:
@@ -641,20 +689,18 @@ class EnhancedContextualCompressor:
             token_budget_total=budget,
             source_distribution=source_distribution,
             quality_metrics=quality_metrics,
-            compression_strategy=self.strategy
+            compression_strategy=self.strategy,
         )
 
         return result
 
     def get_compressed_text(self, result: CompressionResult) -> str:
         """Získání komprimovaného textu jako string"""
-
         selected_texts = [unit.text for unit in result.selected_units]
         return "\n".join(selected_texts)
 
-    def get_compression_report(self, result: CompressionResult) -> Dict[str, Any]:
+    def get_compression_report(self, result: CompressionResult) -> dict[str, Any]:
         """Vytvoření compression report pro audit"""
-
         report = {
             "compression_summary": {
                 "strategy": result.compression_strategy,
@@ -662,11 +708,11 @@ class EnhancedContextualCompressor:
                 "selected_units": len(result.selected_units),
                 "compression_ratio": f"{result.compression_ratio:.1%}",
                 "token_usage": f"{result.token_budget_used}/{result.token_budget_total}",
-                "token_efficiency": f"{result.token_budget_used/result.token_budget_total:.1%}"
+                "token_efficiency": f"{result.token_budget_used/result.token_budget_total:.1%}",
             },
             "quality_metrics": result.quality_metrics,
             "source_distribution": result.source_distribution,
-            "selection_details": []
+            "selection_details": [],
         }
 
         # Add selection details for audit trail
@@ -678,7 +724,7 @@ class EnhancedContextualCompressor:
                 "source_type": unit.source_type,
                 "source_priority": unit.source_priority,
                 "token_count": unit.token_count,
-                "rationale": unit.selection_rationale
+                "rationale": unit.selection_rationale,
             }
             report["selection_details"].append(detail)
 

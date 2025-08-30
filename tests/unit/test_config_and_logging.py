@@ -15,14 +15,14 @@ from src.config.settings import (
     DatabaseSettings,
     AIModelSettings,
     SecuritySettings,
-    get_settings
+    get_settings,
 )
 from src.utils.logging import (
     StructuredLogger,
     AuditLogger,
     PerformanceLogger,
     get_logger,
-    configure_logging
+    configure_logging,
 )
 
 
@@ -45,12 +45,10 @@ class TestApplicationSettings:
         with pytest.raises(ValueError, match="Environment must be one of"):
             ApplicationSettings(environment="invalid")
 
-    @patch.dict(os.environ, {
-        "APP_NAME": "TestApp",
-        "ENVIRONMENT": "production",
-        "DEBUG": "true",
-        "PORT": "9000"
-    })
+    @patch.dict(
+        os.environ,
+        {"APP_NAME": "TestApp", "ENVIRONMENT": "production", "DEBUG": "true", "PORT": "9000"},
+    )
     def test_env_override(self):
         """Test načítání z environment variables"""
         settings = ApplicationSettings()
@@ -81,11 +79,14 @@ class TestDatabaseSettings:
         assert settings.postgres_host == "localhost"
         assert settings.postgres_port == 5432
 
-    @patch.dict(os.environ, {
-        "DB_REDIS_HOST": "redis-server",
-        "DB_REDIS_PORT": "6380",
-        "DB_POSTGRES_PASSWORD": "secret123"
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "DB_REDIS_HOST": "redis-server",
+            "DB_REDIS_PORT": "6380",
+            "DB_POSTGRES_PASSWORD": "secret123",
+        },
+    )
     def test_env_prefix(self):
         """Test env prefix funktionality"""
         settings = DatabaseSettings()
@@ -98,11 +99,14 @@ class TestDatabaseSettings:
 class TestAIModelSettings:
     """Testy pro AIModelSettings"""
 
-    @patch.dict(os.environ, {
-        "AI_OPENAI_API_KEY": "test-key-123",
-        "AI_OPENAI_MODEL": "gpt-4-turbo",
-        "AI_MAX_CONCURRENT_REQUESTS": "20"
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "AI_OPENAI_API_KEY": "test-key-123",
+            "AI_OPENAI_MODEL": "gpt-4-turbo",
+            "AI_MAX_CONCURRENT_REQUESTS": "20",
+        },
+    )
     def test_ai_settings(self):
         """Test AI nastavení"""
         settings = AIModelSettings()
@@ -115,11 +119,14 @@ class TestAIModelSettings:
 class TestSecuritySettings:
     """Testy pro SecuritySettings"""
 
-    @patch.dict(os.environ, {
-        "SECURITY_SECRET_KEY": "super-secret-key",
-        "SECURITY_JWT_SECRET": "jwt-secret",
-        "SECURITY_ENABLE_DATA_ENCRYPTION": "false"
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "SECURITY_SECRET_KEY": "super-secret-key",
+            "SECURITY_JWT_SECRET": "jwt-secret",
+            "SECURITY_ENABLE_DATA_ENCRYPTION": "false",
+        },
+    )
     def test_security_settings(self):
         """Test bezpečnostních nastavení"""
         settings = SecuritySettings()
@@ -151,7 +158,7 @@ class TestStructuredLogger:
         assert bound_logger.context["request_id"] == "123"
         assert bound_logger.context["user_id"] == "user1"
 
-    @patch('structlog.get_logger')
+    @patch("structlog.get_logger")
     def test_log_methods(self, mock_get_logger):
         """Test log metod"""
         mock_logger = Mock()
@@ -169,18 +176,14 @@ class TestStructuredLogger:
 class TestAuditLogger:
     """Testy pro AuditLogger"""
 
-    @patch('structlog.get_logger')
+    @patch("structlog.get_logger")
     def test_user_action_logging(self, mock_get_logger):
         """Test logování uživatelských akcí"""
         mock_logger = Mock()
         mock_get_logger.return_value = mock_logger
 
         audit_logger = AuditLogger("auth")
-        audit_logger.user_action(
-            action="login",
-            user_id="user123",
-            resource="system"
-        )
+        audit_logger.user_action(action="login", user_id="user123", resource="system")
 
         mock_logger.info.assert_called_once()
         call_args = mock_logger.info.call_args
@@ -188,7 +191,7 @@ class TestAuditLogger:
         assert call_args[1]["action"] == "login"
         assert call_args[1]["user_id"] == "user123"
 
-    @patch('structlog.get_logger')
+    @patch("structlog.get_logger")
     def test_security_event_logging(self, mock_get_logger):
         """Test logování bezpečnostních událostí"""
         mock_logger = Mock()
@@ -198,7 +201,7 @@ class TestAuditLogger:
         audit_logger.security_event(
             event_type="failed_login",
             severity="medium",
-            description="Multiple failed login attempts"
+            description="Multiple failed login attempts",
         )
 
         mock_logger.warning.assert_called_once()
@@ -210,17 +213,14 @@ class TestAuditLogger:
 class TestPerformanceLogger:
     """Testy pro PerformanceLogger"""
 
-    @patch('structlog.get_logger')
+    @patch("structlog.get_logger")
     def test_timing_logging(self, mock_get_logger):
         """Test logování časování"""
         mock_logger = Mock()
         mock_get_logger.return_value = mock_logger
 
         perf_logger = PerformanceLogger("api")
-        perf_logger.timing(
-            operation="search_documents",
-            duration_ms=150.5
-        )
+        perf_logger.timing(operation="search_documents", duration_ms=150.5)
 
         mock_logger.info.assert_called_once()
         call_args = mock_logger.info.call_args
@@ -228,17 +228,14 @@ class TestPerformanceLogger:
         assert call_args[1]["operation"] == "search_documents"
         assert call_args[1]["duration_ms"] == 150.5
 
-    @patch('structlog.get_logger')
+    @patch("structlog.get_logger")
     def test_resource_usage_logging(self, mock_get_logger):
         """Test logování využití zdrojů"""
         mock_logger = Mock()
         mock_get_logger.return_value = mock_logger
 
         perf_logger = PerformanceLogger("worker")
-        perf_logger.resource_usage(
-            cpu_percent=45.2,
-            memory_mb=512.0
-        )
+        perf_logger.resource_usage(cpu_percent=45.2, memory_mb=512.0)
 
         mock_logger.info.assert_called_once()
         call_args = mock_logger.info.call_args
@@ -285,10 +282,7 @@ class TestLoggingConfiguration:
         log_file = tmp_path / "test.log"
 
         configure_logging(
-            log_level="INFO",
-            log_format="json",
-            log_file=str(log_file),
-            enable_console=False
+            log_level="INFO", log_format="json", log_file=str(log_file), enable_console=False
         )
 
         logger = get_logger("test")
@@ -299,11 +293,7 @@ class TestLoggingConfiguration:
 
     def test_configure_logging_text_format(self):
         """Test konfigurace s text formátem"""
-        configure_logging(
-            log_level="DEBUG",
-            log_format="text",
-            enable_console=True
-        )
+        configure_logging(log_level="DEBUG", log_format="text", enable_console=True)
 
         logger = get_logger("test")
         logger.debug("Debug message")

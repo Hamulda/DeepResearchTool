@@ -1,60 +1,61 @@
 #!/usr/bin/env python3
-"""
-Enhanced Evidence Binding with Temporal Metadata
+"""Enhanced Evidence Binding with Temporal Metadata
 Time-aware evidence tracking with persistent identifiers and snapshot management
 
 Author: Senior IT Specialist
 """
 
-import hashlib
-import re
-from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
-from urllib.parse import urlparse
-import json
+from datetime import UTC, datetime
+import hashlib
 import logging
+import re
+from typing import Any
+from urllib.parse import urlparse
 
 
 @dataclass
 class PersistentIdentifiers:
     """Collection of persistent identifiers for evidence"""
-    doi: Optional[str] = None
-    ecli: Optional[str] = None  # European Case Law Identifier
-    cik: Optional[str] = None   # SEC Central Index Key
-    docket: Optional[str] = None # Court docket number
-    pmid: Optional[str] = None   # PubMed ID
-    arxiv_id: Optional[str] = None
-    issn: Optional[str] = None
-    isbn: Optional[str] = None
-    orcid: Optional[str] = None  # Author ORCID
+
+    doi: str | None = None
+    ecli: str | None = None  # European Case Law Identifier
+    cik: str | None = None  # SEC Central Index Key
+    docket: str | None = None  # Court docket number
+    pmid: str | None = None  # PubMed ID
+    arxiv_id: str | None = None
+    issn: str | None = None
+    isbn: str | None = None
+    orcid: str | None = None  # Author ORCID
 
 
 @dataclass
 class TemporalMetadata:
     """Time-related metadata for evidence"""
+
     # Source timestamps
-    publication_date: Optional[datetime] = None
-    last_modified: Optional[datetime] = None
-    access_date: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    publication_date: datetime | None = None
+    last_modified: datetime | None = None
+    access_date: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # Archive/snapshot info
-    memento_datetime: Optional[datetime] = None  # When content was archived
-    snapshot_hash: Optional[str] = None  # Content hash for change detection
-    wayback_timestamp: Optional[str] = None  # Wayback Machine timestamp
+    memento_datetime: datetime | None = None  # When content was archived
+    snapshot_hash: str | None = None  # Content hash for change detection
+    wayback_timestamp: str | None = None  # Wayback Machine timestamp
 
     # Version tracking
-    content_version: Optional[str] = None
-    revision_number: Optional[int] = None
+    content_version: str | None = None
+    revision_number: int | None = None
 
     # Temporal validity
-    valid_from: Optional[datetime] = None
-    valid_until: Optional[datetime] = None
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
 
 
 @dataclass
 class EnhancedEvidence:
     """Enhanced evidence with temporal metadata and persistent IDs"""
+
     # Core evidence data
     source_id: str
     canonical_url: str
@@ -78,9 +79,9 @@ class EnhancedEvidence:
 
     # Processing metadata
     extraction_method: str = "scraping"
-    processing_timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    processing_timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
-    def to_serializable_dict(self) -> Dict[str, Any]:
+    def to_serializable_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dictionary"""
         return {
             "source_id": self.source_id,
@@ -91,16 +92,36 @@ class EnhancedEvidence:
             "relevance_score": self.relevance_score,
             "confidence_score": self.confidence_score,
             "temporal_metadata": {
-                "publication_date": self.temporal_metadata.publication_date.isoformat() if self.temporal_metadata.publication_date else None,
-                "last_modified": self.temporal_metadata.last_modified.isoformat() if self.temporal_metadata.last_modified else None,
+                "publication_date": (
+                    self.temporal_metadata.publication_date.isoformat()
+                    if self.temporal_metadata.publication_date
+                    else None
+                ),
+                "last_modified": (
+                    self.temporal_metadata.last_modified.isoformat()
+                    if self.temporal_metadata.last_modified
+                    else None
+                ),
                 "access_date": self.temporal_metadata.access_date.isoformat(),
-                "memento_datetime": self.temporal_metadata.memento_datetime.isoformat() if self.temporal_metadata.memento_datetime else None,
+                "memento_datetime": (
+                    self.temporal_metadata.memento_datetime.isoformat()
+                    if self.temporal_metadata.memento_datetime
+                    else None
+                ),
                 "snapshot_hash": self.temporal_metadata.snapshot_hash,
                 "wayback_timestamp": self.temporal_metadata.wayback_timestamp,
                 "content_version": self.temporal_metadata.content_version,
                 "revision_number": self.temporal_metadata.revision_number,
-                "valid_from": self.temporal_metadata.valid_from.isoformat() if self.temporal_metadata.valid_from else None,
-                "valid_until": self.temporal_metadata.valid_until.isoformat() if self.temporal_metadata.valid_until else None
+                "valid_from": (
+                    self.temporal_metadata.valid_from.isoformat()
+                    if self.temporal_metadata.valid_from
+                    else None
+                ),
+                "valid_until": (
+                    self.temporal_metadata.valid_until.isoformat()
+                    if self.temporal_metadata.valid_until
+                    else None
+                ),
             },
             "persistent_ids": {
                 "doi": self.persistent_ids.doi,
@@ -111,14 +132,14 @@ class EnhancedEvidence:
                 "arxiv_id": self.persistent_ids.arxiv_id,
                 "issn": self.persistent_ids.issn,
                 "isbn": self.persistent_ids.isbn,
-                "orcid": self.persistent_ids.orcid
+                "orcid": self.persistent_ids.orcid,
             },
             "source_type": self.source_type,
             "domain": self.domain,
             "language": self.language,
             "source_authority": self.source_authority,
             "extraction_method": self.extraction_method,
-            "processing_timestamp": self.processing_timestamp.isoformat()
+            "processing_timestamp": self.processing_timestamp.isoformat(),
         }
 
 
@@ -130,14 +151,19 @@ class PersistentIdentifierExtractor:
 
         # Regex patterns for various identifiers
         self.patterns = {
-            "doi": re.compile(r"(?:doi:|DOI:)?\s*(?:https?://(?:dx\.)?doi\.org/)?(10\.\d{4,}/[^\s\]]+)", re.IGNORECASE),
+            "doi": re.compile(
+                r"(?:doi:|DOI:)?\s*(?:https?://(?:dx\.)?doi\.org/)?(10\.\d{4,}/[^\s\]]+)",
+                re.IGNORECASE,
+            ),
             "pmid": re.compile(r"(?:PMID:?\s*)?(\d{7,8})", re.IGNORECASE),
             "arxiv_id": re.compile(r"(?:arXiv:)?(\d{4}\.\d{4,5}(?:v\d+)?)", re.IGNORECASE),
             "ecli": re.compile(r"(ECLI:[A-Z]{2}:[A-Z0-9]+:\d{4}:[A-Z0-9]+)", re.IGNORECASE),
             "cik": re.compile(r"(?:CIK:?\s*)?(\d{10})", re.IGNORECASE),
             "issn": re.compile(r"(?:ISSN:?\s*)?(\d{4}-\d{3}[\dX])", re.IGNORECASE),
-            "isbn": re.compile(r"(?:ISBN:?\s*)?(?:978-?|979-?)?(\d{1,5}-?\d{1,7}-?\d{1,7}-?[\dX])", re.IGNORECASE),
-            "orcid": re.compile(r"(?:orcid\.org/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])", re.IGNORECASE)
+            "isbn": re.compile(
+                r"(?:ISBN:?\s*)?(?:978-?|979-?)?(\d{1,5}-?\d{1,7}-?\d{1,7}-?[\dX])", re.IGNORECASE
+            ),
+            "orcid": re.compile(r"(?:orcid\.org/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])", re.IGNORECASE),
         }
 
     def extract_from_url(self, url: str) -> PersistentIdentifiers:
@@ -246,11 +272,17 @@ class TemporalMetadataExtractor:
             re.compile(r"(\d{1,2}/\d{1,2}/\d{4})"),
             re.compile(r"(\d{1,2}-\d{1,2}-\d{4})"),
             # Text dates
-            re.compile(r"((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})", re.IGNORECASE),
-            re.compile(r"(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})", re.IGNORECASE)
+            re.compile(
+                r"((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                r"(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})",
+                re.IGNORECASE,
+            ),
         ]
 
-    def extract_from_headers(self, headers: Dict[str, str]) -> TemporalMetadata:
+    def extract_from_headers(self, headers: dict[str, str]) -> TemporalMetadata:
         """Extract temporal metadata from HTTP headers"""
         metadata = TemporalMetadata()
 
@@ -259,7 +291,7 @@ class TemporalMetadataExtractor:
             try:
                 metadata.last_modified = datetime.strptime(
                     headers["last-modified"], "%a, %d %b %Y %H:%M:%S %Z"
-                ).replace(tzinfo=timezone.utc)
+                ).replace(tzinfo=UTC)
             except ValueError:
                 self.logger.warning(f"Could not parse Last-Modified: {headers['last-modified']}")
 
@@ -268,7 +300,7 @@ class TemporalMetadataExtractor:
             try:
                 access_date = datetime.strptime(
                     headers["date"], "%a, %d %b %Y %H:%M:%S %Z"
-                ).replace(tzinfo=timezone.utc)
+                ).replace(tzinfo=UTC)
                 metadata.access_date = access_date
             except ValueError:
                 pass
@@ -299,13 +331,13 @@ class TemporalMetadataExtractor:
                 # Convert to datetime
                 try:
                     wayback_dt = datetime.strptime(wayback_match.group(1), "%Y%m%d%H%M%S")
-                    metadata.memento_datetime = wayback_dt.replace(tzinfo=timezone.utc)
+                    metadata.memento_datetime = wayback_dt.replace(tzinfo=UTC)
                 except ValueError:
                     pass
 
         return metadata
 
-    def _find_publication_date(self, content: str) -> Optional[datetime]:
+    def _find_publication_date(self, content: str) -> datetime | None:
         """Find publication date in content"""
         # Look for common publication date indicators
         pub_indicators = [
@@ -314,7 +346,7 @@ class TemporalMetadataExtractor:
             r"date\s+published:?\s*([^<\n]+)",
             r"pub\s+date:?\s*([^<\n]+)",
             r"created:?\s*([^<\n]+)",
-            r"posted:?\s*([^<\n]+)"
+            r"posted:?\s*([^<\n]+)",
         ]
 
         for indicator in pub_indicators:
@@ -334,7 +366,7 @@ class TemporalMetadataExtractor:
 
         return None
 
-    def _parse_date_string(self, date_str: str) -> Optional[datetime]:
+    def _parse_date_string(self, date_str: str) -> datetime | None:
         """Parse various date string formats"""
         date_str = date_str.strip()
 
@@ -348,14 +380,14 @@ class TemporalMetadataExtractor:
             "%B %d, %Y",
             "%B %d %Y",
             "%d %b %Y",
-            "%d %B %Y"
+            "%d %B %Y",
         ]
 
         for fmt in formats:
             try:
                 parsed = datetime.strptime(date_str, fmt)
                 if parsed.tzinfo is None:
-                    parsed = parsed.replace(tzinfo=timezone.utc)
+                    parsed = parsed.replace(tzinfo=UTC)
                 return parsed
             except ValueError:
                 continue
@@ -365,8 +397,8 @@ class TemporalMetadataExtractor:
     def _generate_content_hash(self, content: str) -> str:
         """Generate SHA-256 hash of content for change detection"""
         # Normalize content (remove extra whitespace, etc.)
-        normalized = re.sub(r'\s+', ' ', content.strip())
-        return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+        normalized = re.sub(r"\s+", " ", content.strip())
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 class EnhancedEvidenceManager:
@@ -380,8 +412,9 @@ class EnhancedEvidenceManager:
         # Evidence change tracking
         self.change_history = {}
 
-    def create_enhanced_evidence(self, source_data: Dict[str, Any],
-                               content: str = "", headers: Dict[str, str] = None) -> EnhancedEvidence:
+    def create_enhanced_evidence(
+        self, source_data: dict[str, Any], content: str = "", headers: dict[str, str] = None
+    ) -> EnhancedEvidence:
         """Create enhanced evidence from source data"""
         headers = headers or {}
 
@@ -394,7 +427,7 @@ class EnhancedEvidenceManager:
             content=content,
             relevance_score=source_data.get("score", 0.0),
             domain=self._extract_domain(source_data.get("canonical_url", "")),
-            source_type=self._determine_source_type(source_data.get("canonical_url", ""))
+            source_type=self._determine_source_type(source_data.get("canonical_url", "")),
         )
 
         # Extract persistent identifiers
@@ -406,10 +439,14 @@ class EnhancedEvidenceManager:
 
         # Extract temporal metadata
         header_temporal = self.temporal_extractor.extract_from_headers(headers)
-        content_temporal = self.temporal_extractor.extract_from_content(content, evidence.canonical_url)
+        content_temporal = self.temporal_extractor.extract_from_content(
+            content, evidence.canonical_url
+        )
 
         # Merge temporal metadata
-        evidence.temporal_metadata = self._merge_temporal_metadata(header_temporal, content_temporal)
+        evidence.temporal_metadata = self._merge_temporal_metadata(
+            header_temporal, content_temporal
+        )
 
         # Calculate source authority
         evidence.source_authority = self._calculate_source_authority(evidence)
@@ -417,14 +454,15 @@ class EnhancedEvidenceManager:
         self.logger.debug(f"Created enhanced evidence: {evidence.source_id}")
         return evidence
 
-    def track_evidence_changes(self, evidence: EnhancedEvidence,
-                             previous_evidence: Optional[EnhancedEvidence] = None) -> Dict[str, Any]:
+    def track_evidence_changes(
+        self, evidence: EnhancedEvidence, previous_evidence: EnhancedEvidence | None = None
+    ) -> dict[str, Any]:
         """Track changes in evidence content"""
         changes = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "evidence_id": evidence.source_id,
             "changes_detected": False,
-            "change_details": {}
+            "change_details": {},
         }
 
         if previous_evidence is None:
@@ -443,7 +481,7 @@ class EnhancedEvidenceManager:
                 "content_changed": True,
                 "previous_hash": previous_hash,
                 "current_hash": current_hash,
-                "requires_reverification": True
+                "requires_reverification": True,
             }
 
             # Update history
@@ -452,9 +490,12 @@ class EnhancedEvidenceManager:
             self.logger.info(f"Content change detected for evidence: {evidence.source_id}")
 
         # Check for temporal updates
-        if (evidence.temporal_metadata.last_modified and
-            previous_evidence.temporal_metadata.last_modified and
-            evidence.temporal_metadata.last_modified > previous_evidence.temporal_metadata.last_modified):
+        if (
+            evidence.temporal_metadata.last_modified
+            and previous_evidence.temporal_metadata.last_modified
+            and evidence.temporal_metadata.last_modified
+            > previous_evidence.temporal_metadata.last_modified
+        ):
 
             changes["changes_detected"] = True
             changes["change_details"]["last_modified_updated"] = True
@@ -474,7 +515,9 @@ class EnhancedEvidenceManager:
         domain = self._extract_domain(url)
 
         # Academic sources
-        if any(x in domain for x in ["arxiv.org", "pubmed", "springer", "nature.com", "science.org"]):
+        if any(
+            x in domain for x in ["arxiv.org", "pubmed", "springer", "nature.com", "science.org"]
+        ):
             return "academic"
 
         # Legal sources
@@ -491,8 +534,9 @@ class EnhancedEvidenceManager:
 
         return "web"
 
-    def _merge_persistent_ids(self, url_ids: PersistentIdentifiers,
-                            content_ids: PersistentIdentifiers) -> PersistentIdentifiers:
+    def _merge_persistent_ids(
+        self, url_ids: PersistentIdentifiers, content_ids: PersistentIdentifiers
+    ) -> PersistentIdentifiers:
         """Merge persistent IDs with URL taking precedence"""
         merged = PersistentIdentifiers()
 
@@ -506,8 +550,9 @@ class EnhancedEvidenceManager:
 
         return merged
 
-    def _merge_temporal_metadata(self, header_meta: TemporalMetadata,
-                               content_meta: TemporalMetadata) -> TemporalMetadata:
+    def _merge_temporal_metadata(
+        self, header_meta: TemporalMetadata, content_meta: TemporalMetadata
+    ) -> TemporalMetadata:
         """Merge temporal metadata from headers and content"""
         merged = TemporalMetadata()
 
@@ -539,7 +584,7 @@ class EnhancedEvidenceManager:
             "eur-lex.europa.eu": 0.9,
             "reuters.com": 0.8,
             "bbc.com": 0.8,
-            "wikipedia.org": 0.7
+            "wikipedia.org": 0.7,
         }
 
         for domain, score in domain_scores.items():
@@ -555,7 +600,9 @@ class EnhancedEvidenceManager:
 
         # Boost for recent content
         if evidence.temporal_metadata.publication_date:
-            years_old = (datetime.now(timezone.utc) - evidence.temporal_metadata.publication_date).days / 365
+            years_old = (
+                datetime.now(UTC) - evidence.temporal_metadata.publication_date
+            ).days / 365
             if years_old < 1:
                 authority += 0.05
             elif years_old > 10:

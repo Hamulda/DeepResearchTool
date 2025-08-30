@@ -1,17 +1,15 @@
-"""
-Multi-Agent Expert Committee Architecture
+"""Multi-Agent Expert Committee Architecture
 Implementace výboru expertů pro komplexní výzkumné úlohy
 """
 
-import asyncio
-import logging
-from typing import Dict, List, Any, Optional
-from enum import Enum
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+import asyncio
+from dataclasses import dataclass
+from enum import Enum
+import logging
+from typing import Any
 
-from langgraph import StateGraph, START, END
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langgraph import END, START, StateGraph
 
 from src.observability.langfuse_integration import trace_research_operation
 
@@ -20,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class ExpertType(Enum):
     """Typy expertních agentů"""
+
     ACADEMIC = "academic_expert"
     WEB_ANALYST = "web_analyst"
     TECHNICAL = "technical_expert"
@@ -30,22 +29,24 @@ class ExpertType(Enum):
 @dataclass
 class ExpertResponse:
     """Odpověď od expertního agenta"""
+
     expert_type: ExpertType
     confidence: float
     findings: str
-    sources: List[Dict[str, Any]]
-    metadata: Dict[str, Any]
+    sources: list[dict[str, Any]]
+    metadata: dict[str, Any]
 
 
 @dataclass
 class CommitteeState:
     """Stav multi-agentního výboru"""
+
     original_query: str
-    query_analysis: Dict[str, Any]
-    expert_responses: List[ExpertResponse]
-    synthesis_result: Optional[str] = None
-    confidence_scores: Dict[str, float] = None
-    final_answer: Optional[str] = None
+    query_analysis: dict[str, Any]
+    expert_responses: list[ExpertResponse]
+    synthesis_result: str | None = None
+    confidence_scores: dict[str, float] = None
+    final_answer: str | None = None
     iteration: int = 0
     max_iterations: int = 3
 
@@ -53,7 +54,7 @@ class CommitteeState:
 class ExpertAgent(ABC):
     """Abstraktní třída pro expertního agenta"""
 
-    def __init__(self, expert_type: ExpertType, llm_client, tools: List[Any]):
+    def __init__(self, expert_type: ExpertType, llm_client, tools: list[Any]):
         self.expert_type = expert_type
         self.llm_client = llm_client
         self.tools = tools
@@ -62,17 +63,13 @@ class ExpertAgent(ABC):
     @abstractmethod
     def _get_specialization(self) -> str:
         """Vrátí popis specializace agenta"""
-        pass
 
     @abstractmethod
-    async def analyze_query(self, query: str) -> Dict[str, Any]:
+    async def analyze_query(self, query: str) -> dict[str, Any]:
         """Analýza dotazu z pohledu experta"""
-        pass
 
     @trace_research_operation("expert_research")
-    async def conduct_research(self,
-                             query: str,
-                             context: Dict[str, Any] = None) -> ExpertResponse:
+    async def conduct_research(self, query: str, context: dict[str, Any] = None) -> ExpertResponse:
         """Provede výzkum v oblasti své specializace"""
         try:
             # Analýza relevantnosti dotazu
@@ -84,7 +81,7 @@ class ExpertAgent(ABC):
                     confidence=0.1,
                     findings=f"Dotaz není relevantní pro {self.specialization}",
                     sources=[],
-                    metadata=analysis
+                    metadata=analysis,
                 )
 
             # Provedení specializovaného výzkumu
@@ -95,7 +92,7 @@ class ExpertAgent(ABC):
                 confidence=analysis["confidence"],
                 findings=findings["content"],
                 sources=findings["sources"],
-                metadata=findings["metadata"]
+                metadata=findings["metadata"],
             )
 
         except Exception as e:
@@ -103,17 +100,16 @@ class ExpertAgent(ABC):
             return ExpertResponse(
                 expert_type=self.expert_type,
                 confidence=0.0,
-                findings=f"Chyba při výzkumu: {str(e)}",
+                findings=f"Chyba při výzkumu: {e!s}",
                 sources=[],
-                metadata={"error": str(e)}
+                metadata={"error": str(e)},
             )
 
     @abstractmethod
-    async def _conduct_specialized_research(self,
-                                          query: str,
-                                          analysis: Dict[str, Any]) -> Dict[str, Any]:
+    async def _conduct_specialized_research(
+        self, query: str, analysis: dict[str, Any]
+    ) -> dict[str, Any]:
         """Specializovaný výzkum podle typu experta"""
-        pass
 
 
 class AcademicExpert(ExpertAgent):
@@ -122,7 +118,7 @@ class AcademicExpert(ExpertAgent):
     def _get_specialization(self) -> str:
         return "akademický výzkum, peer-reviewed publikace, vědecké studie"
 
-    async def analyze_query(self, query: str) -> Dict[str, Any]:
+    async def analyze_query(self, query: str) -> dict[str, Any]:
         """Analýza z akademického pohledu"""
         prompt = f"""
         Analyzuj následující dotaz z pohledu akademického výzkumu:
@@ -142,20 +138,20 @@ class AcademicExpert(ExpertAgent):
 
         try:
             import json
+
             return json.loads(response)
         except:
             return {
                 "relevance_score": 0.7,
                 "confidence": 0.6,
                 "scientific_fields": ["general"],
-                "methodology_needed": True
+                "methodology_needed": True,
             }
 
-    async def _conduct_specialized_research(self,
-                                          query: str,
-                                          analysis: Dict[str, Any]) -> Dict[str, Any]:
+    async def _conduct_specialized_research(
+        self, query: str, analysis: dict[str, Any]
+    ) -> dict[str, Any]:
         """Akademický výzkum pomocí specializovaných nástrojů"""
-
         # Použití Semantic Scholar a akademických databází
         from src.core.enhanced_tools import semantic_scholar_search
 
@@ -196,8 +192,8 @@ class AcademicExpert(ExpertAgent):
             "sources": sources,
             "metadata": {
                 "search_fields": analysis.get("scientific_fields"),
-                "peer_reviewed_count": len([s for s in sources if s.get("peer_reviewed", False)])
-            }
+                "peer_reviewed_count": len([s for s in sources if s.get("peer_reviewed", False)]),
+            },
         }
 
 
@@ -207,7 +203,7 @@ class WebAnalyst(ExpertAgent):
     def _get_specialization(self) -> str:
         return "analýza webových zdrojů, aktuální trendy, online databáze"
 
-    async def analyze_query(self, query: str) -> Dict[str, Any]:
+    async def analyze_query(self, query: str) -> dict[str, Any]:
         """Analýza z pohledu webové analýzy"""
         prompt = f"""
         Analyzuj dotaz z pohledu webové analýzy a aktuálních trendů:
@@ -227,20 +223,20 @@ class WebAnalyst(ExpertAgent):
 
         try:
             import json
+
             return json.loads(response)
         except:
             return {
                 "relevance_score": 0.8,
                 "confidence": 0.7,
                 "time_sensitivity": "high",
-                "source_types": ["news", "blogs", "official_sites"]
+                "source_types": ["news", "blogs", "official_sites"],
             }
 
-    async def _conduct_specialized_research(self,
-                                          query: str,
-                                          analysis: Dict[str, Any]) -> Dict[str, Any]:
+    async def _conduct_specialized_research(
+        self, query: str, analysis: dict[str, Any]
+    ) -> dict[str, Any]:
         """Webová analýza pomocí scraperů a API"""
-
         sources = []
         content_parts = []
 
@@ -289,8 +285,10 @@ class WebAnalyst(ExpertAgent):
             "metadata": {
                 "search_terms": search_terms,
                 "time_sensitivity": analysis.get("time_sensitivity"),
-                "source_freshness": max([s.get("publish_date", "2020-01-01") for s in sources] + ["2020-01-01"])
-            }
+                "source_freshness": max(
+                    [s.get("publish_date", "2020-01-01") for s in sources] + ["2020-01-01"]
+                ),
+            },
         }
 
 
@@ -300,7 +298,7 @@ class TechnicalExpert(ExpertAgent):
     def _get_specialization(self) -> str:
         return "technické specifikace, architektura, implementační detaily"
 
-    async def analyze_query(self, query: str) -> Dict[str, Any]:
+    async def analyze_query(self, query: str) -> dict[str, Any]:
         """Analýza z technického pohledu"""
         prompt = f"""
         Analyzuj dotaz z technického pohledu:
@@ -320,6 +318,7 @@ class TechnicalExpert(ExpertAgent):
 
         try:
             import json
+
             return json.loads(response)
         except:
             return {
@@ -327,14 +326,13 @@ class TechnicalExpert(ExpertAgent):
                 "confidence": 0.8,
                 "complexity": 0.7,
                 "technologies": ["general"],
-                "implementation_focus": True
+                "implementation_focus": True,
             }
 
-    async def _conduct_specialized_research(self,
-                                          query: str,
-                                          analysis: Dict[str, Any]) -> Dict[str, Any]:
+    async def _conduct_specialized_research(
+        self, query: str, analysis: dict[str, Any]
+    ) -> dict[str, Any]:
         """Technický výzkum"""
-
         sources = []
         content_parts = []
 
@@ -368,8 +366,8 @@ class TechnicalExpert(ExpertAgent):
             "sources": sources,
             "metadata": {
                 "technologies": tech_terms,
-                "complexity_score": analysis.get("complexity")
-            }
+                "complexity_score": analysis.get("complexity"),
+            },
         }
 
 
@@ -379,7 +377,7 @@ class CoordinatorAgent:
     def __init__(self, llm_client):
         self.llm_client = llm_client
 
-    async def analyze_query_requirements(self, query: str) -> Dict[str, Any]:
+    async def analyze_query_requirements(self, query: str) -> dict[str, Any]:
         """Analýza požadavků na experty"""
         prompt = f"""
         Analyzuj tento výzkumný dotaz a urči, kteří experti jsou potřeba:
@@ -403,20 +401,18 @@ class CoordinatorAgent:
 
         try:
             import json
+
             return json.loads(response)
         except:
             # Fallback - zapojit všechny experty
             return {
                 "academic_expert": {"relevance": 0.7, "priority": "medium"},
                 "web_analyst": {"relevance": 0.8, "priority": "high"},
-                "technical_expert": {"relevance": 0.6, "priority": "low"}
+                "technical_expert": {"relevance": 0.6, "priority": "low"},
             }
 
-    async def synthesize_expert_responses(self,
-                                        query: str,
-                                        responses: List[ExpertResponse]) -> str:
+    async def synthesize_expert_responses(self, query: str, responses: list[ExpertResponse]) -> str:
         """Syntéza odpovědí od expertů"""
-
         if not responses:
             return "Žádné expertní odpovědi k dispozici."
 
@@ -457,7 +453,7 @@ class CoordinatorAgent:
 class ExpertCommitteeGraph:
     """LangGraph implementace výboru expertů"""
 
-    def __init__(self, llm_client, tools_registry: Dict[str, Any]):
+    def __init__(self, llm_client, tools_registry: dict[str, Any]):
         self.llm_client = llm_client
         self.tools_registry = tools_registry
 
@@ -471,7 +467,7 @@ class ExpertCommitteeGraph:
             ),
             ExpertType.TECHNICAL: TechnicalExpert(
                 ExpertType.TECHNICAL, llm_client, tools_registry.get("technical", [])
-            )
+            ),
         }
 
         self.coordinator = CoordinatorAgent(llm_client)
@@ -497,10 +493,7 @@ class ExpertCommitteeGraph:
         graph.add_conditional_edges(
             "evaluate_completeness",
             self._should_continue,
-            {
-                "continue": "conduct_research",
-                "finish": END
-            }
+            {"continue": "conduct_research", "finish": END},
         )
 
         return graph.compile()
@@ -541,7 +534,9 @@ class ExpertCommitteeGraph:
         """Hodnocení úplnosti odpovědi"""
         # Výpočet confidence scores
         if state.expert_responses:
-            avg_confidence = sum(r.confidence for r in state.expert_responses) / len(state.expert_responses)
+            avg_confidence = sum(r.confidence for r in state.expert_responses) / len(
+                state.expert_responses
+            )
             state.confidence_scores = {"overall": avg_confidence}
 
             # Pokud je confidence vysoké, ukončíme
@@ -561,13 +556,10 @@ class ExpertCommitteeGraph:
 
         return "continue"
 
-    async def run(self, query: str) -> Dict[str, Any]:
+    async def run(self, query: str) -> dict[str, Any]:
         """Spuštění výboru expertů"""
         initial_state = CommitteeState(
-            original_query=query,
-            query_analysis={},
-            expert_responses=[],
-            max_iterations=3
+            original_query=query, query_analysis={}, expert_responses=[], max_iterations=3
         )
 
         final_state = await self.graph.ainvoke(initial_state)
@@ -577,5 +569,5 @@ class ExpertCommitteeGraph:
             "answer": final_state.final_answer,
             "expert_responses": final_state.expert_responses,
             "confidence_scores": final_state.confidence_scores,
-            "iterations": final_state.iteration
+            "iterations": final_state.iteration,
         }

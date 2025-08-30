@@ -19,7 +19,7 @@ from src.core.enhanced_tools import (
     semantic_scholar_search,
     data_gov_search,
     wayback_machine_search,
-    cross_reference_sources
+    cross_reference_sources,
 )
 from src.observability.langfuse_integration import get_observability_manager
 from src.evaluation.evaluation_pipeline import EvaluationPipeline, RAGEvaluator
@@ -48,28 +48,22 @@ class EnhancedResearchDemo:
                 "model": "gpt-4o-mini",
                 "temperature": 0.1,
                 "synthesis_model": "gpt-4o",
-                "synthesis_temperature": 0.2
+                "synthesis_temperature": 0.2,
             },
             "memory_store": {
                 "type": "chroma",
                 "collection_name": "enhanced_demo_collection",
-                "persist_directory": "./demo_chroma_db"
+                "persist_directory": "./demo_chroma_db",
             },
             "tools": {
                 "enabled": ["semantic_scholar", "web_scraper", "wayback_machine"],
-                "scraper_config": {
-                    "max_pages": 5,
-                    "timeout": 30
-                }
+                "scraper_config": {"max_pages": 5, "timeout": 30},
             },
             "evaluation": {
                 "golden_dataset_path": "evaluation/golden_dataset.json",
-                "metrics_enabled": True
+                "metrics_enabled": True,
             },
-            "observability": {
-                "langfuse_enabled": True,
-                "trace_level": "detailed"
-            }
+            "observability": {"langfuse_enabled": True, "trace_level": "detailed"},
         }
 
     async def initialize(self):
@@ -84,7 +78,7 @@ class EnhancedResearchDemo:
         tools_registry = {
             "academic": ["semantic_scholar_search", "arxiv_search"],
             "web": ["firecrawl_scraper", "web_search"],
-            "technical": ["github_search", "documentation_search"]
+            "technical": ["github_search", "documentation_search"],
         }
 
         # Mock LLM client pro demo
@@ -110,9 +104,9 @@ class EnhancedResearchDemo:
 
     async def demo_basic_research(self):
         """Demo základního výzkumu"""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🔍 DEMO: Základní výzkum s observability")
-        print("="*60)
+        print("=" * 60)
 
         query = "Jaké jsou nejnovější trendy v AI safety research?"
 
@@ -122,11 +116,14 @@ class EnhancedResearchDemo:
                 result = await self.agent.run(query)
 
                 # Zaznamenání metrik
-                tracer.log_metrics({
-                    "query_complexity": 0.7,
-                    "sources_found": len(result.get("sources", [])),
-                    "processing_time": 2.5
-                }, trace_id=trace.id if trace else None)
+                tracer.log_metrics(
+                    {
+                        "query_complexity": 0.7,
+                        "sources_found": len(result.get("sources", [])),
+                        "processing_time": 2.5,
+                    },
+                    trace_id=trace.id if trace else None,
+                )
         else:
             result = await self.agent.run(query)
 
@@ -138,9 +135,9 @@ class EnhancedResearchDemo:
 
     async def demo_expert_committee(self):
         """Demo multi-agentní expert committee"""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🤝 DEMO: Multi-Agent Expert Committee")
-        print("="*60)
+        print("=" * 60)
 
         complex_query = "Analyzuj dopad kvantového počítání na kryptografii a bezpečnost"
 
@@ -159,9 +156,9 @@ class EnhancedResearchDemo:
 
     async def demo_evaluation_pipeline(self):
         """Demo evaluační pipeline"""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("📊 DEMO: Automatizovaná evaluace")
-        print("="*60)
+        print("=" * 60)
 
         # Test na prvních 3 otázkách z Golden Dataset
         if not self.evaluation_pipeline.golden_dataset:
@@ -195,9 +192,9 @@ class EnhancedResearchDemo:
 
     async def demo_observability_dashboard(self):
         """Demo observability funkcí"""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("📊 DEMO: Observability & Monitoring")
-        print("="*60)
+        print("=" * 60)
 
         if not self.observability.is_enabled():
             print("❌ Langfuse observability není zapnutá")
@@ -211,7 +208,7 @@ class EnhancedResearchDemo:
         queries = [
             "Co je GPT-4?",
             "Vysvětli kvantovou supremacii",
-            "Jaké jsou trendy v renewable energy?"
+            "Jaké jsou trendy v renewable energy?",
         ]
 
         for i, query in enumerate(queries):
@@ -219,21 +216,23 @@ class EnhancedResearchDemo:
 
             tracer = self.observability.get_tracer()
             with tracer.trace_research_session(
-                query,
-                {"demo_batch": True, "query_index": i}
+                query, {"demo_batch": True, "query_index": i}
             ) as trace:
                 start_time = time.time()
                 result = await self.agent.run(query)
                 duration = time.time() - start_time
 
                 # Detailní metriky
-                tracer.log_metrics({
-                    "duration_seconds": duration,
-                    "query_length": len(query),
-                    "answer_length": len(result.get("answer", "")),
-                    "sources_count": len(result.get("sources", [])),
-                    "demo_run": True
-                }, trace_id=trace.id if trace else None)
+                tracer.log_metrics(
+                    {
+                        "duration_seconds": duration,
+                        "query_length": len(query),
+                        "answer_length": len(result.get("answer", "")),
+                        "sources_count": len(result.get("sources", [])),
+                        "demo_run": True,
+                    },
+                    trace_id=trace.id if trace else None,
+                )
 
                 print(f"  ✅ Completed in {duration:.2f}s")
 
@@ -241,9 +240,9 @@ class EnhancedResearchDemo:
 
     async def demo_production_readiness(self):
         """Demo production readiness checklist"""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🚀 DEMO: Production Readiness Checklist")
-        print("="*60)
+        print("=" * 60)
 
         checklist = {
             "🔍 Observability": self.observability.is_enabled(),
@@ -253,7 +252,7 @@ class EnhancedResearchDemo:
             "📁 Golden Dataset": Path("evaluation/golden_dataset.json").exists(),
             "🐳 Docker Support": Path("docker-compose.observability.yml").exists(),
             "🔄 CI/CD Pipeline": Path(".github/workflows/ci-cd-pipeline.yml").exists(),
-            "📋 Scaling Plan": Path("docs/production_scaling_plan.md").exists()
+            "📋 Scaling Plan": Path("docs/production_scaling_plan.md").exists(),
         }
 
         total_checks = len(checklist)
@@ -263,7 +262,9 @@ class EnhancedResearchDemo:
         for item, status in checklist.items():
             print(f"  {item}: {'✅' if status else '❌'}")
 
-        print(f"\n📊 Overall Score: {passed_checks}/{total_checks} ({passed_checks/total_checks*100:.1f}%)")
+        print(
+            f"\n📊 Overall Score: {passed_checks}/{total_checks} ({passed_checks/total_checks*100:.1f}%)"
+        )
 
         if passed_checks >= total_checks * 0.8:
             print("🎉 READY FOR PRODUCTION!")
@@ -273,7 +274,7 @@ class EnhancedResearchDemo:
     async def run_complete_demo(self):
         """Spuštění kompletního demo"""
         print("🎯 ENHANCED RESEARCH AGENT - COMPLETE DEMO")
-        print("="*80)
+        print("=" * 80)
 
         await self.initialize()
 
@@ -284,9 +285,9 @@ class EnhancedResearchDemo:
         await self.demo_observability_dashboard()
         await self.demo_production_readiness()
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("🎊 DEMO DOKONČENO!")
-        print("="*80)
+        print("=" * 80)
         print("\nDalší kroky:")
         print("1. 🐳 Spusťte Langfuse: docker-compose -f docker-compose.observability.yml up")
         print("2. 🧪 Spusťte testy: pytest tests/test_evaluation_pipeline.py -v")

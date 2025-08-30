@@ -1,4 +1,2 @@
+"""Observability module pro LLM monitoring a tracing
 """
-Observability module pro LLM monitoring a tracing
-"""
-

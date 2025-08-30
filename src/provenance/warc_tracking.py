@@ -1,606 +1,399 @@
-#!/usr/bin/env python3
-"""
-WARC/CDX Provenance Tracking
-Comprehensive tracking of data origins with timestamps, hashes, and forensic capabilities
+"""WARC Tracking System
+Sledování a archivace webových zdrojů pro forenzní analýzu
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+import gzip
 import hashlib
 import json
 import logging
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
-import gzip
-import base64
+import uuid
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class ProvenanceRecord:
-    """Complete provenance record for a piece of content"""
-    content_id: str
-    source_url: str
+class WARCRecord:
+    """Záznam pro WARC archiv"""
+
+    record_id: str
+    url: str
     timestamp: datetime
+    content_type: str
+    content_length: int
     content_hash: str
-    warc_record_id: Optional[str] = None
-    cdx_line: Optional[str] = None
-    http_headers: Dict[str, str] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "content_id": self.content_id,
-            "source_url": self.source_url,
-            "timestamp": self.timestamp.isoformat(),
-            "content_hash": self.content_hash,
-            "warc_record_id": self.warc_record_id,
-            "cdx_line": self.cdx_line,
-            "http_headers": self.http_headers,
-            "metadata": self.metadata
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ProvenanceRecord':
-        return cls(
-            content_id=data["content_id"],
-            source_url=data["source_url"],
-            timestamp=datetime.fromisoformat(data["timestamp"]),
-            content_hash=data["content_hash"],
-            warc_record_id=data.get("warc_record_id"),
-            cdx_line=data.get("cdx_line"),
-            http_headers=data.get("http_headers", {}),
-            metadata=data.get("metadata", {})
-        )
+    http_status: int | None = None
+    headers: dict[str, str] = field(default_factory=dict)
+    content: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+    source_query: str | None = None
+    retrieval_method: str = "http"  # http, browser, tor
 
 
 @dataclass
-class DomainRiskProfile:
-    """Risk assessment for a domain"""
-    domain: str
-    risk_score: float  # 0.0 (low risk) to 1.0 (high risk)
-    risk_factors: List[str]
-    last_updated: datetime
-    confidence: float
+class WARCHeader:
+    """WARC header informace"""
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "domain": self.domain,
-            "risk_score": self.risk_score,
-            "risk_factors": self.risk_factors,
-            "last_updated": self.last_updated.isoformat(),
-            "confidence": self.confidence
-        }
+    warc_type: str
+    warc_record_id: str
+    warc_date: str
+    content_length: int
+    content_type: str = "application/http; msgtype=response"
+    warc_target_uri: str | None = None
 
 
-class WARCRecordGenerator:
-    """Generate WARC records for captured content"""
+class WARCWriter:
+    """Writer pro WARC formát s kompresí
+    """
 
-    def __init__(self):
-        self.warc_version = "WARC/1.0"
+    def __init__(self, output_dir: str = "./warc_archives"):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(exist_ok=True)
+        self.current_file: Path | None = None
+        self.current_writer = None
+        self.records_written = 0
+        self.max_records_per_file = 1000
 
-    def create_warc_record(
-        self,
-        url: str,
-        content: str,
-        headers: Dict[str, str],
-        timestamp: Optional[datetime] = None
-    ) -> Tuple[str, str]:
-        """Create a WARC record and return (record_id, warc_content)"""
+    def _get_warc_filename(self) -> str:
+        """Generování názvu WARC souboru"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"research_archive_{timestamp}.warc.gz"
 
-        if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
+    def _create_warc_header(self, record: WARCRecord) -> str:
+        """Vytvoření WARC header"""
+        warc_date = record.timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        # Generate unique record ID
-        record_id = self._generate_record_id(url, timestamp)
-
-        # Create WARC headers
-        warc_headers = {
-            "WARC-Type": "response",
-            "WARC-Target-URI": url,
-            "WARC-Date": timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "WARC-Record-ID": f"<urn:uuid:{record_id}>",
-            "Content-Type": "application/http; msgtype=response",
-            "Content-Length": str(len(content))
-        }
-
-        # Build WARC record
-        warc_content = f"{self.warc_version}\r\n"
-        for key, value in warc_headers.items():
-            warc_content += f"{key}: {value}\r\n"
-        warc_content += "\r\n"
-
-        # Add HTTP response simulation
-        http_response = self._create_http_response(content, headers)
-        warc_content += http_response
-        warc_content += "\r\n\r\n"
-
-        return record_id, warc_content
-
-    def _generate_record_id(self, url: str, timestamp: datetime) -> str:
-        """Generate unique record ID"""
-        combined = f"{url}_{timestamp.isoformat()}"
-        return hashlib.sha256(combined.encode()).hexdigest()
-
-    def _create_http_response(self, content: str, headers: Dict[str, str]) -> str:
-        """Create HTTP response portion of WARC record"""
-        response = "HTTP/1.1 200 OK\r\n"
-
-        # Add headers
-        for key, value in headers.items():
-            response += f"{key}: {value}\r\n"
-
-        response += f"Content-Length: {len(content.encode('utf-8'))}\r\n"
-        response += "\r\n"
-        response += content
-
-        return response
-
-
-class CDXGenerator:
-    """Generate CDX (Capture inDeX) entries for content"""
-
-    def create_cdx_line(
-        self,
-        url: str,
-        timestamp: datetime,
-        mime_type: str,
-        status_code: int,
-        content_hash: str,
-        content_length: int,
-        warc_file: str,
-        warc_offset: int
-    ) -> str:
-        """Create a CDX line in standard format"""
-
-        # Parse URL components
-        parsed = urlparse(url)
-
-        # Canonicalize URL
-        canonical_url = self._canonicalize_url(url)
-
-        # Format timestamp
-        timestamp_str = timestamp.strftime("%Y%m%d%H%M%S")
-
-        # CDX fields: urlkey timestamp original mimetype statuscode digest length offset filename
-        cdx_fields = [
-            canonical_url,
-            timestamp_str,
-            url,
-            mime_type,
-            str(status_code),
-            content_hash,
-            str(content_length),
-            str(warc_offset),
-            warc_file
+        header_lines = [
+            "WARC/1.0",
+            "WARC-Type: response",
+            f"WARC-Record-ID: <urn:uuid:{record.record_id}>",
+            f"WARC-Date: {warc_date}",
+            f"WARC-Target-URI: {record.url}",
+            f"Content-Type: {record.content_type}",
+            f"Content-Length: {record.content_length}",
+            ""  # Prázdný řádek na konci header
         ]
 
-        return " ".join(cdx_fields)
+        return "\r\n".join(header_lines) + "\r\n"
 
-    def _canonicalize_url(self, url: str) -> str:
-        """Canonicalize URL for CDX format"""
-        parsed = urlparse(url.lower())
+    def _create_http_response(self, record: WARCRecord) -> str:
+        """Vytvoření HTTP response části"""
+        status_line = f"HTTP/1.1 {record.http_status or 200} OK\r\n"
 
-        # Remove common prefixes
-        domain = parsed.netloc
-        if domain.startswith("www."):
-            domain = domain[4:]
+        headers = []
+        for key, value in record.headers.items():
+            headers.append(f"{key}: {value}")
 
-        # Reverse domain for sorting
-        domain_parts = domain.split(".")
-        reversed_domain = ",".join(reversed(domain_parts))
+        headers.append(f"Content-Length: {len(record.content.encode('utf-8'))}")
+        headers.append("")  # Prázdný řádek před tělem
 
-        # Combine with path
-        path = parsed.path or "/"
-        canonical = f"{reversed_domain}){path}"
+        http_response = status_line + "\r\n".join(headers) + "\r\n" + record.content
 
-        if parsed.query:
-            canonical += f"?{parsed.query}"
+        return http_response
 
-        return canonical
+    async def write_record(self, record: WARCRecord):
+        """Zápis WARC záznamu"""
+        try:
+            # Otevření nového souboru pokud je potřeba
+            if (self.current_writer is None or
+                self.records_written >= self.max_records_per_file):
+                await self._open_new_file()
+
+            # Vytvoření HTTP response
+            http_response = self._create_http_response(record)
+            http_response_bytes = http_response.encode('utf-8')
+
+            # Aktualizace content length
+            record.content_length = len(http_response_bytes)
+
+            # Vytvoření WARC header
+            warc_header = self._create_warc_header(record)
+
+            # Zápis do souboru
+            self.current_writer.write(warc_header.encode('utf-8'))
+            self.current_writer.write(http_response_bytes)
+            self.current_writer.write(b"\r\n\r\n")  # Separátor mezi záznamy
+
+            self.records_written += 1
+
+            logger.debug(f"WARC záznam zapsán: {record.url}")
+
+        except Exception as e:
+            logger.error(f"Chyba při zápisu WARC záznamu: {e}")
+
+    async def _open_new_file(self):
+        """Otevření nového WARC souboru"""
+        if self.current_writer:
+            self.current_writer.close()
+
+        filename = self._get_warc_filename()
+        self.current_file = self.output_dir / filename
+
+        self.current_writer = gzip.open(self.current_file, 'wb')
+        self.records_written = 0
+
+        logger.info(f"Nový WARC soubor vytvořen: {filename}")
+
+    def close(self):
+        """Uzavření WARC writer"""
+        if self.current_writer:
+            self.current_writer.close()
+            self.current_writer = None
 
 
-class ProvenanceTracker:
-    """Main provenance tracking system"""
+class WARCTracker:
+    """Hlavní třída pro sledování a archivaci webových zdrojů
+    """
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.provenance_config = config.get("provenance", {})
+    def __init__(self, output_dir: str = "./warc_archives"):
+        self.writer = WARCWriter(output_dir)
+        self.tracked_urls: dict[str, WARCRecord] = {}
+        self.session_metadata = {
+            "session_id": str(uuid.uuid4()),
+            "start_time": datetime.now(UTC),
+            "total_records": 0,
+            "unique_domains": set(),
+            "queries_tracked": set()
+        }
 
-        # Storage paths
-        self.storage_dir = Path(config.get("provenance_storage", "provenance_data"))
-        self.storage_dir.mkdir(exist_ok=True)
-
-        self.warc_dir = self.storage_dir / "warc"
-        self.cdx_dir = self.storage_dir / "cdx"
-        self.records_file = self.storage_dir / "provenance_records.jsonl"
-
-        self.warc_dir.mkdir(exist_ok=True)
-        self.cdx_dir.mkdir(exist_ok=True)
-
-        # Generators
-        self.warc_generator = WARCRecordGenerator()
-        self.cdx_generator = CDXGenerator()
-
-        # Domain risk assessment
-        self.domain_risks: Dict[str, DomainRiskProfile] = {}
-        self._load_domain_risks()
-
-        # Content tracking
-        self.tracked_content: Dict[str, ProvenanceRecord] = {}
-
-        logger.info(f"Provenance tracker initialized (storage: {self.storage_dir})")
-
-    def track_content(
-        self,
-        content: str,
-        source_url: str,
-        headers: Optional[Dict[str, str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        timestamp: Optional[datetime] = None
-    ) -> ProvenanceRecord:
-        """Track content with full provenance information"""
-
-        if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
-
-        if headers is None:
-            headers = {}
-
-        if metadata is None:
-            metadata = {}
-
-        # Generate content hash
-        content_hash = self._generate_content_hash(content)
-        content_id = self._generate_content_id(source_url, timestamp)
-
-        # Create WARC record
-        warc_record_id, warc_content = self.warc_generator.create_warc_record(
-            source_url, content, headers, timestamp
-        )
-
-        # Save WARC file
-        warc_filename = f"{content_id}.warc.gz"
-        warc_path = self.warc_dir / warc_filename
-
-        with gzip.open(warc_path, 'wt', encoding='utf-8') as f:
-            f.write(warc_content)
-
-        # Create CDX entry
-        cdx_line = self.cdx_generator.create_cdx_line(
-            url=source_url,
-            timestamp=timestamp,
-            mime_type=headers.get("Content-Type", "text/html"),
-            status_code=200,
-            content_hash=content_hash,
-            content_length=len(content.encode('utf-8')),
-            warc_file=warc_filename,
-            warc_offset=0
-        )
-
-        # Save CDX entry
-        cdx_filename = f"{datetime.now().strftime('%Y%m%d')}.cdx"
-        cdx_path = self.cdx_dir / cdx_filename
-
-        with open(cdx_path, 'a', encoding='utf-8') as f:
-            f.write(cdx_line + "\n")
-
-        # Create provenance record
-        provenance_record = ProvenanceRecord(
-            content_id=content_id,
-            source_url=source_url,
-            timestamp=timestamp,
-            content_hash=content_hash,
-            warc_record_id=warc_record_id,
-            cdx_line=cdx_line,
-            http_headers=headers,
-            metadata=metadata
-        )
-
-        # Store record
-        self._store_provenance_record(provenance_record)
-        self.tracked_content[content_id] = provenance_record
-
-        # Update domain risk assessment
-        self._update_domain_risk(source_url)
-
-        logger.info(f"Content tracked: {content_id} from {source_url}")
-        return provenance_record
-
-    def _generate_content_hash(self, content: str) -> str:
-        """Generate SHA-256 hash of content"""
+    def _calculate_content_hash(self, content: str) -> str:
+        """Výpočet hash obsahu"""
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
-    def _generate_content_id(self, source_url: str, timestamp: datetime) -> str:
-        """Generate unique content ID"""
-        combined = f"{source_url}_{timestamp.isoformat()}"
-        hash_part = hashlib.md5(combined.encode()).hexdigest()[:8]
-        timestamp_part = timestamp.strftime("%Y%m%d_%H%M%S")
-        return f"{timestamp_part}_{hash_part}"
-
-    def _store_provenance_record(self, record: ProvenanceRecord):
-        """Store provenance record to JSONL file"""
-        with open(self.records_file, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(record.to_dict()) + "\n")
-
-    def get_provenance_record(self, content_id: str) -> Optional[ProvenanceRecord]:
-        """Retrieve provenance record by content ID"""
-        if content_id in self.tracked_content:
-            return self.tracked_content[content_id]
-
-        # Search in stored records
-        return self._search_stored_records(content_id)
-
-    def _search_stored_records(self, content_id: str) -> Optional[ProvenanceRecord]:
-        """Search for record in stored files"""
+    def _extract_domain(self, url: str) -> str:
+        """Extrakce domény z URL"""
         try:
-            with open(self.records_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    record_data = json.loads(line.strip())
-                    if record_data["content_id"] == content_id:
-                        return ProvenanceRecord.from_dict(record_data)
-        except FileNotFoundError:
-            pass
+            parsed = urlparse(url)
+            return parsed.netloc.lower()
+        except:
+            return "unknown"
 
-        return None
+    async def track_document(self,
+                           url: str,
+                           content: str,
+                           headers: dict[str, str] = None,
+                           source_query: str = None,
+                           retrieval_method: str = "http",
+                           http_status: int = 200) -> str:
+        """Sledování a archivace dokumentu
 
-    def verify_content_integrity(self, content_id: str, current_content: str) -> Dict[str, Any]:
-        """Verify content integrity against stored hash"""
+        Args:
+            url: URL dokumentu
+            content: Obsah dokumentu
+            headers: HTTP headers
+            source_query: Původní dotaz
+            retrieval_method: Metoda získání
+            http_status: HTTP status kód
 
-        record = self.get_provenance_record(content_id)
-        if not record:
-            return {
-                "verified": False,
-                "reason": "No provenance record found",
-                "content_id": content_id
+        Returns:
+            ID záznamu
+
+        """
+        record_id = str(uuid.uuid4())
+        content_hash = self._calculate_content_hash(content)
+
+        # Kontrola duplicity podle hash
+        existing_record = None
+        for existing_id, existing in self.tracked_urls.items():
+            if existing.content_hash == content_hash and existing.url == url:
+                existing_record = existing
+                break
+
+        if existing_record:
+            logger.debug(f"Dokument již archivován: {url}")
+            return existing_record.record_id
+
+        # Vytvoření nového záznamu
+        record = WARCRecord(
+            record_id=record_id,
+            url=url,
+            timestamp=datetime.now(UTC),
+            content_type="text/html; charset=utf-8",
+            content_length=len(content.encode('utf-8')),
+            content_hash=content_hash,
+            http_status=http_status,
+            headers=headers or {},
+            content=content,
+            source_query=source_query,
+            retrieval_method=retrieval_method,
+            metadata={
+                "domain": self._extract_domain(url),
+                "content_length_chars": len(content),
+                "archive_timestamp": datetime.now(UTC).isoformat()
             }
-
-        current_hash = self._generate_content_hash(current_content)
-
-        return {
-            "verified": current_hash == record.content_hash,
-            "stored_hash": record.content_hash,
-            "current_hash": current_hash,
-            "timestamp": record.timestamp.isoformat(),
-            "source_url": record.source_url,
-            "content_id": content_id
-        }
-
-    def assess_domain_risk(self, url: str) -> DomainRiskProfile:
-        """Assess risk profile for a domain"""
-
-        domain = self._extract_domain(url)
-
-        if domain in self.domain_risks:
-            profile = self.domain_risks[domain]
-
-            # Update if profile is old
-            if (datetime.now() - profile.last_updated).days > 7:
-                profile = self._calculate_domain_risk(domain)
-                self.domain_risks[domain] = profile
-
-            return profile
-        else:
-            profile = self._calculate_domain_risk(domain)
-            self.domain_risks[domain] = profile
-            return profile
-
-    def _calculate_domain_risk(self, domain: str) -> DomainRiskProfile:
-        """Calculate risk score for a domain"""
-
-        risk_score = 0.0
-        risk_factors = []
-
-        # High-trust domains
-        trusted_domains = {
-            "arxiv.org": 0.1,
-            "pubmed.ncbi.nlm.nih.gov": 0.1,
-            "nature.com": 0.1,
-            "science.org": 0.1,
-            "who.int": 0.1,
-            "cdc.gov": 0.1,
-            "fda.gov": 0.1
-        }
-
-        if domain in trusted_domains:
-            risk_score = trusted_domains[domain]
-            risk_factors.append("verified_trusted_source")
-        else:
-            # TLD-based risk assessment
-            if domain.endswith(('.gov', '.edu')):
-                risk_score = 0.2
-                risk_factors.append("government_education_domain")
-            elif domain.endswith('.org'):
-                risk_score = 0.3
-                risk_factors.append("organization_domain")
-            elif domain.endswith(('.com', '.net')):
-                risk_score = 0.5
-                risk_factors.append("commercial_domain")
-            elif domain.endswith(('.tk', '.ml', '.ga', '.cf')):
-                risk_score = 0.8
-                risk_factors.append("free_domain_service")
-            else:
-                risk_score = 0.6
-                risk_factors.append("unknown_tld")
-
-            # Additional risk factors
-            if len(domain.split('.')) > 3:
-                risk_score += 0.1
-                risk_factors.append("deep_subdomain")
-
-            if any(suspicious in domain.lower() for suspicious in ['temp', 'test', 'fake', 'spam']):
-                risk_score += 0.3
-                risk_factors.append("suspicious_keywords")
-
-            # Age and reputation (simplified)
-            if domain.count('.') > 2:
-                risk_score += 0.1
-                risk_factors.append("complex_domain_structure")
-
-        risk_score = min(risk_score, 1.0)
-        confidence = 0.8 if domain in trusted_domains else 0.6
-
-        return DomainRiskProfile(
-            domain=domain,
-            risk_score=risk_score,
-            risk_factors=risk_factors,
-            last_updated=datetime.now(),
-            confidence=confidence
         )
 
-    def _extract_domain(self, url: str) -> str:
-        """Extract domain from URL"""
-        try:
-            return urlparse(url).netloc.lower()
-        except:
-            return ""
+        # Uložení záznamu
+        self.tracked_urls[record_id] = record
 
-    def _update_domain_risk(self, url: str):
-        """Update domain risk assessment"""
-        domain = self._extract_domain(url)
-        if domain:
-            self.assess_domain_risk(url)  # This will update the cache
+        # Zápis do WARC archivu
+        await self.writer.write_record(record)
 
-    def _load_domain_risks(self):
-        """Load previously calculated domain risks"""
-        risk_file = self.storage_dir / "domain_risks.json"
+        # Aktualizace session metadat
+        self.session_metadata["total_records"] += 1
+        self.session_metadata["unique_domains"].add(self._extract_domain(url))
+        if source_query:
+            self.session_metadata["queries_tracked"].add(source_query)
 
-        try:
-            if risk_file.exists():
-                with open(risk_file, 'r', encoding='utf-8') as f:
-                    risk_data = json.load(f)
+        logger.info(f"Dokument archivován: {url} (ID: {record_id[:8]})")
 
-                for domain, data in risk_data.items():
-                    self.domain_risks[domain] = DomainRiskProfile(
-                        domain=domain,
-                        risk_score=data["risk_score"],
-                        risk_factors=data["risk_factors"],
-                        last_updated=datetime.fromisoformat(data["last_updated"]),
-                        confidence=data["confidence"]
-                    )
+        return record_id
 
-                logger.info(f"Loaded {len(self.domain_risks)} domain risk profiles")
-        except Exception as e:
-            logger.warning(f"Failed to load domain risks: {e}")
+    def get_record(self, record_id: str) -> WARCRecord | None:
+        """Získání záznamu podle ID"""
+        return self.tracked_urls.get(record_id)
 
-    def save_domain_risks(self):
-        """Save domain risk assessments to file"""
-        risk_file = self.storage_dir / "domain_risks.json"
+    def search_records(self,
+                      query: str = None,
+                      domain: str = None,
+                      source_query: str = None) -> list[WARCRecord]:
+        """Vyhledání záznamů podle kritérií
 
-        risk_data = {}
-        for domain, profile in self.domain_risks.items():
-            risk_data[domain] = profile.to_dict()
+        Args:
+            query: Textové vyhledávání v obsahu
+            domain: Filtr podle domény
+            source_query: Filtr podle původního dotazu
 
-        with open(risk_file, 'w', encoding='utf-8') as f:
-            json.dump(risk_data, f, indent=2)
+        Returns:
+            Seznam odpovídajících záznamů
 
-        logger.info(f"Saved {len(self.domain_risks)} domain risk profiles")
+        """
+        results = []
 
-    def export_forensic_data(self, content_ids: List[str]) -> Dict[str, Any]:
-        """Export forensic data for specified content IDs"""
+        for record in self.tracked_urls.values():
+            match = True
 
-        forensic_data = {
-            "export_timestamp": datetime.now(timezone.utc).isoformat(),
-            "content_records": [],
-            "domain_risks": {},
-            "verification_chain": []
-        }
+            if domain and record.metadata.get("domain") != domain.lower():
+                match = False
 
-        for content_id in content_ids:
-            record = self.get_provenance_record(content_id)
-            if record:
-                # Add provenance record
-                forensic_data["content_records"].append(record.to_dict())
+            if source_query and record.source_query != source_query:
+                match = False
 
-                # Add domain risk assessment
-                domain = self._extract_domain(record.source_url)
-                if domain and domain not in forensic_data["domain_risks"]:
-                    risk_profile = self.assess_domain_risk(record.source_url)
-                    forensic_data["domain_risks"][domain] = risk_profile.to_dict()
+            if query:
+                query_lower = query.lower()
+                if (query_lower not in record.content.lower() and
+                    query_lower not in record.url.lower()):
+                    match = False
 
-                # Add verification chain
-                verification = self.verify_content_integrity(content_id, "")  # Content not available here
-                forensic_data["verification_chain"].append(verification)
+            if match:
+                results.append(record)
 
-        return forensic_data
+        return results
 
-    def get_tracking_stats(self) -> Dict[str, Any]:
-        """Get statistics about tracked content"""
+    def get_session_stats(self) -> dict[str, Any]:
+        """Získání statistik session"""
+        runtime = datetime.now(UTC) - self.session_metadata["start_time"]
 
-        total_records = len(self.tracked_content)
-
-        # Analyze by domain
-        domain_counts = {}
-        for record in self.tracked_content.values():
-            domain = self._extract_domain(record.source_url)
-            domain_counts[domain] = domain_counts.get(domain, 0) + 1
-
-        # Risk distribution
-        risk_distribution = {"low": 0, "medium": 0, "high": 0}
-        for domain in domain_counts:
-            if domain in self.domain_risks:
-                risk_score = self.domain_risks[domain].risk_score
-                if risk_score < 0.3:
-                    risk_distribution["low"] += domain_counts[domain]
-                elif risk_score < 0.7:
-                    risk_distribution["medium"] += domain_counts[domain]
-                else:
-                    risk_distribution["high"] += domain_counts[domain]
+        # Statistiky podle domén
+        domain_stats = {}
+        for record in self.tracked_urls.values():
+            domain = record.metadata.get("domain", "unknown")
+            if domain not in domain_stats:
+                domain_stats[domain] = {"count": 0, "total_size": 0}
+            domain_stats[domain]["count"] += 1
+            domain_stats[domain]["total_size"] += record.content_length
 
         return {
-            "total_tracked_content": total_records,
-            "unique_domains": len(domain_counts),
-            "domain_distribution": dict(sorted(domain_counts.items(), key=lambda x: x[1], reverse=True)[:10]),
-            "risk_distribution": risk_distribution,
-            "storage_location": str(self.storage_dir),
-            "warc_files": len(list(self.warc_dir.glob("*.warc.gz"))),
-            "cdx_files": len(list(self.cdx_dir.glob("*.cdx")))
+            "session_id": self.session_metadata["session_id"],
+            "runtime_seconds": runtime.total_seconds(),
+            "total_records": self.session_metadata["total_records"],
+            "unique_domains": len(self.session_metadata["unique_domains"]),
+            "unique_queries": len(self.session_metadata["queries_tracked"]),
+            "domain_breakdown": domain_stats,
+            "total_content_size": sum(r.content_length for r in self.tracked_urls.values()),
+            "average_record_size": (sum(r.content_length for r in self.tracked_urls.values()) /
+                                  max(1, len(self.tracked_urls))),
+            "retrieval_methods": self._get_method_stats()
         }
 
+    def _get_method_stats(self) -> dict[str, int]:
+        """Statistiky podle metod získání"""
+        methods = {}
+        for record in self.tracked_urls.values():
+            method = record.retrieval_method
+            methods[method] = methods.get(method, 0) + 1
+        return methods
 
-def create_provenance_tracker(config: Dict[str, Any]) -> ProvenanceTracker:
-    """Factory function for provenance tracker"""
-    return ProvenanceTracker(config)
-
-
-# Usage example
-if __name__ == "__main__":
-    config = {
-        "provenance_storage": "test_provenance",
-        "provenance": {
-            "enabled": True,
-            "track_all_content": True
+    def export_metadata(self, filepath: str):
+        """Export metadat do JSON souboru"""
+        metadata = {
+            "session": self.session_metadata,
+            "records": []
         }
-    }
 
-    tracker = ProvenanceTracker(config)
+        for record in self.tracked_urls.values():
+            record_meta = {
+                "record_id": record.record_id,
+                "url": record.url,
+                "timestamp": record.timestamp.isoformat(),
+                "content_hash": record.content_hash,
+                "content_length": record.content_length,
+                "source_query": record.source_query,
+                "retrieval_method": record.retrieval_method,
+                "http_status": record.http_status,
+                "metadata": record.metadata
+            }
+            metadata["records"].append(record_meta)
 
-    # Test content tracking
-    test_content = "This is test content about COVID-19 vaccine effectiveness."
-    test_url = "https://example.com/article123"
-    test_headers = {"Content-Type": "text/html", "Server": "nginx"}
+        # Konverze set na list pro JSON serializaci
+        metadata["session"]["unique_domains"] = list(metadata["session"]["unique_domains"])
+        metadata["session"]["queries_tracked"] = list(metadata["session"]["queries_tracked"])
+        metadata["session"]["start_time"] = metadata["session"]["start_time"].isoformat()
 
-    record = tracker.track_content(test_content, test_url, test_headers)
-    print(f"Tracked content: {record.content_id}")
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-    # Test verification
-    verification = tracker.verify_content_integrity(record.content_id, test_content)
-    print(f"Verification: {verification['verified']}")
+        logger.info(f"Metadata exportována do {filepath}")
 
-    # Test domain risk assessment
-    risk_profile = tracker.assess_domain_risk(test_url)
-    print(f"Domain risk: {risk_profile.risk_score:.2f} ({risk_profile.risk_factors})")
+    def get_provenance_chain(self, record_id: str) -> dict[str, Any]:
+        """Získání řetězce provenience pro daný záznam
 
-    # Export forensic data
-    forensic_data = tracker.export_forensic_data([record.content_id])
-    print(f"Forensic export: {len(forensic_data['content_records'])} records")
+        Args:
+            record_id: ID záznamu
 
-    stats = tracker.get_tracking_stats()
-    print(f"Tracking stats: {stats}")
+        Returns:
+            Řetězec provenience
 
-    # Save domain risks
-    tracker.save_domain_risks()
+        """
+        record = self.get_record(record_id)
+        if not record:
+            return {}
+
+        return {
+            "record_id": record.record_id,
+            "original_url": record.url,
+            "retrieval_timestamp": record.timestamp.isoformat(),
+            "retrieval_method": record.retrieval_method,
+            "source_query": record.source_query,
+            "content_integrity": {
+                "hash_algorithm": "sha256",
+                "content_hash": record.content_hash,
+                "content_length": record.content_length
+            },
+            "technical_metadata": {
+                "http_status": record.http_status,
+                "headers": record.headers,
+                "domain": record.metadata.get("domain"),
+                "archive_timestamp": record.metadata.get("archive_timestamp")
+            }
+        }
+
+    async def close(self):
+        """Uzavření trackeru a uložení dat"""
+        self.writer.close()
+
+        # Export finálních metadat
+        metadata_file = self.writer.output_dir / f"session_{self.session_metadata['session_id'][:8]}_metadata.json"
+        self.export_metadata(str(metadata_file))
+
+        logger.info(f"WARC Tracker uzavřen. Celkem {self.session_metadata['total_records']} záznamů.")
+
+
+# Globální instance
+warc_tracker = WARCTracker()

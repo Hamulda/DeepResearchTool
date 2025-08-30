@@ -30,9 +30,7 @@ class QdrantBenchmark:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.qdrant_config = config.get("qdrant", {})
-        self.client = QdrantClient(
-            url=self.qdrant_config.get("url", "http://localhost:6333")
-        )
+        self.client = QdrantClient(url=self.qdrant_config.get("url", "http://localhost:6333"))
 
         # Test queries
         self.test_queries = [
@@ -45,14 +43,15 @@ class QdrantBenchmark:
             "blockchain consensus mechanisms",
             "neural network optimization",
             "data privacy techniques",
-            "automated reasoning systems"
+            "automated reasoning systems",
         ]
 
         # ef_search values to test
         self.ef_search_values = [16, 32, 64, 96, 128, 192, 256]
 
-    async def benchmark_collection(self, collection_name: str, query_vector: List[float],
-                                 ef_search: int, num_runs: int = 5) -> Dict[str, Any]:
+    async def benchmark_collection(
+        self, collection_name: str, query_vector: List[float], ef_search: int, num_runs: int = 5
+    ) -> Dict[str, Any]:
         """Benchmark jedné kolekce s daným ef_search"""
 
         latencies = []
@@ -67,7 +66,7 @@ class QdrantBenchmark:
                     collection_name=collection_name,
                     query_vector=query_vector,
                     limit=10,
-                    search_params={"ef": ef_search}
+                    search_params={"ef": ef_search},
                 )
 
                 latency = time.time() - start_time
@@ -83,11 +82,7 @@ class QdrantBenchmark:
 
             except Exception as e:
                 print(f"Error in benchmark: {e}")
-                return {
-                    "ef_search": ef_search,
-                    "collection": collection_name,
-                    "error": str(e)
-                }
+                return {"ef_search": ef_search, "collection": collection_name, "error": str(e)}
 
         return {
             "ef_search": ef_search,
@@ -97,7 +92,7 @@ class QdrantBenchmark:
             "avg_recall": statistics.mean(recall_scores),
             "std_recall": statistics.stdev(recall_scores) if len(recall_scores) > 1 else 0,
             "latencies": latencies,
-            "recall_scores": recall_scores
+            "recall_scores": recall_scores,
         }
 
     async def run_full_benchmark(self) -> Dict[str, Any]:
@@ -116,6 +111,7 @@ class QdrantBenchmark:
 
         # Generate test query vectors (simplified - using random for demo)
         import numpy as np
+
         np.random.seed(42)
 
         # Assume 384-dimensional embeddings (typical for all-MiniLM-L6-v2)
@@ -126,7 +122,7 @@ class QdrantBenchmark:
             "config": self.qdrant_config,
             "collections_tested": collections,
             "ef_search_values": self.ef_search_values,
-            "results": {}
+            "results": {},
         }
 
         # Benchmark each collection
@@ -145,8 +141,10 @@ class QdrantBenchmark:
 
                 collection_results.append(result)
 
-                print(f"    Latency: {result.get('avg_latency', 0)*1000:.1f}ms, "
-                      f"Recall: {result.get('avg_recall', 0):.3f}")
+                print(
+                    f"    Latency: {result.get('avg_latency', 0)*1000:.1f}ms, "
+                    f"Recall: {result.get('avg_recall', 0):.3f}"
+                )
 
             benchmark_results["results"][collection_name] = collection_results
 
@@ -173,7 +171,7 @@ class QdrantBenchmark:
                 if "error" in result:
                     continue
 
-                latency = result.get("avg_latency", float('inf'))
+                latency = result.get("avg_latency", float("inf"))
                 recall = result.get("avg_recall", 0)
 
                 # Trade-off score (higher recall, lower latency is better)
@@ -204,9 +202,13 @@ class QdrantBenchmark:
             if avg_latencies:
                 overall_avg = statistics.mean(avg_latencies) * 1000
                 if overall_avg > 200:
-                    recommendations.append("PERFORMANCE: Consider lower ef_search values for better latency")
+                    recommendations.append(
+                        "PERFORMANCE: Consider lower ef_search values for better latency"
+                    )
                 elif overall_avg < 50:
-                    recommendations.append("QUALITY: Consider higher ef_search values for better recall")
+                    recommendations.append(
+                        "QUALITY: Consider higher ef_search values for better recall"
+                    )
 
         return recommendations
 
@@ -222,7 +224,7 @@ async def main():
 
     # Load configuration
     try:
-        with open(args.config, 'r') as f:
+        with open(args.config, "r") as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
         print(f"❌ Configuration file {args.config} not found")
@@ -252,7 +254,7 @@ async def main():
 
     # Save results
     if args.output:
-        with open(args.output, 'w') as f:
+        with open(args.output, "w") as f:
             json.dump(results, f, indent=2, default=str)
         print(f"💾 Results saved to {args.output}")
 
@@ -263,7 +265,7 @@ async def main():
             best_result = max(
                 [r for r in collection_results if "error" not in r],
                 key=lambda x: x.get("avg_recall", 0) / max(x.get("avg_latency", 1) * 1000, 1),
-                default=None
+                default=None,
             )
             if best_result:
                 print(f"  {collection_name}: ef_search: {best_result['ef_search']}")

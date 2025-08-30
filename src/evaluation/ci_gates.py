@@ -1,61 +1,61 @@
 #!/usr/bin/env python3
-"""
-FÁZE 5: CI/CD Gates with Build Fail on Performance Degradation
+"""FÁZE 5: CI/CD Gates with Build Fail on Performance Degradation
 Automatické CI/CD brány s fail-hard pravidly při poklesu performance
 
 Author: Senior Python/MLOps Agent
 """
 
-import json
-import sys
 import asyncio
-import subprocess
-from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
-from pathlib import Path
 from datetime import datetime
+import json
+from pathlib import Path
+import sys
+from typing import Any
+
 import yaml
 
-from src.evaluation.enhanced_metrics import ComprehensiveEvaluator
 from src.evaluation.regression_test_suite import RegressionTestSuite
 
 
 @dataclass
 class CIGateConfig:
     """Konfigurace pro CI gate"""
+
     gate_name: str
     enabled: bool
     fail_on_error: bool
     timeout_seconds: int
-    performance_thresholds: Dict[str, float]
-    regression_thresholds: Dict[str, float]
+    performance_thresholds: dict[str, float]
+    regression_thresholds: dict[str, float]
 
 
 @dataclass
 class CIGateResult:
     """Výsledek CI gate"""
+
     gate_name: str
     status: str  # passed, failed, skipped
     execution_time: float
-    details: Dict[str, Any]
-    error_message: Optional[str] = None
-    recommendations: List[str] = None
+    details: dict[str, Any]
+    error_message: str | None = None
+    recommendations: list[str] = None
 
 
 class CICDGateOrchestrator:
     """CI/CD Gate orchestrátor pro FÁZE 5"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
-        self.ci_config = config.get('ci_gates', {})
+        self.ci_config = config.get("ci_gates", {})
         self.project_root = Path.cwd()
-        self.results_path = Path('docs/ci_results')
+        self.results_path = Path("docs/ci_results")
         self.results_path.mkdir(parents=True, exist_ok=True)
 
         # Initialize gate configurations
         self.gates = self._initialize_gates()
 
-    def _initialize_gates(self) -> List[CIGateConfig]:
+    def _initialize_gates(self) -> list[CIGateConfig]:
         """Inicializuje CI gates"""
         return [
             CIGateConfig(
@@ -64,45 +64,36 @@ class CICDGateOrchestrator:
                 fail_on_error=True,
                 timeout_seconds=120,
                 performance_thresholds={},
-                regression_thresholds={}
+                regression_thresholds={},
             ),
             CIGateConfig(
                 gate_name="unit_tests",
                 enabled=True,
                 fail_on_error=True,
                 timeout_seconds=300,
-                performance_thresholds={
-                    "test_pass_rate": 0.95,
-                    "coverage_threshold": 0.80
-                },
-                regression_thresholds={}
+                performance_thresholds={"test_pass_rate": 0.95, "coverage_threshold": 0.80},
+                regression_thresholds={},
             ),
             CIGateConfig(
                 gate_name="integration_tests",
                 enabled=True,
                 fail_on_error=True,
                 timeout_seconds=600,
-                performance_thresholds={
-                    "test_pass_rate": 0.90,
-                    "avg_test_duration_ms": 30000
-                },
-                regression_thresholds={}
+                performance_thresholds={"test_pass_rate": 0.90, "avg_test_duration_ms": 30000},
+                regression_thresholds={},
             ),
             CIGateConfig(
                 gate_name="regression_tests",
                 enabled=True,
                 fail_on_error=True,
                 timeout_seconds=1800,  # 30 minutes
-                performance_thresholds={
-                    "domain_pass_rate": 0.80,
-                    "avg_latency_ms": 120000
-                },
+                performance_thresholds={"domain_pass_rate": 0.80, "avg_latency_ms": 120000},
                 regression_thresholds={
                     "evidence_coverage_degradation": -5.0,  # Max 5% degradation
                     "groundedness_degradation": -3.0,
                     "hallucination_rate_increase": 50.0,  # Max 50% increase
-                    "citation_precision_degradation": -5.0
-                }
+                    "citation_precision_degradation": -5.0,
+                },
             ),
             CIGateConfig(
                 gate_name="smoke_tests",
@@ -112,9 +103,9 @@ class CICDGateOrchestrator:
                 performance_thresholds={
                     "max_execution_time_s": 60,
                     "min_claims_generated": 1,
-                    "min_citations_per_claim": 2
+                    "min_citations_per_claim": 2,
                 },
-                regression_thresholds={}
+                regression_thresholds={},
             ),
             CIGateConfig(
                 gate_name="security_checks",
@@ -122,15 +113,14 @@ class CICDGateOrchestrator:
                 fail_on_error=True,
                 timeout_seconds=300,
                 performance_thresholds={},
-                regression_thresholds={}
-            )
+                regression_thresholds={},
+            ),
         ]
 
-    async def run_ci_pipeline(self,
-                            gates_to_run: Optional[List[str]] = None,
-                            fail_fast: bool = True) -> Tuple[bool, List[CIGateResult]]:
+    async def run_ci_pipeline(
+        self, gates_to_run: list[str] | None = None, fail_fast: bool = True
+    ) -> tuple[bool, list[CIGateResult]]:
         """Spustí kompletní CI pipeline"""
-
         print("🚀 Spouštím CI/CD Pipeline pro FÁZE 5...")
         print("=" * 60)
 
@@ -144,12 +134,14 @@ class CICDGateOrchestrator:
         for gate in gates_to_execute:
             if not gate.enabled:
                 print(f"⏭️  Přeskakuji {gate.gate_name} (zakázán)")
-                results.append(CIGateResult(
-                    gate_name=gate.gate_name,
-                    status="skipped",
-                    execution_time=0,
-                    details={"reason": "disabled"}
-                ))
+                results.append(
+                    CIGateResult(
+                        gate_name=gate.gate_name,
+                        status="skipped",
+                        execution_time=0,
+                        details={"reason": "disabled"},
+                    )
+                )
                 continue
 
             print(f"🔍 Spouštím: {gate.gate_name}")
@@ -175,10 +167,10 @@ class CICDGateOrchestrator:
                     status="failed",
                     execution_time=0,
                     details={},
-                    error_message=f"Gate execution error: {str(e)}"
+                    error_message=f"Gate execution error: {e!s}",
                 )
                 results.append(error_result)
-                print(f"💥 {gate.gate_name}: CRITICAL ERROR - {str(e)}")
+                print(f"💥 {gate.gate_name}: CRITICAL ERROR - {e!s}")
 
                 if fail_fast:
                     break
@@ -195,27 +187,26 @@ class CICDGateOrchestrator:
         try:
             if gate.gate_name == "lint_and_format":
                 return await self._run_lint_and_format_gate(gate)
-            elif gate.gate_name == "unit_tests":
+            if gate.gate_name == "unit_tests":
                 return await self._run_unit_tests_gate(gate)
-            elif gate.gate_name == "integration_tests":
+            if gate.gate_name == "integration_tests":
                 return await self._run_integration_tests_gate(gate)
-            elif gate.gate_name == "regression_tests":
+            if gate.gate_name == "regression_tests":
                 return await self._run_regression_tests_gate(gate)
-            elif gate.gate_name == "smoke_tests":
+            if gate.gate_name == "smoke_tests":
                 return await self._run_smoke_tests_gate(gate)
-            elif gate.gate_name == "security_checks":
+            if gate.gate_name == "security_checks":
                 return await self._run_security_checks_gate(gate)
-            else:
-                raise ValueError(f"Unknown gate: {gate.gate_name}")
+            raise ValueError(f"Unknown gate: {gate.gate_name}")
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             execution_time = asyncio.get_event_loop().time() - start_time
             return CIGateResult(
                 gate_name=gate.gate_name,
                 status="failed",
                 execution_time=execution_time,
                 details={},
-                error_message=f"Gate timed out after {gate.timeout_seconds}s"
+                error_message=f"Gate timed out after {gate.timeout_seconds}s",
             )
 
     async def _run_lint_and_format_gate(self, gate: CIGateConfig) -> CIGateResult:
@@ -223,31 +214,43 @@ class CICDGateOrchestrator:
         start_time = asyncio.get_event_loop().time()
 
         # Run Black format check
-        black_result = await self._run_command([
-            "python", "-m", "black", "--check", "--line-length=88", "src/", "tests/"
-        ], timeout=gate.timeout_seconds)
+        black_result = await self._run_command(
+            ["python", "-m", "black", "--check", "--line-length=88", "src/", "tests/"],
+            timeout=gate.timeout_seconds,
+        )
 
         # Run flake8 linting
-        flake8_result = await self._run_command([
-            "python", "-m", "flake8", "src/", "tests/",
-            "--max-line-length=88", "--extend-ignore=E203,W503"
-        ], timeout=gate.timeout_seconds)
+        flake8_result = await self._run_command(
+            [
+                "python",
+                "-m",
+                "flake8",
+                "src/",
+                "tests/",
+                "--max-line-length=88",
+                "--extend-ignore=E203,W503",
+            ],
+            timeout=gate.timeout_seconds,
+        )
 
         # Run mypy type checking
-        mypy_result = await self._run_command([
-            "python", "-m", "mypy", "src/", "--ignore-missing-imports"
-        ], timeout=gate.timeout_seconds)
+        mypy_result = await self._run_command(
+            ["python", "-m", "mypy", "src/", "--ignore-missing-imports"],
+            timeout=gate.timeout_seconds,
+        )
 
         execution_time = asyncio.get_event_loop().time() - start_time
 
-        all_passed = (black_result["returncode"] == 0 and
-                     flake8_result["returncode"] == 0 and
-                     mypy_result["returncode"] == 0)
+        all_passed = (
+            black_result["returncode"] == 0
+            and flake8_result["returncode"] == 0
+            and mypy_result["returncode"] == 0
+        )
 
         details = {
             "black_check": black_result,
             "flake8_check": flake8_result,
-            "mypy_check": mypy_result
+            "mypy_check": mypy_result,
         }
 
         return CIGateResult(
@@ -256,7 +259,9 @@ class CICDGateOrchestrator:
             execution_time=execution_time,
             details=details,
             error_message=None if all_passed else "Lint/format checks failed",
-            recommendations=["Run 'make format' to fix formatting issues"] if not all_passed else []
+            recommendations=(
+                ["Run 'make format' to fix formatting issues"] if not all_passed else []
+            ),
         )
 
     async def _run_unit_tests_gate(self, gate: CIGateConfig) -> CIGateResult:
@@ -264,11 +269,20 @@ class CICDGateOrchestrator:
         start_time = asyncio.get_event_loop().time()
 
         # Run pytest with coverage
-        pytest_result = await self._run_command([
-            "python", "-m", "pytest", "tests/", "-v",
-            "--cov=src", "--cov-report=json:coverage.json",
-            "-k", "not integration"  # Exclude integration tests
-        ], timeout=gate.timeout_seconds)
+        pytest_result = await self._run_command(
+            [
+                "python",
+                "-m",
+                "pytest",
+                "tests/",
+                "-v",
+                "--cov=src",
+                "--cov-report=json:coverage.json",
+                "-k",
+                "not integration",  # Exclude integration tests
+            ],
+            timeout=gate.timeout_seconds,
+        )
 
         execution_time = asyncio.get_event_loop().time() - start_time
 
@@ -284,7 +298,9 @@ class CICDGateOrchestrator:
 
         coverage_percentage = coverage_data.get("totals", {}).get("percent_covered", 0) / 100
         test_passed = pytest_result["returncode"] == 0
-        coverage_passed = coverage_percentage >= gate.performance_thresholds.get("coverage_threshold", 0.8)
+        coverage_passed = coverage_percentage >= gate.performance_thresholds.get(
+            "coverage_threshold", 0.8
+        )
 
         all_passed = test_passed and coverage_passed
 
@@ -292,7 +308,7 @@ class CICDGateOrchestrator:
             "pytest_result": pytest_result,
             "coverage_percentage": coverage_percentage,
             "coverage_threshold": gate.performance_thresholds.get("coverage_threshold", 0.8),
-            "coverage_passed": coverage_passed
+            "coverage_passed": coverage_passed,
         }
 
         error_message = None
@@ -310,7 +326,7 @@ class CICDGateOrchestrator:
             execution_time=execution_time,
             details=details,
             error_message=error_message,
-            recommendations=recommendations
+            recommendations=recommendations,
         )
 
     async def _run_integration_tests_gate(self, gate: CIGateConfig) -> CIGateResult:
@@ -318,14 +334,17 @@ class CICDGateOrchestrator:
         start_time = asyncio.get_event_loop().time()
 
         # Run integration tests
-        pytest_result = await self._run_command([
-            "python", "-m", "pytest", "tests/", "-v", "-k", "integration"
-        ], timeout=gate.timeout_seconds)
+        pytest_result = await self._run_command(
+            ["python", "-m", "pytest", "tests/", "-v", "-k", "integration"],
+            timeout=gate.timeout_seconds,
+        )
 
         execution_time = asyncio.get_event_loop().time() - start_time
 
         test_passed = pytest_result["returncode"] == 0
-        duration_passed = execution_time * 1000 <= gate.performance_thresholds.get("avg_test_duration_ms", 30000)
+        duration_passed = execution_time * 1000 <= gate.performance_thresholds.get(
+            "avg_test_duration_ms", 30000
+        )
 
         all_passed = test_passed and duration_passed
 
@@ -333,7 +352,7 @@ class CICDGateOrchestrator:
             "pytest_result": pytest_result,
             "execution_time_ms": execution_time * 1000,
             "duration_threshold_ms": gate.performance_thresholds.get("avg_test_duration_ms", 30000),
-            "duration_passed": duration_passed
+            "duration_passed": duration_passed,
         }
 
         error_message = None
@@ -351,7 +370,7 @@ class CICDGateOrchestrator:
             execution_time=execution_time,
             details=details,
             error_message=error_message,
-            recommendations=recommendations
+            recommendations=recommendations,
         )
 
     async def _run_regression_tests_gate(self, gate: CIGateConfig) -> CIGateResult:
@@ -361,8 +380,8 @@ class CICDGateOrchestrator:
         try:
             # Initialize regression test suite
             config = self.config.copy()
-            config.setdefault('evaluation', {}).setdefault('k_values', [1, 3, 5, 10])
-            config.setdefault('regression', {}).setdefault('baseline_path', 'data/baselines')
+            config.setdefault("evaluation", {}).setdefault("k_values", [1, 3, 5, 10])
+            config.setdefault("regression", {}).setdefault("baseline_path", "data/baselines")
 
             regression_suite = RegressionTestSuite(config)
 
@@ -377,7 +396,11 @@ class CICDGateOrchestrator:
             total_count = len(results)
             pass_rate = passed_count / total_count if total_count > 0 else 0
 
-            avg_latency = sum(r.performance_metrics.get("latency_ms", 0) for r in results) / total_count if total_count > 0 else 0
+            avg_latency = (
+                sum(r.performance_metrics.get("latency_ms", 0) for r in results) / total_count
+                if total_count > 0
+                else 0
+            )
 
             # Check thresholds
             pass_rate_ok = pass_rate >= gate.performance_thresholds.get("domain_pass_rate", 0.8)
@@ -391,9 +414,13 @@ class CICDGateOrchestrator:
                     if baseline_key in result.baseline_comparison:
                         change = result.baseline_comparison[baseline_key]
                         if "degradation" in metric and change < threshold:
-                            regression_violations.append(f"{result.domain}: {metric} degraded by {abs(change):.1f}%")
+                            regression_violations.append(
+                                f"{result.domain}: {metric} degraded by {abs(change):.1f}%"
+                            )
                         elif "increase" in metric and change > threshold:
-                            regression_violations.append(f"{result.domain}: {metric} increased by {change:.1f}%")
+                            regression_violations.append(
+                                f"{result.domain}: {metric} increased by {change:.1f}%"
+                            )
 
             no_regressions = len(regression_violations) == 0
             all_passed = pass_rate_ok and latency_ok and no_regressions
@@ -411,10 +438,10 @@ class CICDGateOrchestrator:
                         "status": r.overall_status,
                         "latency_ms": r.performance_metrics.get("latency_ms", 0),
                         "evidence_coverage": r.evaluation_result.evidence_coverage,
-                        "groundedness": r.evaluation_result.groundedness
+                        "groundedness": r.evaluation_result.groundedness,
                     }
                     for r in results
-                ]
+                ],
             }
 
             error_message = None
@@ -426,7 +453,9 @@ class CICDGateOrchestrator:
                 error_message = f"Average latency too high: {avg_latency:.0f}ms > {gate.performance_thresholds.get('avg_latency_ms', 120000)}ms"
                 recommendations.append("Optimize pipeline performance")
             elif not no_regressions:
-                error_message = f"Performance regressions detected: {len(regression_violations)} violations"
+                error_message = (
+                    f"Performance regressions detected: {len(regression_violations)} violations"
+                )
                 recommendations.extend(regression_violations)
 
             return CIGateResult(
@@ -435,7 +464,7 @@ class CICDGateOrchestrator:
                 execution_time=execution_time,
                 details=details,
                 error_message=error_message,
-                recommendations=recommendations
+                recommendations=recommendations,
             )
 
         except Exception as e:
@@ -445,8 +474,8 @@ class CICDGateOrchestrator:
                 status="failed",
                 execution_time=execution_time,
                 details={},
-                error_message=f"Regression test execution failed: {str(e)}",
-                recommendations=["Check regression test configuration and dependencies"]
+                error_message=f"Regression test execution failed: {e!s}",
+                recommendations=["Check regression test configuration and dependencies"],
             )
 
     async def _run_smoke_tests_gate(self, gate: CIGateConfig) -> CIGateResult:
@@ -454,11 +483,17 @@ class CICDGateOrchestrator:
         start_time = asyncio.get_event_loop().time()
 
         # Run smoke test script
-        smoke_result = await self._run_command([
-            "python", "scripts/smoke_test.py",
-            "--config", "config_m1_local.yaml",
-            "--timeout", str(gate.performance_thresholds.get("max_execution_time_s", 60))
-        ], timeout=gate.timeout_seconds)
+        smoke_result = await self._run_command(
+            [
+                "python",
+                "scripts/smoke_test.py",
+                "--config",
+                "config_m1_local.yaml",
+                "--timeout",
+                str(gate.performance_thresholds.get("max_execution_time_s", 60)),
+            ],
+            timeout=gate.timeout_seconds,
+        )
 
         execution_time = asyncio.get_event_loop().time() - start_time
 
@@ -471,7 +506,9 @@ class CICDGateOrchestrator:
         citations_per_claim = 2  # Would parse from smoke test output
 
         claims_ok = claims_generated >= gate.performance_thresholds.get("min_claims_generated", 1)
-        citations_ok = citations_per_claim >= gate.performance_thresholds.get("min_citations_per_claim", 2)
+        citations_ok = citations_per_claim >= gate.performance_thresholds.get(
+            "min_citations_per_claim", 2
+        )
 
         all_passed = smoke_passed and time_ok and claims_ok and citations_ok
 
@@ -481,7 +518,7 @@ class CICDGateOrchestrator:
             "claims_generated": claims_generated,
             "citations_per_claim": citations_per_claim,
             "time_threshold_s": gate.performance_thresholds.get("max_execution_time_s", 60),
-            "all_requirements_met": all_passed
+            "all_requirements_met": all_passed,
         }
 
         error_message = None
@@ -505,7 +542,7 @@ class CICDGateOrchestrator:
             execution_time=execution_time,
             details=details,
             error_message=error_message,
-            recommendations=recommendations
+            recommendations=recommendations,
         )
 
     async def _run_security_checks_gate(self, gate: CIGateConfig) -> CIGateResult:
@@ -513,14 +550,16 @@ class CICDGateOrchestrator:
         start_time = asyncio.get_event_loop().time()
 
         # Run security check script
-        security_result = await self._run_command([
-            "python", "scripts/security_check.py", "--config", "config_m1_local.yaml"
-        ], timeout=gate.timeout_seconds)
+        security_result = await self._run_command(
+            ["python", "scripts/security_check.py", "--config", "config_m1_local.yaml"],
+            timeout=gate.timeout_seconds,
+        )
 
         # Run PII check
-        pii_result = await self._run_command([
-            "python", "scripts/pii_check.py", "--scan-logs", "--scan-outputs"
-        ], timeout=gate.timeout_seconds // 2)
+        pii_result = await self._run_command(
+            ["python", "scripts/pii_check.py", "--scan-logs", "--scan-outputs"],
+            timeout=gate.timeout_seconds // 2,
+        )
 
         execution_time = asyncio.get_event_loop().time() - start_time
 
@@ -532,7 +571,7 @@ class CICDGateOrchestrator:
         details = {
             "security_check_result": security_result,
             "pii_check_result": pii_result,
-            "execution_time_s": execution_time
+            "execution_time_s": execution_time,
         }
 
         error_message = None
@@ -550,47 +589,39 @@ class CICDGateOrchestrator:
             execution_time=execution_time,
             details=details,
             error_message=error_message,
-            recommendations=recommendations
+            recommendations=recommendations,
         )
 
-    async def _run_command(self, cmd: List[str], timeout: int) -> Dict[str, Any]:
+    async def _run_command(self, cmd: list[str], timeout: int) -> dict[str, Any]:
         """Spustí command s timeout"""
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=self.project_root
+                cwd=self.project_root,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=timeout
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
             return {
                 "returncode": process.returncode,
-                "stdout": stdout.decode('utf-8', errors='ignore'),
-                "stderr": stderr.decode('utf-8', errors='ignore'),
-                "command": " ".join(cmd)
+                "stdout": stdout.decode("utf-8", errors="ignore"),
+                "stderr": stderr.decode("utf-8", errors="ignore"),
+                "command": " ".join(cmd),
             }
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {
                 "returncode": -1,
                 "stdout": "",
                 "stderr": f"Command timed out after {timeout}s",
-                "command": " ".join(cmd)
+                "command": " ".join(cmd),
             }
         except Exception as e:
-            return {
-                "returncode": -1,
-                "stdout": "",
-                "stderr": str(e),
-                "command": " ".join(cmd)
-            }
+            return {"returncode": -1, "stdout": "", "stderr": str(e), "command": " ".join(cmd)}
 
-    async def _generate_ci_report(self, results: List[CIGateResult], overall_success: bool):
+    async def _generate_ci_report(self, results: list[CIGateResult], overall_success: bool):
         """Generuje CI report"""
         report = {
             "ci_pipeline_report": {
@@ -600,9 +631,9 @@ class CICDGateOrchestrator:
                 "passed_gates": sum(1 for r in results if r.status == "passed"),
                 "failed_gates": sum(1 for r in results if r.status == "failed"),
                 "skipped_gates": sum(1 for r in results if r.status == "skipped"),
-                "total_execution_time": sum(r.execution_time for r in results)
+                "total_execution_time": sum(r.execution_time for r in results),
             },
-            "gate_results": []
+            "gate_results": [],
         }
 
         for result in results:
@@ -612,20 +643,22 @@ class CICDGateOrchestrator:
                 "execution_time": result.execution_time,
                 "error_message": result.error_message,
                 "recommendations": result.recommendations or [],
-                "details": result.details
+                "details": result.details,
             }
             report["gate_results"].append(gate_report)
 
         # Export report
-        report_file = self.results_path / f"ci_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(report_file, 'w') as f:
+        report_file = (
+            self.results_path / f"ci_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        )
+        with open(report_file, "w") as f:
             json.dump(report, f, indent=2)
 
         print(f"\n📊 CI Report exportován: {report_file}")
 
         # Print summary
         print(f"\n{'='*60}")
-        print(f"CI/CD Pipeline Summary")
+        print("CI/CD Pipeline Summary")
         print(f"{'='*60}")
         print(f"Overall Status: {'✅ PASSED' if overall_success else '❌ FAILED'}")
         print(f"Gates Executed: {len(results)}")
@@ -635,7 +668,7 @@ class CICDGateOrchestrator:
 
 
 # Factory function
-def create_cicd_gate_orchestrator(config: Dict[str, Any]) -> CICDGateOrchestrator:
+def create_cicd_gate_orchestrator(config: dict[str, Any]) -> CICDGateOrchestrator:
     """Factory function pro vytvoření CI/CD orchestrátor"""
     return CICDGateOrchestrator(config)
 
@@ -644,10 +677,12 @@ if __name__ == "__main__":
     # CLI interface for CI/CD gates
     import argparse
 
-    parser = argparse.ArgumentParser(description='CI/CD Gates for FÁZE 5')
-    parser.add_argument('--config', default='config_m1_local.yaml', help='Config file path')
-    parser.add_argument('--gates', nargs='+', help='Specific gates to run')
-    parser.add_argument('--fail-fast', action='store_true', default=True, help='Stop on first failure')
+    parser = argparse.ArgumentParser(description="CI/CD Gates for FÁZE 5")
+    parser.add_argument("--config", default="config_m1_local.yaml", help="Config file path")
+    parser.add_argument("--gates", nargs="+", help="Specific gates to run")
+    parser.add_argument(
+        "--fail-fast", action="store_true", default=True, help="Stop on first failure"
+    )
 
     args = parser.parse_args()
 
@@ -660,8 +695,7 @@ if __name__ == "__main__":
     async def main():
         orchestrator = create_cicd_gate_orchestrator(config)
         success, results = await orchestrator.run_ci_pipeline(
-            gates_to_run=args.gates,
-            fail_fast=args.fail_fast
+            gates_to_run=args.gates, fail_fast=args.fail_fast
         )
         sys.exit(0 if success else 1)
 

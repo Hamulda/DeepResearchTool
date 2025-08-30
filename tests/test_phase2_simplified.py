@@ -35,7 +35,9 @@ async def test_phase2_basic_structure():
         rrf_config = RRFConfig(k_parameter=60, authority_weight=0.3)
 
         print(f"✅ HyDE Config: enabled={hyde_config.enabled}, tokens={hyde_config.budget_tokens}")
-        print(f"✅ RRF Config: k={rrf_config.k_parameter}, authority_weight={rrf_config.authority_weight}")
+        print(
+            f"✅ RRF Config: k={rrf_config.k_parameter}, authority_weight={rrf_config.authority_weight}"
+        )
 
         return True
 
@@ -55,7 +57,7 @@ async def test_mock_pipeline():
                 "id": f"doc_{i}",
                 "content": f"Mock document {i} about AI research and machine learning",
                 "score": 0.9 - (i * 0.1),
-                "url": f"https://example.com/doc_{i}"
+                "url": f"https://example.com/doc_{i}",
             }
             for i in range(5)
         ]
@@ -91,14 +93,16 @@ async def test_mock_pipeline():
 
         # Validate pipeline
         assert len(compressed) > 0, "Pipeline should produce results"
-        assert all("hyde_processed" in doc for doc in compressed), "All docs should be HyDE processed"
+        assert all(
+            "hyde_processed" in doc for doc in compressed
+        ), "All docs should be HyDE processed"
         assert all("rrf_score" in doc for doc in compressed), "All docs should have RRF scores"
 
         return {
             "success": True,
             "input_docs": len(mock_documents),
             "output_docs": len(compressed),
-            "pipeline_steps": 5
+            "pipeline_steps": 5,
         }
 
     except Exception as e:
@@ -118,8 +122,8 @@ async def test_validation_gates_basic():
         gate_config = create_default_gate_config()
 
         # Test struktury
-        assert hasattr(gate_config, 'min_citations_per_claim'), "Should have citation requirements"
-        assert hasattr(gate_config, 'min_recall_at_10'), "Should have recall requirements"
+        assert hasattr(gate_config, "min_citations_per_claim"), "Should have citation requirements"
+        assert hasattr(gate_config, "min_recall_at_10"), "Should have recall requirements"
         assert gate_config.min_citations_per_claim >= 2, "Should require at least 2 citations"
 
         print(f"✅ Gate config: min_citations={gate_config.min_citations_per_claim}")
@@ -132,22 +136,20 @@ async def test_validation_gates_basic():
                     "text": "Test claim",
                     "citations": [
                         {"source_id": "source1", "passage": "Evidence 1"},
-                        {"source_id": "source2", "passage": "Evidence 2"}
-                    ]
+                        {"source_id": "source2", "passage": "Evidence 2"},
+                    ],
                 }
             ],
-            "metrics": {
-                "recall_at_10": 0.75,
-                "ndcg_at_10": 0.65,
-                "citation_precision": 0.85
-            }
+            "metrics": {"recall_at_10": 0.75, "ndcg_at_10": 0.65, "citation_precision": 0.85},
         }
 
         # Basic validation check
         claims = validation_data["claims"]
         citations_count = sum(len(claim.get("citations", [])) for claim in claims)
 
-        assert citations_count >= gate_config.min_citations_per_claim, "Should meet citation requirements"
+        assert (
+            citations_count >= gate_config.min_citations_per_claim
+        ), "Should meet citation requirements"
         print(f"✅ Citations validation: {citations_count} citations found")
 
         return True
@@ -165,29 +167,12 @@ async def test_configuration_loading():
         # Test mock konfigurace
         test_config = {
             "retrieval": {
-                "hyde": {
-                    "enabled": True,
-                    "budget_tokens": 1000,
-                    "fusion_weight": 0.6
-                },
-                "rrf": {
-                    "k_parameter": 60,
-                    "authority_weight": 0.3,
-                    "mmr_enabled": True
-                },
-                "deduplication": {
-                    "enabled": True,
-                    "similarity_threshold": 0.85
-                }
+                "hyde": {"enabled": True, "budget_tokens": 1000, "fusion_weight": 0.6},
+                "rrf": {"k_parameter": 60, "authority_weight": 0.3, "mmr_enabled": True},
+                "deduplication": {"enabled": True, "similarity_threshold": 0.85},
             },
-            "reranking": {
-                "enabled": True,
-                "strategy": "hybrid"
-            },
-            "compression": {
-                "enabled": True,
-                "max_context_tokens": 4000
-            }
+            "reranking": {"enabled": True, "strategy": "hybrid"},
+            "compression": {"enabled": True, "max_context_tokens": 4000},
         }
 
         # Validate struktura
@@ -223,7 +208,7 @@ async def run_phase2_simplified_test():
         ("Basic Structure", test_phase2_basic_structure),
         ("Mock Pipeline", test_mock_pipeline),
         ("Validation Gates", test_validation_gates_basic),
-        ("Configuration", test_configuration_loading)
+        ("Configuration", test_configuration_loading),
     ]
 
     for test_name, test_func in tests:
@@ -262,8 +247,8 @@ async def run_phase2_simplified_test():
             "RRF Setup",
             "Validation Gates",
             "Mock Pipeline Processing",
-            "Configuration Management"
-        ]
+            "Configuration Management",
+        ],
     }
 
     # Ulož výsledky

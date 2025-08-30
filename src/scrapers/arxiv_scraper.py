@@ -1,32 +1,31 @@
 #!/usr/bin/env python3
-"""
-ArXiv Scraper for Deep Research Tool
+"""ArXiv Scraper for Deep Research Tool
 Academic paper research with advanced filtering and analysis
 
 Author: Advanced IT Specialist
 """
 
 import asyncio
+from datetime import datetime
 import logging
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
-import arxiv
-import aiohttp
 import re
-from urllib.parse import quote
+from typing import Any
+
+import arxiv
 
 logger = logging.getLogger(__name__)
+
 
 class ArxivScraper:
     """Advanced scraper for ArXiv academic papers"""
 
     def __init__(self, rate_limit: float = 0.5, max_results: int = 100):
-        """
-        Initialize ArXiv scraper
+        """Initialize ArXiv scraper
 
         Args:
             rate_limit: Requests per second limit
             max_results: Maximum results per search
+
         """
         self.rate_limit = rate_limit
         self.max_results = max_results
@@ -34,13 +33,21 @@ class ArxivScraper:
 
         # ArXiv categories relevant to research
         self.relevant_categories = [
-            "cs.AI", "cs.CL", "cs.IR", "cs.CY", "cs.SI",
-            "stat.ML", "physics.soc-ph", "econ.GN", "q-bio"
+            "cs.AI",
+            "cs.CL",
+            "cs.IR",
+            "cs.CY",
+            "cs.SI",
+            "stat.ML",
+            "physics.soc-ph",
+            "econ.GN",
+            "q-bio",
         ]
 
-    async def search_async(self, topic: str, time_range: Optional[Tuple[datetime, datetime]] = None) -> List[Dict[str, Any]]:
-        """
-        Asynchronous search for academic papers
+    async def search_async(
+        self, topic: str, time_range: tuple[datetime, datetime] | None = None
+    ) -> list[dict[str, Any]]:
+        """Asynchronous search for academic papers
 
         Args:
             topic: Search topic
@@ -48,6 +55,7 @@ class ArxivScraper:
 
         Returns:
             List of academic papers
+
         """
         results = []
 
@@ -60,7 +68,7 @@ class ArxivScraper:
                 query=search_query,
                 max_results=self.max_results,
                 sort_by=arxiv.SortCriterion.Relevance,
-                sort_order=arxiv.SortOrder.Descending
+                sort_order=arxiv.SortOrder.Descending,
             )
 
             # Process results
@@ -78,11 +86,15 @@ class ArxivScraper:
         logger.info(f"ArXiv search found {len(results)} academic papers")
         return results
 
-    def search(self, topic: str, time_range: Optional[Tuple[datetime, datetime]] = None) -> List[Dict[str, Any]]:
+    def search(
+        self, topic: str, time_range: tuple[datetime, datetime] | None = None
+    ) -> list[dict[str, Any]]:
         """Synchronous search method"""
         return asyncio.run(self.search_async(topic, time_range))
 
-    def _build_search_query(self, topic: str, time_range: Optional[Tuple[datetime, datetime]]) -> str:
+    def _build_search_query(
+        self, topic: str, time_range: tuple[datetime, datetime] | None
+    ) -> str:
         """Build ArXiv search query with advanced filters"""
         # Clean and prepare search terms
         search_terms = self._extract_search_terms(topic)
@@ -104,11 +116,11 @@ class ArxivScraper:
 
         return query
 
-    def _extract_search_terms(self, topic: str) -> List[str]:
+    def _extract_search_terms(self, topic: str) -> list[str]:
         """Extract meaningful search terms from topic"""
         # Remove common stop words and split
         stop_words = {"the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by"}
-        words = re.findall(r'\b\w{3,}\b', topic.lower())
+        words = re.findall(r"\b\w{3,}\b", topic.lower())
         meaningful_words = [word for word in words if word not in stop_words]
 
         # Add the full topic as a phrase
@@ -117,7 +129,7 @@ class ArxivScraper:
 
         return terms[:10]  # Limit to prevent overly complex queries
 
-    async def _process_paper(self, paper: arxiv.Result) -> Optional[Dict[str, Any]]:
+    async def _process_paper(self, paper: arxiv.Result) -> dict[str, Any] | None:
         """Process individual ArXiv paper"""
         try:
             # Extract authors
@@ -136,23 +148,25 @@ class ArxivScraper:
                 content += "\n\n" + full_text[:5000]  # Limit full text length
 
             return {
-                'title': paper.title,
-                'content': content,
-                'url': paper.entry_id,
-                'pdf_url': pdf_url,
-                'date': paper.published,
-                'source': 'arxiv',
-                'source_type': 'academic',
-                'metadata': {
-                    'authors': authors,
-                    'categories': categories,
-                    'arxiv_id': paper.get_short_id(),
-                    'updated': paper.updated,
-                    'doi': paper.doi,
-                    'journal_ref': paper.journal_ref,
-                    'comment': paper.comment,
-                    'primary_category': str(paper.primary_category) if paper.primary_category else None
-                }
+                "title": paper.title,
+                "content": content,
+                "url": paper.entry_id,
+                "pdf_url": pdf_url,
+                "date": paper.published,
+                "source": "arxiv",
+                "source_type": "academic",
+                "metadata": {
+                    "authors": authors,
+                    "categories": categories,
+                    "arxiv_id": paper.get_short_id(),
+                    "updated": paper.updated,
+                    "doi": paper.doi,
+                    "journal_ref": paper.journal_ref,
+                    "comment": paper.comment,
+                    "primary_category": (
+                        str(paper.primary_category) if paper.primary_category else None
+                    ),
+                },
             }
 
         except Exception as e:
@@ -170,14 +184,16 @@ class ArxivScraper:
             logger.error(f"Error extracting PDF text from {pdf_url}: {e}")
             return ""
 
-    async def search_by_category(self, category: str, max_results: int = 50) -> List[Dict[str, Any]]:
+    async def search_by_category(
+        self, category: str, max_results: int = 50
+    ) -> list[dict[str, Any]]:
         """Search papers by specific ArXiv category"""
         try:
             search = arxiv.Search(
                 query=f"cat:{category}",
                 max_results=max_results,
                 sort_by=arxiv.SortCriterion.SubmittedDate,
-                sort_order=arxiv.SortOrder.Descending
+                sort_order=arxiv.SortOrder.Descending,
             )
 
             results = []
@@ -193,14 +209,14 @@ class ArxivScraper:
             logger.error(f"Error searching by category {category}: {e}")
             return []
 
-    async def search_by_author(self, author_name: str) -> List[Dict[str, Any]]:
+    async def search_by_author(self, author_name: str) -> list[dict[str, Any]]:
         """Search papers by specific author"""
         try:
             search = arxiv.Search(
                 query=f'au:"{author_name}"',
                 max_results=self.max_results,
                 sort_by=arxiv.SortCriterion.SubmittedDate,
-                sort_order=arxiv.SortOrder.Descending
+                sort_order=arxiv.SortOrder.Descending,
             )
 
             results = []

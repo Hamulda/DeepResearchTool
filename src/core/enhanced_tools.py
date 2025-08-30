@@ -1,25 +1,23 @@
-"""
-Rozšířené nástroje pro přístup k autoritativním a specializovaným datovým zdrojům
+"""Rozšířené nástroje pro přístup k autoritativním a specializovaným datovým zdrojům
 Implementace nástrojů pro Semantic Scholar, Data.gov a Wayback Machine
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import aiohttp
-import json
-from typing import Dict, List, Any, Optional
-from langchain.tools import tool
 from datetime import datetime
 import logging
+from typing import Any
+
+import aiohttp
+from langchain.tools import tool
 
 logger = logging.getLogger(__name__)
 
 
 @tool
-async def semantic_scholar_search(query: str, limit: int = 10) -> Dict[str, Any]:
-    """
-    Vyhledá akademické články pomocí Semantic Scholar API
+async def semantic_scholar_search(query: str, limit: int = 10) -> dict[str, Any]:
+    """Vyhledá akademické články pomocí Semantic Scholar API
 
     Args:
         query: Vyhledávací dotaz
@@ -27,13 +25,14 @@ async def semantic_scholar_search(query: str, limit: int = 10) -> Dict[str, Any]
 
     Returns:
         Slovník s výsledky vyhledávání
+
     """
     base_url = "https://api.semanticscholar.org/graph/v1/paper/search"
 
     params = {
         "query": query,
         "limit": limit,
-        "fields": "paperId,title,abstract,authors,year,citationCount,url,venue,publicationTypes"
+        "fields": "paperId,title,abstract,authors,year,citationCount,url,venue,publicationTypes",
     }
 
     try:
@@ -47,13 +46,15 @@ async def semantic_scholar_search(query: str, limit: int = 10) -> Dict[str, Any]
                         formatted_paper = {
                             "title": paper.get("title", ""),
                             "abstract": paper.get("abstract", ""),
-                            "authors": [author.get("name", "") for author in paper.get("authors", [])],
+                            "authors": [
+                                author.get("name", "") for author in paper.get("authors", [])
+                            ],
                             "year": paper.get("year"),
                             "citation_count": paper.get("citationCount", 0),
                             "url": paper.get("url", ""),
                             "venue": paper.get("venue", ""),
                             "publication_types": paper.get("publicationTypes", []),
-                            "paper_id": paper.get("paperId", "")
+                            "paper_id": paper.get("paperId", ""),
                         }
                         formatted_results.append(formatted_paper)
 
@@ -61,27 +62,23 @@ async def semantic_scholar_search(query: str, limit: int = 10) -> Dict[str, Any]
                         "success": True,
                         "papers": formatted_results,
                         "total_found": data.get("total", 0),
-                        "query": query
+                        "query": query,
                     }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"API chyba: {response.status}",
-                        "papers": []
-                    }
+                return {
+                    "success": False,
+                    "error": f"API chyba: {response.status}",
+                    "papers": [],
+                }
     except Exception as e:
         logger.error(f"Chyba při vyhledávání v Semantic Scholar: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "papers": []
-        }
+        return {"success": False, "error": str(e), "papers": []}
 
 
 @tool
-async def data_gov_search(query: str, limit: int = 10, resource_type: str = "dataset") -> Dict[str, Any]:
-    """
-    Vyhledá vládní datové sady pomocí Data.gov API
+async def data_gov_search(
+    query: str, limit: int = 10, resource_type: str = "dataset"
+) -> dict[str, Any]:
+    """Vyhledá vládní datové sady pomocí Data.gov API
 
     Args:
         query: Vyhledávací dotaz
@@ -90,14 +87,11 @@ async def data_gov_search(query: str, limit: int = 10, resource_type: str = "dat
 
     Returns:
         Slovník s výsledky vyhledávání
+
     """
     base_url = "https://catalog.data.gov/api/3/action/package_search"
 
-    params = {
-        "q": query,
-        "rows": limit,
-        "sort": "score desc"
-    }
+    params = {"q": query, "rows": limit, "sort": "score desc"}
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -116,7 +110,7 @@ async def data_gov_search(query: str, limit: int = 10, resource_type: str = "dat
                                 "url": f"https://catalog.data.gov/dataset/{dataset.get('name', '')}",
                                 "last_modified": dataset.get("metadata_modified", ""),
                                 "resources": len(dataset.get("resources", [])),
-                                "dataset_id": dataset.get("id", "")
+                                "dataset_id": dataset.get("id", ""),
                             }
                             formatted_results.append(formatted_dataset)
 
@@ -124,33 +118,26 @@ async def data_gov_search(query: str, limit: int = 10, resource_type: str = "dat
                             "success": True,
                             "datasets": formatted_results,
                             "total_found": data.get("result", {}).get("count", 0),
-                            "query": query
+                            "query": query,
                         }
-                    else:
-                        return {
-                            "success": False,
-                            "error": "API vrátilo neúspěšný výsledek",
-                            "datasets": []
-                        }
-                else:
                     return {
                         "success": False,
-                        "error": f"API chyba: {response.status}",
-                        "datasets": []
+                        "error": "API vrátilo neúspěšný výsledek",
+                        "datasets": [],
                     }
+                return {
+                    "success": False,
+                    "error": f"API chyba: {response.status}",
+                    "datasets": [],
+                }
     except Exception as e:
         logger.error(f"Chyba při vyhledávání v Data.gov: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "datasets": []
-        }
+        return {"success": False, "error": str(e), "datasets": []}
 
 
 @tool
-async def wayback_machine_search(url: str, timestamp: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Vyhledá historické verze webových stránek pomocí Wayback Machine API
+async def wayback_machine_search(url: str, timestamp: str | None = None) -> dict[str, Any]:
+    """Vyhledá historické verze webových stránek pomocí Wayback Machine API
 
     Args:
         url: URL stránky k vyhledání
@@ -158,9 +145,10 @@ async def wayback_machine_search(url: str, timestamp: Optional[str] = None) -> D
 
     Returns:
         Slovník s historickými verzemi stránky
+
     """
     # API pro získání dostupných snapshotů
-    availability_url = f"http://archive.org/wayback/available"
+    availability_url = "http://archive.org/wayback/available"
 
     params = {"url": url}
     if timestamp:
@@ -190,70 +178,60 @@ async def wayback_machine_search(url: str, timestamp: Optional[str] = None) -> D
                                             "archived_url": archived_url,
                                             "timestamp": closest.get("timestamp", ""),
                                             "original_url": url,
-                                            "content": content[:5000],  # Omezení na prvních 5000 znaků
-                                            "full_content_available": True
+                                            "content": content[
+                                                :5000
+                                            ],  # Omezení na prvních 5000 znaků
+                                            "full_content_available": True,
                                         }
-                                    else:
-                                        return {
-                                            "success": False,
-                                            "error": f"Nepodařilo se získat obsah: {content_response.status}",
-                                            "archived_url": archived_url
-                                        }
+                                    return {
+                                        "success": False,
+                                        "error": f"Nepodařilo se získat obsah: {content_response.status}",
+                                        "archived_url": archived_url,
+                                    }
                             except Exception as content_error:
                                 return {
                                     "success": False,
                                     "error": f"Chyba při získávání obsahu: {content_error}",
-                                    "archived_url": archived_url
+                                    "archived_url": archived_url,
                                 }
                         else:
                             return {
                                 "success": False,
                                 "error": "Stránka není dostupná v archivu",
-                                "original_url": url
+                                "original_url": url,
                             }
                     else:
                         return {
                             "success": False,
                             "error": "Žádné archivované snapshoty nenalezeny",
-                            "original_url": url
+                            "original_url": url,
                         }
                 else:
                     return {
                         "success": False,
                         "error": f"API chyba: {response.status}",
-                        "original_url": url
+                        "original_url": url,
                     }
     except Exception as e:
         logger.error(f"Chyba při vyhledávání ve Wayback Machine: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "original_url": url
-        }
+        return {"success": False, "error": str(e), "original_url": url}
 
 
 @tool
-async def cross_reference_sources(query: str) -> Dict[str, Any]:
-    """
-    Kombinuje vyhledávání napříč všemi dostupnými autoritativními zdroji
+async def cross_reference_sources(query: str) -> dict[str, Any]:
+    """Kombinuje vyhledávání napříč všemi dostupnými autoritativními zdroji
 
     Args:
         query: Vyhledávací dotaz
 
     Returns:
         Agregované výsledky ze všech zdrojů
+
     """
-    results = {
-        "query": query,
-        "timestamp": datetime.now().isoformat(),
-        "sources": {}
-    }
+    results = {"query": query, "timestamp": datetime.now().isoformat(), "sources": {}}
 
     # Paralelní vyhledávání ve všech zdrojích
-    tasks = [
-        semantic_scholar_search(query, limit=5),
-        data_gov_search(query, limit=5)
-    ]
+    tasks = [semantic_scholar_search(query, limit=5), data_gov_search(query, limit=5)]
 
     try:
         # Spuštění paralelního vyhledávání
@@ -264,12 +242,16 @@ async def cross_reference_sources(query: str) -> Dict[str, Any]:
             results["sources"]["semantic_scholar"] = {
                 "status": "success",
                 "count": len(semantic_results.get("papers", [])),
-                "data": semantic_results.get("papers", [])
+                "data": semantic_results.get("papers", []),
             }
         else:
             results["sources"]["semantic_scholar"] = {
                 "status": "error",
-                "error": str(semantic_results) if isinstance(semantic_results, Exception) else semantic_results.get("error", "Neznámá chyba")
+                "error": (
+                    str(semantic_results)
+                    if isinstance(semantic_results, Exception)
+                    else semantic_results.get("error", "Neznámá chyba")
+                ),
             }
 
         # Zpracování výsledků z Data.gov
@@ -277,12 +259,16 @@ async def cross_reference_sources(query: str) -> Dict[str, Any]:
             results["sources"]["data_gov"] = {
                 "status": "success",
                 "count": len(data_gov_results.get("datasets", [])),
-                "data": data_gov_results.get("datasets", [])
+                "data": data_gov_results.get("datasets", []),
             }
         else:
             results["sources"]["data_gov"] = {
                 "status": "error",
-                "error": str(data_gov_results) if isinstance(data_gov_results, Exception) else data_gov_results.get("error", "Neznámá chyba")
+                "error": (
+                    str(data_gov_results)
+                    if isinstance(data_gov_results, Exception)
+                    else data_gov_results.get("error", "Neznámá chyba")
+                ),
             }
 
         # Výpočet celkových statistik
@@ -294,8 +280,12 @@ async def cross_reference_sources(query: str) -> Dict[str, Any]:
 
         results["summary"] = {
             "total_sources_found": total_sources,
-            "successful_apis": len([s for s in results["sources"].values() if s.get("status") == "success"]),
-            "failed_apis": len([s for s in results["sources"].values() if s.get("status") == "error"])
+            "successful_apis": len(
+                [s for s in results["sources"].values() if s.get("status") == "success"]
+            ),
+            "failed_apis": len(
+                [s for s in results["sources"].values() if s.get("status") == "error"]
+            ),
         }
 
         return results
@@ -306,20 +296,20 @@ async def cross_reference_sources(query: str) -> Dict[str, Any]:
             "query": query,
             "error": str(e),
             "sources": {},
-            "summary": {"total_sources_found": 0, "successful_apis": 0, "failed_apis": 0}
+            "summary": {"total_sources_found": 0, "successful_apis": 0, "failed_apis": 0},
         }
 
 
-def get_enhanced_tools() -> List:
-    """
-    Vrátí seznam všech rozšířených nástrojů
+def get_enhanced_tools() -> list:
+    """Vrátí seznam všech rozšířených nástrojů
 
     Returns:
         Seznam nástrojů pro použití v agentovi
+
     """
     return [
         semantic_scholar_search,
         data_gov_search,
         wayback_machine_search,
-        cross_reference_sources
+        cross_reference_sources,
     ]

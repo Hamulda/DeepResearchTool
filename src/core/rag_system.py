@@ -1,47 +1,75 @@
-"""
-Základní RAG systém s Milvus Lite a sentence-transformers pro Fázi 1.
+"""Základní RAG systém s Milvus Lite a sentence-transformers pro Fázi 1.
 Implementuje vektorové embeddings a podobnostní vyhledávání.
 """
 
 import asyncio
-import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
-import numpy as np
 from dataclasses import dataclass
-from sentence_transformers import SentenceTransformer
-from pymilvus import (
-    connections, Collection, CollectionSchema, FieldSchema, DataType,
-    utility, db
-)
-import duckdb
-import structlog
+from pathlib import Path
+from typing import Any
 
-logger = structlog.get_logger(__name__)
+# Optional imports with fallbacks
+try:
+    import duckdb
+    HAS_DUCKDB = True
+except ImportError:
+    HAS_DUCKDB = False
+    duckdb = None
+
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+    np = None
+
+try:
+    from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
+    HAS_MILVUS = True
+except ImportError:
+    HAS_MILVUS = False
+
+try:
+    from sentence_transformers import SentenceTransformer
+    HAS_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    HAS_SENTENCE_TRANSFORMERS = False
+    SentenceTransformer = None
+
+try:
+    import structlog
+    logger = structlog.get_logger(__name__)
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
 
 
 @dataclass
 class DocumentChunk:
     """Reprezentuje jeden chunk dokumentu pro vektorové vyhledávání."""
+
     id: str
     content: str
-    metadata: Dict[str, Any]
-    embedding: Optional[np.ndarray] = None
+    metadata: dict[str, Any]
+    embedding: np.ndarray | None = None
 
 
 class EmbeddingGenerator:
-    """
-    Generátor vektorových embeddingů pomocí sentence-transformers.
+    """Generátor vektorových embeddingů pomocí sentence-transformers.
     Optimalizován pro Apple Silicon (Metal).
     """
 
     def __init__(
         self,
         model_name: str = "all-MiniLM-L6-v2",
-        device: str = "mps"  # Metal Performance Shaders pro Apple Silicon
+        device: str = "mps",  # Metal Performance Shaders pro Apple Silicon
     ):
         self.model_name = model_name
         self.device = device
+
+        if not HAS_SENTENCE_TRANSFORMERS:
+            logger.warning("SentenceTransformers not available, embedding generation disabled")
+            self.model = None
+            return
 
         try:
             # Načtení modelu s Metal optimalizací
@@ -50,7 +78,7 @@ class EmbeddingGenerator:
                 "Embedding model loaded",
                 model=model_name,
                 device=device,
-                embedding_dim=self.model.get_sentence_embedding_dimension()
+                embedding_dim=self.model.get_sentence_embedding_dimension(),
             )
         except Exception as e:
             # Fallback na CPU pokud Metal není dostupný
@@ -58,11 +86,7 @@ class EmbeddingGenerator:
             self.device = "cpu"
             self.model = SentenceTransformer(model_name, device="cpu")
 
-    def encode_batch(
-        self,
-        texts: List[str],
-        batch_size: int = 32
-    ) -> np.ndarray:
+    def encode_batch(self, texts: list[str], batch_size: int = 32) -> np.ndarray:
         """Generuje embeddings pro batch textů."""
         try:
             embeddings = self.model.encode(
@@ -70,13 +94,11 @@ class EmbeddingGenerator:
                 batch_size=batch_size,
                 show_progress_bar=True,
                 convert_to_numpy=True,
-                normalize_embeddings=True
+                normalize_embeddings=True,
             )
 
             logger.info(
-                "Generated embeddings",
-                batch_size=len(texts),
-                embedding_dim=embeddings.shape[1]
+                "Generated embeddings", batch_size=len(texts), embedding_dim=embeddings.shape[1]
             )
 
             return embeddings
@@ -96,8 +118,7 @@ class EmbeddingGenerator:
 
 
 class MilvusVectorStore:
-    """
-    Vektorová databáze pomocí Milvus Lite pro lokální použití.
+    """Vektorová databáze pomocí Milvus Lite pro lokální použití.
     """
 
     def __init__(
@@ -105,7 +126,7 @@ class MilvusVectorStore:
         collection_name: str = "document_embeddings",
         embedding_dim: int = 384,
         host: str = "localhost",
-        port: int = 19530
+        port: int = 19530,
     ):
         self.collection_name = collection_name
         self.embedding_dim = embedding_dim
@@ -119,11 +140,7 @@ class MilvusVectorStore:
     def _connect_to_milvus(self) -> None:
         """Připojí se k Milvus serveru."""
         try:
-            connections.connect(
-                alias="default",
-                host=self.host,
-                port=self.port
-            )
+            connections.connect(alias="default", host=self.host, port=self.port)
             logger.info("Connected to Milvus", host=self.host, port=self.port)
         except Exception as e:
             logger.error(f"Failed to connect to Milvus: {e}")
@@ -138,60 +155,26 @@ class MilvusVectorStore:
 
         # Definice schématu kolekce
         fields = [
-            FieldSchema(
-                name="id",
-                dtype=DataType.VARCHAR,
-                max_length=255,
-                is_primary=True
-            ),
-            FieldSchema(
-                name="content",
-                dtype=DataType.VARCHAR,
-                max_length=65535
-            ),
-            FieldSchema(
-                name="source",
-                dtype=DataType.VARCHAR,
-                max_length=255
-            ),
-            FieldSchema(
-                name="timestamp",
-                dtype=DataType.VARCHAR,
-                max_length=50
-            ),
-            FieldSchema(
-                name="embedding",
-                dtype=DataType.FLOAT_VECTOR,
-                dim=self.embedding_dim
-            )
+            FieldSchema(name="id", dtype=DataType.VARCHAR, max_length=255, is_primary=True),
+            FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=65535),
+            FieldSchema(name="source", dtype=DataType.VARCHAR, max_length=255),
+            FieldSchema(name="timestamp", dtype=DataType.VARCHAR, max_length=50),
+            FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=self.embedding_dim),
         ]
 
-        schema = CollectionSchema(
-            fields=fields,
-            description="Document embeddings for RAG system"
-        )
+        schema = CollectionSchema(fields=fields, description="Document embeddings for RAG system")
 
         # Vytvoření kolekce
-        self.collection = Collection(
-            name=self.collection_name,
-            schema=schema
-        )
+        self.collection = Collection(name=self.collection_name, schema=schema)
 
         # Vytvoření indexu pro vektorové vyhledávání
-        index_params = {
-            "metric_type": "COSINE",
-            "index_type": "IVF_FLAT",
-            "params": {"nlist": 128}
-        }
+        index_params = {"metric_type": "COSINE", "index_type": "IVF_FLAT", "params": {"nlist": 128}}
 
-        self.collection.create_index(
-            field_name="embedding",
-            index_params=index_params
-        )
+        self.collection.create_index(field_name="embedding", index_params=index_params)
 
         logger.info("Created new collection with index", name=self.collection_name)
 
-    async def insert_documents(self, chunks: List[DocumentChunk]) -> None:
+    async def insert_documents(self, chunks: list[DocumentChunk]) -> None:
         """Vloží dokumenty do vektorové databáze."""
         if not chunks:
             return
@@ -202,7 +185,7 @@ class MilvusVectorStore:
             [chunk.content for chunk in chunks],  # Content
             [chunk.metadata.get("source", "") for chunk in chunks],  # Source
             [chunk.metadata.get("timestamp", "") for chunk in chunks],  # Timestamp
-            [chunk.embedding.tolist() for chunk in chunks]  # Embeddings
+            [chunk.embedding.tolist() for chunk in chunks],  # Embeddings
         ]
 
         try:
@@ -211,9 +194,7 @@ class MilvusVectorStore:
             self.collection.flush()
 
             logger.info(
-                "Inserted documents into Milvus",
-                count=len(chunks),
-                collection=self.collection_name
+                "Inserted documents into Milvus", count=len(chunks), collection=self.collection_name
             )
 
         except Exception as e:
@@ -221,21 +202,15 @@ class MilvusVectorStore:
             raise
 
     async def search_similar(
-        self,
-        query_embedding: np.ndarray,
-        top_k: int = 5,
-        score_threshold: float = 0.7
-    ) -> List[Tuple[str, str, float]]:
+        self, query_embedding: np.ndarray, top_k: int = 5, score_threshold: float = 0.7
+    ) -> list[tuple[str, str, float]]:
         """Vyhledá podobné dokumenty."""
         try:
             # Načtení kolekce do paměti pro vyhledávání
             self.collection.load()
 
             # Parametry vyhledávání
-            search_params = {
-                "metric_type": "COSINE",
-                "params": {"nprobe": 10}
-            }
+            search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
 
             # Vyhledávání
             results = self.collection.search(
@@ -243,7 +218,7 @@ class MilvusVectorStore:
                 anns_field="embedding",
                 param=search_params,
                 limit=top_k,
-                output_fields=["id", "content", "source"]
+                output_fields=["id", "content", "source"],
             )
 
             # Zpracování výsledků
@@ -251,16 +226,14 @@ class MilvusVectorStore:
             for hits in results:
                 for hit in hits:
                     if hit.score >= score_threshold:
-                        similar_docs.append((
-                            hit.entity.get("id"),
-                            hit.entity.get("content"),
-                            hit.score
-                        ))
+                        similar_docs.append(
+                            (hit.entity.get("id"), hit.entity.get("content"), hit.score)
+                        )
 
             logger.info(
                 "Found similar documents",
                 query_results=len(similar_docs),
-                threshold=score_threshold
+                threshold=score_threshold,
             )
 
             return similar_docs
@@ -269,7 +242,7 @@ class MilvusVectorStore:
             logger.error(f"Failed to search similar documents: {e}")
             raise
 
-    def get_collection_stats(self) -> Dict[str, Any]:
+    def get_collection_stats(self) -> dict[str, Any]:
         """Vrací statistiky kolekce."""
         try:
             self.collection.load()
@@ -280,7 +253,7 @@ class MilvusVectorStore:
                 "num_documents": num_entities,
                 "embedding_dimension": self.embedding_dim,
                 "index_type": "IVF_FLAT",
-                "metric_type": "COSINE"
+                "metric_type": "COSINE",
             }
 
         except Exception as e:
@@ -289,40 +262,49 @@ class MilvusVectorStore:
 
 
 class LocalRAGSystem:
-    """
-    Kompletní RAG systém kombinující DuckDB, Milvus a sentence-transformers.
+    """Kompletní RAG systém kombinující DuckDB, Milvus a sentence-transformers.
     """
 
     def __init__(
         self,
         data_dir: Path,
         model_name: str = "all-MiniLM-L6-v2",
-        collection_name: str = "rag_documents"
+        collection_name: str = "rag_documents",
     ):
         self.data_dir = Path(data_dir)
         self.model_name = model_name
         self.collection_name = collection_name
 
-        # Inicializace komponent
-        self.embedding_generator = EmbeddingGenerator(model_name)
-        self.vector_store = MilvusVectorStore(
-            collection_name=collection_name,
-            embedding_dim=self.embedding_generator.embedding_dimension
-        )
-        self.duckdb_conn = duckdb.connect(":memory:")
+        # Inicializace komponent s fallbacky
+        if HAS_SENTENCE_TRANSFORMERS:
+            self.embedding_generator = EmbeddingGenerator(model_name)
+        else:
+            logger.warning("SentenceTransformers not available")
+            self.embedding_generator = None
+
+        if HAS_MILVUS and self.embedding_generator:
+            self.vector_store = MilvusVectorStore(
+                collection_name=collection_name,
+                embedding_dim=self.embedding_generator.embedding_dimension,
+            )
+        else:
+            logger.warning("Milvus not available")
+            self.vector_store = None
+
+        if HAS_DUCKDB:
+            self.duckdb_conn = duckdb.connect(":memory:")
+        else:
+            logger.warning("DuckDB not available")
+            self.duckdb_conn = None
 
         logger.info(
             "RAG system initialized",
             model=model_name,
             collection=collection_name,
-            embedding_dim=self.embedding_generator.embedding_dimension
         )
 
     async def index_documents_from_parquet(
-        self,
-        table_name: str,
-        content_column: str = "content",
-        chunk_size: int = 500
+        self, table_name: str, content_column: str = "content", chunk_size: int = 500
     ) -> None:
         """Indexuje dokumenty z Parquet souboru do vektorové databáze."""
         parquet_path = self.data_dir / f"{table_name}.parquet"
@@ -343,26 +325,20 @@ class LocalRAGSystem:
             columns = [desc[0] for desc in self.duckdb_conn.description]
 
             # Rozdělení na chunky pro batch processing
-            documents = [dict(zip(columns, row)) for row in result]
+            documents = [dict(zip(columns, row, strict=False)) for row in result]
 
             for i in range(0, len(documents), chunk_size):
-                batch = documents[i:i + chunk_size]
+                batch = documents[i : i + chunk_size]
                 await self._process_document_batch(batch, content_column)
 
-            logger.info(
-                "Document indexing completed",
-                total_docs=len(documents),
-                table=table_name
-            )
+            logger.info("Document indexing completed", total_docs=len(documents), table=table_name)
 
         except Exception as e:
             logger.error(f"Failed to index documents: {e}")
             raise
 
     async def _process_document_batch(
-        self,
-        documents: List[Dict[str, Any]],
-        content_column: str
+        self, documents: list[dict[str, Any]], content_column: str
     ) -> None:
         """Zpracuje batch dokumentů - generuje embeddings a ukládá do Milvus."""
         # Extrakce textů pro embedding
@@ -381,7 +357,7 @@ class LocalRAGSystem:
                     "source": doc.get("source", "unknown"),
                     "timestamp": doc.get("timestamp", ""),
                 },
-                embedding=embeddings[i]
+                embedding=embeddings[i],
             )
             chunks.append(chunk)
 
@@ -389,11 +365,8 @@ class LocalRAGSystem:
         await self.vector_store.insert_documents(chunks)
 
     async def search_relevant_context(
-        self,
-        query: str,
-        top_k: int = 5,
-        score_threshold: float = 0.7
-    ) -> List[Dict[str, Any]]:
+        self, query: str, top_k: int = 5, score_threshold: float = 0.7
+    ) -> list[dict[str, Any]]:
         """Vyhledá relevantní kontext pro dotaz."""
         try:
             # Generování query embeddingu
@@ -401,25 +374,25 @@ class LocalRAGSystem:
 
             # Vyhledání podobných dokumentů
             similar_docs = await self.vector_store.search_similar(
-                query_embedding=query_embedding,
-                top_k=top_k,
-                score_threshold=score_threshold
+                query_embedding=query_embedding, top_k=top_k, score_threshold=score_threshold
             )
 
             # Formátování výsledků
             context_results = []
             for doc_id, content, score in similar_docs:
-                context_results.append({
-                    "id": doc_id,
-                    "content": content,
-                    "similarity_score": score,
-                    "relevance": "high" if score > 0.8 else "medium"
-                })
+                context_results.append(
+                    {
+                        "id": doc_id,
+                        "content": content,
+                        "similarity_score": score,
+                        "relevance": "high" if score > 0.8 else "medium",
+                    }
+                )
 
             logger.info(
                 "Retrieved relevant context",
                 query=query[:50] + "...",
-                results_count=len(context_results)
+                results_count=len(context_results),
             )
 
             return context_results
@@ -428,7 +401,7 @@ class LocalRAGSystem:
             logger.error(f"Failed to search relevant context: {e}")
             raise
 
-    def get_system_stats(self) -> Dict[str, Any]:
+    def get_system_stats(self) -> dict[str, Any]:
         """Vrací statistiky RAG systému."""
         vector_stats = self.vector_store.get_collection_stats()
 
@@ -437,7 +410,7 @@ class LocalRAGSystem:
             "embedding_dimension": self.embedding_generator.embedding_dimension,
             "device": self.embedding_generator.device,
             "vector_store": vector_stats,
-            "data_directory": str(self.data_dir)
+            "data_directory": str(self.data_dir),
         }
 
     def cleanup(self) -> None:
@@ -449,12 +422,8 @@ class LocalRAGSystem:
 # Příklad použití RAG systému
 async def example_rag_usage():
     """Příklad použití RAG systému."""
-
     # Inicializace RAG systému
-    rag_system = LocalRAGSystem(
-        data_dir=Path("./data/parquet"),
-        model_name="all-MiniLM-L6-v2"
-    )
+    rag_system = LocalRAGSystem(data_dir=Path("./data/parquet"), model_name="all-MiniLM-L6-v2")
 
     try:
         # Indexování dokumentů (předpokládáme existující Parquet soubor)

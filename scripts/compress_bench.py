@@ -42,7 +42,7 @@ class Phase2Benchmark:
 
     def _load_config(self) -> Dict[str, Any]:
         """Načtení konfigurace"""
-        with open(self.config_path, 'r') as f:
+        with open(self.config_path, "r") as f:
             return yaml.safe_load(f)
 
     def _generate_test_documents(self, size: str = "medium") -> List[Dict[str, Any]]:
@@ -68,10 +68,10 @@ class Phase2Benchmark:
         """
 
         sizes = {
-            "small": (5, 200),      # 5 docs, 200 words each
-            "medium": (20, 500),    # 20 docs, 500 words each
-            "large": (50, 1000),    # 50 docs, 1000 words each
-            "xlarge": (100, 1500)   # 100 docs, 1500 words each
+            "small": (5, 200),  # 5 docs, 200 words each
+            "medium": (20, 500),  # 20 docs, 500 words each
+            "large": (50, 1000),  # 50 docs, 1000 words each
+            "xlarge": (100, 1500),  # 100 docs, 1500 words each
         }
 
         doc_count, words_per_doc = sizes.get(size, sizes["medium"])
@@ -91,8 +91,8 @@ class Phase2Benchmark:
                 "metadata": {
                     "title": f"Climate Research Document {i}",
                     "year": 2020 + (i % 4),
-                    "words": len(content.split())
-                }
+                    "words": len(content.split()),
+                },
             }
             documents.append(doc)
 
@@ -117,10 +117,12 @@ class Phase2Benchmark:
             "end_memory_mb": end_memory,
             "memory_delta_mb": end_memory - self.start_memory,
             "peak_traced_mb": peak / 1024 / 1024,
-            "current_traced_mb": current / 1024 / 1024
+            "current_traced_mb": current / 1024 / 1024,
         }
 
-    async def benchmark_discourse_chunking(self, documents: List[Dict[str, Any]], query: str) -> Dict[str, Any]:
+    async def benchmark_discourse_chunking(
+        self, documents: List[Dict[str, Any]], query: str
+    ) -> Dict[str, Any]:
         """Benchmark discourse chunking"""
 
         logger.info("Benchmarking Discourse Chunking...")
@@ -144,10 +146,11 @@ class Phase2Benchmark:
                 "output_chunks": len(result.chunks),
                 "processing_time_seconds": end_time - start_time,
                 "chunks_per_second": len(result.chunks) / (end_time - start_time),
-                "words_per_second": sum(len(doc["content"].split()) for doc in documents) / (end_time - start_time),
+                "words_per_second": sum(len(doc["content"].split()) for doc in documents)
+                / (end_time - start_time),
                 "memory_usage": memory_stats,
                 "quality_metrics": result.quality_metrics,
-                "strategy": result.strategy
+                "strategy": result.strategy,
             }
 
             logger.info(f"Chunking: {len(result.chunks)} chunks in {end_time - start_time:.2f}s")
@@ -157,7 +160,9 @@ class Phase2Benchmark:
             logger.error(f"Chunking benchmark failed: {e}")
             return {"component": "discourse_chunking", "error": str(e)}
 
-    async def benchmark_gated_reranking(self, documents: List[Dict[str, Any]], query: str) -> Dict[str, Any]:
+    async def benchmark_gated_reranking(
+        self, documents: List[Dict[str, Any]], query: str
+    ) -> Dict[str, Any]:
         """Benchmark gated re-ranking"""
 
         logger.info("Benchmarking Gated Re-ranking...")
@@ -174,7 +179,7 @@ class Phase2Benchmark:
                 "content": chunk.text,
                 "source_type": chunk.source_type,
                 "metadata": {"chunk_id": chunk.id},
-                "initial_score": chunk.relevance_score
+                "initial_score": chunk.relevance_score,
             }
             passages.append(passage)
 
@@ -217,7 +222,7 @@ class Phase2Benchmark:
                 "comparisons_per_second": result.comparison_count / (end_time - start_time),
                 "memory_usage": memory_stats,
                 "quality_metrics": result.quality_metrics,
-                "strategy": result.strategy
+                "strategy": result.strategy,
             }
 
             logger.info(f"Re-ranking: {len(passages)} passages in {end_time - start_time:.2f}s")
@@ -227,7 +232,9 @@ class Phase2Benchmark:
             logger.error(f"Re-ranking benchmark failed: {e}")
             return {"component": "gated_reranking", "error": str(e)}
 
-    async def benchmark_enhanced_compression(self, documents: List[Dict[str, Any]], query: str) -> Dict[str, Any]:
+    async def benchmark_enhanced_compression(
+        self, documents: List[Dict[str, Any]], query: str
+    ) -> Dict[str, Any]:
         """Benchmark enhanced compression"""
 
         logger.info("Benchmarking Enhanced Compression...")
@@ -257,17 +264,21 @@ class Phase2Benchmark:
                 "tokens_per_second": result.token_budget_used / (end_time - start_time),
                 "memory_usage": memory_stats,
                 "quality_metrics": result.quality_metrics,
-                "strategy": result.compression_strategy
+                "strategy": result.compression_strategy,
             }
 
-            logger.info(f"Compression: {result.compression_ratio:.1%} ratio in {end_time - start_time:.2f}s")
+            logger.info(
+                f"Compression: {result.compression_ratio:.1%} ratio in {end_time - start_time:.2f}s"
+            )
             return benchmark_result
 
         except Exception as e:
             logger.error(f"Compression benchmark failed: {e}")
             return {"component": "enhanced_compression", "error": str(e)}
 
-    async def benchmark_full_pipeline(self, documents: List[Dict[str, Any]], query: str) -> Dict[str, Any]:
+    async def benchmark_full_pipeline(
+        self, documents: List[Dict[str, Any]], query: str
+    ) -> Dict[str, Any]:
         """Benchmark celého Phase 2 pipeline"""
 
         logger.info("Benchmarking Full Phase 2 Pipeline...")
@@ -304,16 +315,20 @@ class Phase2Benchmark:
                 "component": "full_pipeline",
                 "input_documents": len(documents),
                 "final_compressed_units": len(result.compression_result.selected_units),
-                "overall_compression_ratio": result.quality_metrics.get("overall_compression_ratio", 0),
+                "overall_compression_ratio": result.quality_metrics.get(
+                    "overall_compression_ratio", 0
+                ),
                 "processing_time_seconds": end_time - start_time,
                 "documents_per_second": len(documents) / (end_time - start_time),
                 "memory_usage": memory_stats,
                 "quality_metrics": result.quality_metrics,
                 "pipeline_efficiency": result.pipeline_efficiency,
-                "pipeline_steps": len(result.processing_log)
+                "pipeline_steps": len(result.processing_log),
             }
 
-            logger.info(f"Full pipeline: {len(documents)} docs → {len(result.compression_result.selected_units)} units in {end_time - start_time:.2f}s")
+            logger.info(
+                f"Full pipeline: {len(documents)} docs → {len(result.compression_result.selected_units)} units in {end_time - start_time:.2f}s"
+            )
             return benchmark_result
 
         except Exception as e:
@@ -333,9 +348,9 @@ class Phase2Benchmark:
                 "timestamp": time.time(),
                 "config_path": self.config_path,
                 "query": query,
-                "sizes_tested": sizes
+                "sizes_tested": sizes,
             },
-            "results": {}
+            "results": {},
         }
 
         for size in sizes:
@@ -348,9 +363,10 @@ class Phase2Benchmark:
                     "size": size,
                     "document_count": len(documents),
                     "total_words": sum(len(doc["content"].split()) for doc in documents),
-                    "avg_words_per_doc": sum(len(doc["content"].split()) for doc in documents) / len(documents)
+                    "avg_words_per_doc": sum(len(doc["content"].split()) for doc in documents)
+                    / len(documents),
                 },
-                "component_benchmarks": {}
+                "component_benchmarks": {},
             }
 
             # Benchmark individual components
@@ -377,7 +393,7 @@ class Phase2Benchmark:
     def export_results(self, results: Dict[str, Any], output_path: str):
         """Export benchmark výsledků"""
 
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             json.dump(results, f, indent=2)
 
         logger.info(f"Benchmark results exported to {output_path}")
@@ -385,9 +401,9 @@ class Phase2Benchmark:
     def print_summary(self, results: Dict[str, Any]):
         """Tisk summary benchmark výsledků"""
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("FÁZE 2 COMPRESSION BENCHMARK SUMMARY")
-        print("="*80)
+        print("=" * 80)
 
         for size, size_results in results["results"].items():
             print(f"\nDataset Size: {size.upper()}")
@@ -413,15 +429,21 @@ class Phase2Benchmark:
                 elif component == "reranking":
                     throughput = benchmark.get("passages_per_second", 0)
                     comparisons = benchmark.get("comparisons_per_second", 0)
-                    print(f"  {component}: {time_taken:.2f}s ({throughput:.1f} passages/s, {comparisons:.1f} comparisons/s)")
+                    print(
+                        f"  {component}: {time_taken:.2f}s ({throughput:.1f} passages/s, {comparisons:.1f} comparisons/s)"
+                    )
                 elif component == "compression":
                     ratio = benchmark.get("compression_ratio", 0)
                     efficiency = benchmark.get("token_efficiency", 0)
-                    print(f"  {component}: {time_taken:.2f}s ({ratio:.1%} compression, {efficiency:.1%} token efficiency)")
+                    print(
+                        f"  {component}: {time_taken:.2f}s ({ratio:.1%} compression, {efficiency:.1%} token efficiency)"
+                    )
                 elif component == "pipeline":
                     docs_per_sec = benchmark.get("documents_per_second", 0)
                     overall_ratio = benchmark.get("overall_compression_ratio", 0)
-                    print(f"  {component}: {time_taken:.2f}s ({docs_per_sec:.1f} docs/s, {overall_ratio:.1%} overall compression)")
+                    print(
+                        f"  {component}: {time_taken:.2f}s ({docs_per_sec:.1f} docs/s, {overall_ratio:.1%} overall compression)"
+                    )
 
                 # Memory usage
                 memory = benchmark.get("memory_usage", {})
@@ -435,19 +457,23 @@ async def main():
 
     parser = argparse.ArgumentParser(description="FÁZE 2 Compression Benchmark")
     parser.add_argument("--config", default="config.yaml", help="Config file path")
-    parser.add_argument("--sizes", nargs="+", default=["small", "medium", "large"],
-                       choices=["small", "medium", "large", "xlarge"],
-                       help="Dataset sizes to benchmark")
-    parser.add_argument("--output", default="benchmark_results_phase2.json",
-                       help="Output file for results")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                       help="Verbose logging")
+    parser.add_argument(
+        "--sizes",
+        nargs="+",
+        default=["small", "medium", "large"],
+        choices=["small", "medium", "large", "xlarge"],
+        help="Dataset sizes to benchmark",
+    )
+    parser.add_argument(
+        "--output", default="benchmark_results_phase2.json", help="Output file for results"
+    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
 
     args = parser.parse_args()
 
     # Setup logging
     log_level = logging.DEBUG if args.verbose else logging.INFO
-    logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 
     # Run benchmark
     benchmark = Phase2Benchmark(args.config)

@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""
-HyDE (Hypothetical Document Embeddings) pre-retrieval
+"""HyDE (Hypothetical Document Embeddings) pre-retrieval
 Generuje hypotetický dokument pomocí lokálního LLM pro zlepšení dense search
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
+import logging
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,18 +17,19 @@ logger = logging.getLogger(__name__)
 @dataclass
 class HyDEResult:
     """Výsledek HyDE generování"""
+
     original_query: str
     hypothetical_document: str
     generation_time: float
     token_count: int
     fallback_used: bool
-    embedding_vector: Optional[List[float]] = None
+    embedding_vector: list[float] | None = None
 
 
 class HyDEGenerator:
     """HyDE generator s lokálním LLM a robustním fallbackem"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.hyde_config = config.get("retrieval", {}).get("hyde", {})
 
@@ -49,7 +49,7 @@ class HyDEGenerator:
             "successful_generations": 0,
             "fallback_used": 0,
             "avg_generation_time": 0.0,
-            "avg_token_count": 0.0
+            "avg_token_count": 0.0,
         }
 
     async def initialize(self):
@@ -68,14 +68,14 @@ class HyDEGenerator:
         logger.info("✅ HyDE generator initialized")
 
     async def generate_hypothetical_document(self, query: str) -> HyDEResult:
-        """
-        Generuje hypotetický dokument pro daný dotaz
+        """Generuje hypotetický dokument pro daný dotaz
 
         Args:
             query: Původní research dotaz
 
         Returns:
             HyDEResult s hypotetickým dokumentem
+
         """
         start_time = time.time()
         self.stats["total_requests"] += 1
@@ -89,9 +89,10 @@ class HyDEGenerator:
 
             if not hyp_doc or len(hyp_doc.strip()) < 50:
                 if self.fallback_on_failure:
-                    return self._create_fallback_result(query, start_time, "Generated document too short")
-                else:
-                    raise ValueError("Generated hypothetical document is too short")
+                    return self._create_fallback_result(
+                        query, start_time, "Generated document too short"
+                    )
+                raise ValueError("Generated hypothetical document is too short")
 
             # Generate embedding for hypothetical document
             embedding = await self._generate_embedding(hyp_doc)
@@ -109,7 +110,7 @@ class HyDEGenerator:
                 generation_time=generation_time,
                 token_count=token_count,
                 fallback_used=False,
-                embedding_vector=embedding
+                embedding_vector=embedding,
             )
 
             logger.debug(f"HyDE generated {token_count} tokens in {generation_time:.2f}s")
@@ -120,12 +121,10 @@ class HyDEGenerator:
 
             if self.fallback_on_failure:
                 return self._create_fallback_result(query, start_time, str(e))
-            else:
-                raise
+            raise
 
     async def _generate_with_llm(self, query: str) -> str:
         """Generuje hypotetický dokument pomocí LLM"""
-
         # Mock LLM generation - real implementation would use Ollama
         prompt = f"""Write a comprehensive research document that would perfectly answer this query: "{query}"
 
@@ -163,7 +162,7 @@ Current research on {query} provides substantial evidence supporting key conclus
 
         return hyp_doc
 
-    async def _generate_embedding(self, text: str) -> List[float]:
+    async def _generate_embedding(self, text: str) -> list[float]:
         """Generuje embedding pro text"""
         # Mock embedding generation
         await asyncio.sleep(0.1)
@@ -177,12 +176,12 @@ Current research on {query} provides substantial evidence supporting key conclus
         embedding = []
         for i in range(0, len(text_hash), 4):
             if i + 4 <= len(text_hash):
-                value = struct.unpack('f', text_hash[i:i+4])[0]
+                value = struct.unpack("f", text_hash[i : i + 4])[0]
                 embedding.append(float(value))
 
         # Normalize to 384 dimensions (typical for sentence-transformers)
         while len(embedding) < 384:
-            embedding.extend(embedding[:min(len(embedding), 384 - len(embedding))])
+            embedding.extend(embedding[: min(len(embedding), 384 - len(embedding))])
 
         return embedding[:384]
 
@@ -198,7 +197,7 @@ Current research on {query} provides substantial evidence supporting key conclus
             generation_time=time.time() - start_time,
             token_count=len(query.split()),
             fallback_used=True,
-            embedding_vector=None
+            embedding_vector=None,
         )
 
     def _update_stats(self, generation_time: float, token_count: int):
@@ -207,13 +206,13 @@ Current research on {query} provides substantial evidence supporting key conclus
 
         # Moving average
         self.stats["avg_generation_time"] = (
-            (self.stats["avg_generation_time"] * (successful - 1) + generation_time) / successful
-        )
+            self.stats["avg_generation_time"] * (successful - 1) + generation_time
+        ) / successful
         self.stats["avg_token_count"] = (
-            (self.stats["avg_token_count"] * (successful - 1) + token_count) / successful
-        )
+            self.stats["avg_token_count"] * (successful - 1) + token_count
+        ) / successful
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Vrací statistiky HyDE generování"""
         total = self.stats["total_requests"]
         successful = self.stats["successful_generations"]
@@ -225,7 +224,7 @@ Current research on {query} provides substantial evidence supporting key conclus
             "success_rate": successful / total if total > 0 else 0.0,
             "avg_generation_time": self.stats["avg_generation_time"],
             "avg_token_count": self.stats["avg_token_count"],
-            "enabled": self.enabled
+            "enabled": self.enabled,
         }
 
     async def close(self):
@@ -239,7 +238,7 @@ Current research on {query} provides substantial evidence supporting key conclus
 class HyDERetrieval:
     """Integrace HyDE s retrieval pipeline"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.hyde_generator = HyDEGenerator(config)
         self.retrieval_config = config.get("retrieval", {})
@@ -248,15 +247,15 @@ class HyDERetrieval:
         """Inicializace HyDE retrieval"""
         await self.hyde_generator.initialize()
 
-    async def enhanced_retrieval(self, query: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        """
-        Provede enhanced retrieval s HyDE
+    async def enhanced_retrieval(self, query: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Provede enhanced retrieval s HyDE
 
         Args:
             query: Původní dotaz
 
         Returns:
             Tuple[results, metadata] s vylepšenými výsledky
+
         """
         start_time = time.time()
 
@@ -271,11 +270,13 @@ class HyDERetrieval:
 
         # 2. HyDE retrieval (dense only, using hypothetical document)
         if not hyde_result.fallback_used:
-            retrieval_tasks.append(self._retrieve_for_text(
-                hyde_result.hypothetical_document,
-                "hyde_document",
-                embedding=hyde_result.embedding_vector
-            ))
+            retrieval_tasks.append(
+                self._retrieve_for_text(
+                    hyde_result.hypothetical_document,
+                    "hyde_document",
+                    embedding=hyde_result.embedding_vector,
+                )
+            )
 
         # Execute retrievals in parallel
         retrieval_results = await asyncio.gather(*retrieval_tasks, return_exceptions=True)
@@ -287,10 +288,10 @@ class HyDERetrieval:
                 "generated": not hyde_result.fallback_used,
                 "generation_time": hyde_result.generation_time,
                 "token_count": hyde_result.token_count,
-                "fallback_used": hyde_result.fallback_used
+                "fallback_used": hyde_result.fallback_used,
             },
             "retrieval_sources": [],
-            "total_time": 0.0
+            "total_time": 0.0,
         }
 
         for i, result in enumerate(retrieval_results):
@@ -305,11 +306,15 @@ class HyDERetrieval:
         retrieval_metadata["total_time"] = time.time() - start_time
         retrieval_metadata["total_results"] = len(all_results)
 
-        logger.info(f"HyDE retrieval completed: {len(all_results)} results in {retrieval_metadata['total_time']:.2f}s")
+        logger.info(
+            f"HyDE retrieval completed: {len(all_results)} results in {retrieval_metadata['total_time']:.2f}s"
+        )
 
         return all_results, retrieval_metadata
 
-    async def _retrieve_for_text(self, text: str, source_type: str, embedding: Optional[List[float]] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    async def _retrieve_for_text(
+        self, text: str, source_type: str, embedding: list[float] | None = None
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Mock retrieval pro text"""
         # Mock implementation - real version would use Qdrant + BM25
         await asyncio.sleep(0.2)
@@ -321,15 +326,15 @@ class HyDERetrieval:
                 "content": f"Mock document content related to: {text[:100]}...",
                 "score": 0.85 if source_type == "hyde_document" else 0.75,
                 "source": source_type,
-                "metadata": {"retrieval_method": "dense" if embedding else "hybrid"}
+                "metadata": {"retrieval_method": "dense" if embedding else "hybrid"},
             },
             {
                 "id": f"{source_type}_doc_2",
                 "content": f"Additional mock content for: {text[:100]}...",
                 "score": 0.80 if source_type == "hyde_document" else 0.70,
                 "source": source_type,
-                "metadata": {"retrieval_method": "dense" if embedding else "hybrid"}
-            }
+                "metadata": {"retrieval_method": "dense" if embedding else "hybrid"},
+            },
         ]
 
         metadata = {
@@ -337,7 +342,7 @@ class HyDERetrieval:
             "query_length": len(text),
             "results_count": len(results),
             "retrieval_time": 0.2,
-            "embedding_used": embedding is not None
+            "embedding_used": embedding is not None,
         }
 
         return results, metadata

@@ -16,8 +16,8 @@ from datetime import datetime
 from typing import Dict, Any
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from src.utils.gates import create_gate_manager, GateType
 from src.core.enhanced_orchestrator import EnhancedOrchestrator
@@ -102,7 +102,7 @@ async def run_smoke_test() -> bool:
             "query": test_query,
             "claims": claims,
             "retrieval_metadata": result.get("retrieval_metadata", {}),
-            "metrics": result.get("metrics", {})
+            "metrics": result.get("metrics", {}),
         }
 
         # Run validation gates
@@ -132,8 +132,10 @@ async def run_smoke_test() -> bool:
             "performance_metrics": {
                 "under_60s": elapsed_time < 60,
                 "min_claims": len(claims) >= 1,
-                "min_citations_per_claim": all(len(claim.get("citations", [])) >= 2 for claim in claims)
-            }
+                "min_citations_per_claim": all(
+                    len(claim.get("citations", [])) >= 2 for claim in claims
+                ),
+            },
         }
 
         with open(artifacts_dir / "smoke_test_result.json", "w") as f:
@@ -161,7 +163,7 @@ async def run_smoke_test() -> bool:
             "elapsed_time_seconds": elapsed_time,
             "success": False,
             "error": str(e),
-            "error_type": type(e).__name__
+            "error_type": type(e).__name__,
         }
 
         with open(artifacts_dir / "smoke_test_failure.json", "w") as f:

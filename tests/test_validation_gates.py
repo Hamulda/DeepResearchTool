@@ -10,9 +10,14 @@ import pytest
 import asyncio
 from unittest.mock import MagicMock
 from src.utils.gates import (
-    GateManager, GateConfig, GateType,
-    EvidenceGateError, ComplianceGateError, MetricsGateError,
-    create_default_gate_config, create_gate_manager
+    GateManager,
+    GateConfig,
+    GateType,
+    EvidenceGateError,
+    ComplianceGateError,
+    MetricsGateError,
+    create_default_gate_config,
+    create_gate_manager,
 )
 
 
@@ -33,16 +38,16 @@ class TestValidationGates:
                     "text": "Test claim 1",
                     "citations": [
                         {"source_id": "source1", "passage": "Evidence 1"},
-                        {"source_id": "source2", "passage": "Evidence 2"}
-                    ]
+                        {"source_id": "source2", "passage": "Evidence 2"},
+                    ],
                 },
                 {
                     "text": "Test claim 2",
                     "citations": [
                         {"source_id": "source3", "passage": "Evidence 3"},
-                        {"source_id": "source4", "passage": "Evidence 4"}
-                    ]
-                }
+                        {"source_id": "source4", "passage": "Evidence 4"},
+                    ],
+                },
             ]
         }
 
@@ -59,9 +64,7 @@ class TestValidationGates:
             "claims": [
                 {
                     "text": "Test claim",
-                    "citations": [
-                        {"source_id": "source1", "passage": "Only one citation"}
-                    ]
+                    "citations": [{"source_id": "source1", "passage": "Only one citation"}],
                 }
             ]
         }
@@ -81,8 +84,8 @@ class TestValidationGates:
                     "text": "Test claim",
                     "citations": [
                         {"source_id": "source1", "passage": "Citation 1"},
-                        {"source_id": "source1", "passage": "Citation 2 from same source"}
-                    ]
+                        {"source_id": "source1", "passage": "Citation 2 from same source"},
+                    ],
                 }
             ]
         }
@@ -111,7 +114,7 @@ class TestValidationGates:
             "retrieval_metadata": {
                 "robots_violations": [],
                 "rate_limit_violations": [],
-                "accessed_domains": ["example.com", "test.org"]
+                "accessed_domains": ["example.com", "test.org"],
             }
         }
 
@@ -127,7 +130,7 @@ class TestValidationGates:
             "retrieval_metadata": {
                 "robots_violations": ["example.com", "test.org"],
                 "rate_limit_violations": [],
-                "accessed_domains": []
+                "accessed_domains": [],
             }
         }
 
@@ -144,7 +147,7 @@ class TestValidationGates:
             "retrieval_metadata": {
                 "robots_violations": [],
                 "rate_limit_violations": ["req1", "req2", "req3"],
-                "accessed_domains": []
+                "accessed_domains": [],
             }
         }
 
@@ -164,7 +167,7 @@ class TestValidationGates:
             "retrieval_metadata": {
                 "robots_violations": [],
                 "rate_limit_violations": [],
-                "accessed_domains": ["example.com", "evil.com", "test.org"]
+                "accessed_domains": ["example.com", "evil.com", "test.org"],
             }
         }
 
@@ -177,13 +180,7 @@ class TestValidationGates:
     @pytest.mark.asyncio
     async def test_metrics_gate_success(self):
         """Test úspěšné metrics gate"""
-        data = {
-            "metrics": {
-                "recall_at_10": 0.8,
-                "ndcg_at_10": 0.7,
-                "citation_precision": 0.9
-            }
-        }
+        data = {"metrics": {"recall_at_10": 0.8, "ndcg_at_10": 0.7, "citation_precision": 0.9}}
 
         report = await self.gate_manager.validate_single(GateType.METRICS, data)
         assert report["passed"] is True
@@ -198,7 +195,7 @@ class TestValidationGates:
             "metrics": {
                 "recall_at_10": 0.5,  # Pod 0.7
                 "ndcg_at_10": 0.8,
-                "citation_precision": 0.9
+                "citation_precision": 0.9,
             }
         }
 
@@ -215,7 +212,7 @@ class TestValidationGates:
             "metrics": {
                 "recall_at_10": 0.8,
                 "ndcg_at_10": 0.4,  # Pod 0.6
-                "citation_precision": 0.9
+                "citation_precision": 0.9,
             }
         }
 
@@ -232,7 +229,7 @@ class TestValidationGates:
             "metrics": {
                 "recall_at_10": 0.8,
                 "ndcg_at_10": 0.7,
-                "citation_precision": 0.6  # Pod 0.8
+                "citation_precision": 0.6,  # Pod 0.8
             }
         }
 
@@ -253,20 +250,16 @@ class TestValidationGates:
                     "text": "Test claim",
                     "citations": [
                         {"source_id": "source1", "passage": "Evidence 1"},
-                        {"source_id": "source2", "passage": "Evidence 2"}
-                    ]
+                        {"source_id": "source2", "passage": "Evidence 2"},
+                    ],
                 }
             ],
             "retrieval_metadata": {
                 "robots_violations": [],
                 "rate_limit_violations": [],
-                "accessed_domains": ["example.com"]
+                "accessed_domains": ["example.com"],
             },
-            "metrics": {
-                "recall_at_10": 0.8,
-                "ndcg_at_10": 0.7,
-                "citation_precision": 0.9
-            }
+            "metrics": {"recall_at_10": 0.8, "ndcg_at_10": 0.7, "citation_precision": 0.9},
         }
 
         report = await self.gate_manager.validate_all(data)
@@ -284,13 +277,9 @@ class TestValidationGates:
             "retrieval_metadata": {
                 "robots_violations": [],
                 "rate_limit_violations": [],
-                "accessed_domains": []
+                "accessed_domains": [],
             },
-            "metrics": {
-                "recall_at_10": 0.8,
-                "ndcg_at_10": 0.7,
-                "citation_precision": 0.9
-            }
+            "metrics": {"recall_at_10": 0.8, "ndcg_at_10": 0.7, "citation_precision": 0.9},
         }
 
         with pytest.raises(EvidenceGateError):
@@ -304,13 +293,9 @@ class TestValidationGates:
             "retrieval_metadata": {
                 "robots_violations": [],
                 "rate_limit_violations": [],
-                "accessed_domains": []
+                "accessed_domains": [],
             },
-            "metrics": {
-                "recall_at_10": 0.8,
-                "ndcg_at_10": 0.7,
-                "citation_precision": 0.9
-            }
+            "metrics": {"recall_at_10": 0.8, "ndcg_at_10": 0.7, "citation_precision": 0.9},
         }
 
         # Přeskočíme evidence gate
@@ -322,12 +307,7 @@ class TestValidationGates:
 
     def test_create_gate_manager_from_config(self):
         """Test vytvoření gate manageru z config"""
-        config_dict = {
-            "validation_gates": {
-                "min_citations_per_claim": 3,
-                "min_recall_at_10": 0.8
-            }
-        }
+        config_dict = {"validation_gates": {"min_citations_per_claim": 3, "min_recall_at_10": 0.8}}
 
         manager = create_gate_manager(config_dict)
         assert manager.config.min_citations_per_claim == 3

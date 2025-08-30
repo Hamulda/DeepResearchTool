@@ -1,40 +1,40 @@
 #!/usr/bin/env python3
-"""
-Legal APIs konektor
+"""Legal APIs konektor
 CourtListener/RECAP a SEC EDGAR s přesnými identifikátory
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import json
-import hashlib
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime, date
-import aiohttp
-import aiofiles
+from datetime import date
+import hashlib
+import json
 from pathlib import Path
 import re
-from urllib.parse import quote
+from typing import Any
+
+import aiofiles
+import aiohttp
 
 
 @dataclass
 class LegalDocument:
     """Právní dokument s metadaty"""
+
     document_id: str
     document_type: str  # "court_opinion", "docket", "sec_filing"
     title: str
-    court_name: Optional[str]
-    case_number: Optional[str]
+    court_name: str | None
+    case_number: str | None
     filing_date: date
-    parties: List[str]
-    judges: List[str]
+    parties: list[str]
+    judges: list[str]
     content: str
-    citations: List[str]
-    docket_id: Optional[str]
-    filing_id: Optional[str]
-    char_offsets: Dict[str, Tuple[int, int]]  # key evidence -> (start, end)
+    citations: list[str]
+    docket_id: str | None
+    filing_id: str | None
+    char_offsets: dict[str, tuple[int, int]]  # key evidence -> (start, end)
     source_api: str
     confidence_score: float
 
@@ -42,7 +42,7 @@ class LegalDocument:
 class LegalAPIsConnector:
     """Legal APIs orchestrátor"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.cache_dir = Path(config.get("cache_dir", "research_cache/legal"))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -53,18 +53,14 @@ class LegalAPIsConnector:
         self.sec_edgar_base = "https://www.sec.gov/Archives/edgar/data"
 
         # Rate limits
-        self.rate_limits = {
-            "courtlistener": 1.0,  # 1 req/s
-            "sec_edgar": 0.1       # 10 req/s
-        }
+        self.rate_limits = {"courtlistener": 1.0, "sec_edgar": 0.1}  # 1 req/s  # 10 req/s
 
         self.max_retries = config.get("max_retries", 3)
         self.user_agent = "DeepResearchTool/1.0 (+research@example.com)"
 
-    async def search_legal_documents(self,
-                                   query: str,
-                                   document_types: List[str] = None,
-                                   max_results: int = 50) -> List[LegalDocument]:
+    async def search_legal_documents(
+        self, query: str, document_types: list[str] = None, max_results: int = 50
+    ) -> list[LegalDocument]:
         """Orchestrované vyhledávání právních dokumentů"""
         print(f"⚖️  Searching legal documents for: {query}")
 
@@ -90,7 +86,7 @@ class LegalAPIsConnector:
         print(f"✅ Found {len(unique_documents)} unique legal documents")
         return unique_documents[:max_results]
 
-    async def _search_courtlistener(self, query: str, max_results: int) -> List[LegalDocument]:
+    async def _search_courtlistener(self, query: str, max_results: int) -> list[LegalDocument]:
         """Vyhledá v CourtListener"""
         if not self.courtlistener_token:
             print("⚠️  CourtListener token not configured")
@@ -101,11 +97,11 @@ class LegalAPIsConnector:
 
         # Kontrola cache
         if cache_file.exists():
-            async with aiofiles.open(cache_file, 'r') as f:
+            async with aiofiles.open(cache_file) as f:
                 cached_data = json.loads(await f.read())
                 documents = []
                 for item in cached_data:
-                    item['filing_date'] = date.fromisoformat(item['filing_date'])
+                    item["filing_date"] = date.fromisoformat(item["filing_date"])
                     documents.append(LegalDocument(**item))
                 return documents
 
@@ -121,26 +117,23 @@ class LegalAPIsConnector:
 
         # Cache výsledky
         cache_data = [self._legal_document_to_dict(doc) for doc in documents]
-        async with aiofiles.open(cache_file, 'w') as f:
+        async with aiofiles.open(cache_file, "w") as f:
             await f.write(json.dumps(cache_data, indent=2))
 
         return documents
 
-    async def _search_courtlistener_opinions(self, query: str, max_results: int) -> List[LegalDocument]:
+    async def _search_courtlistener_opinions(
+        self, query: str, max_results: int
+    ) -> list[LegalDocument]:
         """Vyhledá court opinions"""
         await asyncio.sleep(self.rate_limits["courtlistener"])
 
         url = f"{self.courtlistener_base}/search/"
-        params = {
-            "q": query,
-            "type": "o",  # opinions
-            "order_by": "score desc",
-            "format": "json"
-        }
+        params = {"q": query, "type": "o", "order_by": "score desc", "format": "json"}  # opinions
 
         headers = {
             "Authorization": f"Token {self.courtlistener_token}",
-            "User-Agent": self.user_agent
+            "User-Agent": self.user_agent,
         }
 
         documents = []
@@ -163,7 +156,7 @@ class LegalAPIsConnector:
 
         return documents
 
-    async def _parse_courtlistener_opinion(self, result: Dict[str, Any]) -> Optional[LegalDocument]:
+    async def _parse_courtlistener_opinion(self, result: dict[str, Any]) -> LegalDocument | None:
         """Parsuje CourtListener opinion"""
         try:
             # Fetch full opinion content
@@ -177,7 +170,7 @@ class LegalAPIsConnector:
 
             headers = {
                 "Authorization": f"Token {self.courtlistener_token}",
-                "User-Agent": self.user_agent
+                "User-Agent": self.user_agent,
             }
 
             async with aiohttp.ClientSession() as session:
@@ -203,7 +196,7 @@ class LegalAPIsConnector:
             parties = []
             if title:
                 # Simple extraction z case name
-                vs_match = re.search(r'(.+?)\s+v\.?\s+(.+)', title)
+                vs_match = re.search(r"(.+?)\s+v\.?\s+(.+)", title)
                 if vs_match:
                     parties = [vs_match.group(1).strip(), vs_match.group(2).strip()]
 
@@ -235,14 +228,16 @@ class LegalAPIsConnector:
                 filing_id=document_id,
                 char_offsets={},  # Will be filled during evidence extraction
                 source_api="courtlistener",
-                confidence_score=0.9
+                confidence_score=0.9,
             )
 
         except Exception as e:
             print(f"❌ Failed to parse CourtListener opinion: {e}")
             return None
 
-    async def _search_courtlistener_dockets(self, query: str, max_results: int) -> List[LegalDocument]:
+    async def _search_courtlistener_dockets(
+        self, query: str, max_results: int
+    ) -> list[LegalDocument]:
         """Vyhledá dockets"""
         await asyncio.sleep(self.rate_limits["courtlistener"])
 
@@ -251,12 +246,12 @@ class LegalAPIsConnector:
             "q": query,
             "type": "r",  # RECAP/dockets
             "order_by": "score desc",
-            "format": "json"
+            "format": "json",
         }
 
         headers = {
             "Authorization": f"Token {self.courtlistener_token}",
-            "User-Agent": self.user_agent
+            "User-Agent": self.user_agent,
         }
 
         documents = []
@@ -279,7 +274,7 @@ class LegalAPIsConnector:
 
         return documents
 
-    def _parse_courtlistener_docket(self, result: Dict[str, Any]) -> Optional[LegalDocument]:
+    def _parse_courtlistener_docket(self, result: dict[str, Any]) -> LegalDocument | None:
         """Parsuje CourtListener docket"""
         try:
             document_id = str(result.get("id", ""))
@@ -312,25 +307,25 @@ class LegalAPIsConnector:
                 filing_id=None,
                 char_offsets={},
                 source_api="courtlistener",
-                confidence_score=0.7
+                confidence_score=0.7,
             )
 
         except Exception as e:
             print(f"❌ Failed to parse CourtListener docket: {e}")
             return None
 
-    async def _search_sec_edgar(self, query: str, max_results: int) -> List[LegalDocument]:
+    async def _search_sec_edgar(self, query: str, max_results: int) -> list[LegalDocument]:
         """Vyhledá v SEC EDGAR"""
         cache_key = hashlib.md5(f"sec_edgar_{query}_{max_results}".encode()).hexdigest()
         cache_file = self.cache_dir / f"sec_edgar_{cache_key}.json"
 
         # Kontrola cache
         if cache_file.exists():
-            async with aiofiles.open(cache_file, 'r') as f:
+            async with aiofiles.open(cache_file) as f:
                 cached_data = json.loads(await f.read())
                 documents = []
                 for item in cached_data:
-                    item['filing_date'] = date.fromisoformat(item['filing_date'])
+                    item["filing_date"] = date.fromisoformat(item["filing_date"])
                     documents.append(LegalDocument(**item))
                 return documents
 
@@ -344,13 +339,10 @@ class LegalAPIsConnector:
             "text": query,
             "first": "1990",
             "last": str(date.today().year),
-            "count": str(min(max_results, 100))
+            "count": str(min(max_results, 100)),
         }
 
-        headers = {
-            "User-Agent": self.user_agent,
-            "Accept": "text/html,application/xhtml+xml"
-        }
+        headers = {"User-Agent": self.user_agent, "Accept": "text/html,application/xhtml+xml"}
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -366,12 +358,12 @@ class LegalAPIsConnector:
 
         # Cache výsledky
         cache_data = [self._legal_document_to_dict(doc) for doc in documents]
-        async with aiofiles.open(cache_file, 'w') as f:
+        async with aiofiles.open(cache_file, "w") as f:
             await f.write(json.dumps(cache_data, indent=2))
 
         return documents
 
-    def _parse_sec_edgar_results(self, html_content: str) -> List[LegalDocument]:
+    def _parse_sec_edgar_results(self, html_content: str) -> list[LegalDocument]:
         """Parsuje SEC EDGAR výsledky"""
         documents = []
 
@@ -403,7 +395,7 @@ class LegalAPIsConnector:
                     filing_id=filing_id,
                     char_offsets={},
                     source_api="sec_edgar",
-                    confidence_score=0.8
+                    confidence_score=0.8,
                 )
 
                 documents.append(document)
@@ -417,7 +409,7 @@ class LegalAPIsConnector:
     def _extract_filing_id_from_url(self, url: str) -> str:
         """Extrahuje filing ID z URL"""
         # Extract z cesty jako edgar/data/CIK/accession-number/file
-        match = re.search(r'edgar/data/(\d+)/([^/]+)', url)
+        match = re.search(r"edgar/data/(\d+)/([^/]+)", url)
         if match:
             return f"{match.group(1)}-{match.group(2)}"
         return hashlib.md5(url.encode()).hexdigest()[:16]
@@ -430,15 +422,15 @@ class LegalAPIsConnector:
             return parts[0]
         return ""
 
-    def _extract_citations_from_content(self, content: str) -> List[str]:
+    def _extract_citations_from_content(self, content: str) -> list[str]:
         """Extrahuje citace z obsahu dokumentu"""
         citations = []
 
         # Legal citation patterns
         citation_patterns = [
-            r'\d+\s+U\.S\.?\s+\d+',  # Supreme Court
-            r'\d+\s+F\.?\d*d?\s+\d+',  # Federal courts
-            r'\d+\s+S\.Ct\.?\s+\d+',  # Supreme Court Reporter
+            r"\d+\s+U\.S\.?\s+\d+",  # Supreme Court
+            r"\d+\s+F\.?\d*d?\s+\d+",  # Federal courts
+            r"\d+\s+S\.Ct\.?\s+\d+",  # Supreme Court Reporter
         ]
 
         for pattern in citation_patterns:
@@ -447,7 +439,7 @@ class LegalAPIsConnector:
 
         return list(set(citations))  # Deduplicate
 
-    def _deduplicate_documents(self, documents: List[LegalDocument]) -> List[LegalDocument]:
+    def _deduplicate_documents(self, documents: list[LegalDocument]) -> list[LegalDocument]:
         """Deduplikuje documents podle ID"""
         seen_ids = set()
         unique_documents = []
@@ -459,7 +451,7 @@ class LegalAPIsConnector:
 
         return unique_documents
 
-    def _legal_document_to_dict(self, document: LegalDocument) -> Dict[str, Any]:
+    def _legal_document_to_dict(self, document: LegalDocument) -> dict[str, Any]:
         """Konvertuje LegalDocument na dict pro cache"""
         return {
             "document_id": document.document_id,
@@ -476,7 +468,7 @@ class LegalAPIsConnector:
             "filing_id": document.filing_id,
             "char_offsets": document.char_offsets,
             "source_api": document.source_api,
-            "confidence_score": document.confidence_score
+            "confidence_score": document.confidence_score,
         }
 
     async def fetch_full_document_content(self, document: LegalDocument) -> LegalDocument:
@@ -493,9 +485,9 @@ class LegalAPIsConnector:
 
         return document
 
-    def extract_evidence_char_offsets(self,
-                                    document: LegalDocument,
-                                    evidence_phrases: List[str]) -> LegalDocument:
+    def extract_evidence_char_offsets(
+        self, document: LegalDocument, evidence_phrases: list[str]
+    ) -> LegalDocument:
         """Extrahuje char offsety pro evidence phrases"""
         char_offsets = {}
         content = document.content.lower()

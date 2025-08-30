@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-"""
-Domain-Specific Evaluation Suites
+"""Domain-Specific Evaluation Suites
 Comprehensive evaluation framework for different research domains
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, List, Any, Optional, Tuple, Callable
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from pathlib import Path
-import json
-import csv
-import logging
-import statistics
 from abc import ABC, abstractmethod
+import csv
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
+import json
+import logging
+from pathlib import Path
+import statistics
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class EvaluationDomain(Enum):
     """Research domains for evaluation"""
+
     MEDICAL = "medical"
     LEGAL = "legal"
     FINANCIAL = "financial"
@@ -33,6 +33,7 @@ class EvaluationDomain(Enum):
 
 class MetricType(Enum):
     """Types of evaluation metrics"""
+
     RECALL = "recall"
     PRECISION = "precision"
     NDCG = "ndcg"
@@ -47,49 +48,53 @@ class MetricType(Enum):
 @dataclass
 class EvaluationQuery:
     """Single evaluation query with ground truth"""
+
     query_id: str
     query_text: str
     domain: EvaluationDomain
-    expected_claims: List[str]
-    expected_sources: List[str]
-    ground_truth_labels: Dict[str, Any]
+    expected_claims: list[str]
+    expected_sources: list[str]
+    ground_truth_labels: dict[str, Any]
     difficulty: str = "medium"  # easy, medium, hard
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class EvaluationResult:
     """Result of running an evaluation"""
+
     query_id: str
     domain: EvaluationDomain
-    metrics: Dict[str, float]
-    claims_generated: List[Dict[str, Any]]
+    metrics: dict[str, float]
+    claims_generated: list[dict[str, Any]]
     execution_time_ms: float
-    errors: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class DomainEvaluationSuite:
     """Evaluation suite for a specific domain"""
+
     domain: EvaluationDomain
     name: str
     description: str
-    queries: List[EvaluationQuery]
-    expected_metrics: Dict[str, Dict[str, float]]  # metric_name -> {min, target, max}
+    queries: list[EvaluationQuery]
+    expected_metrics: dict[str, dict[str, float]]  # metric_name -> {min, target, max}
 
     def get_query_count(self) -> int:
         return len(self.queries)
 
-    def get_difficulty_distribution(self) -> Dict[str, int]:
+    def get_difficulty_distribution(self) -> dict[str, int]:
         from collections import Counter
+
         return dict(Counter(q.difficulty for q in self.queries))
 
 
 class BaseDomainEvaluator(ABC):
     """Base class for domain-specific evaluators"""
 
-    def __init__(self, domain: EvaluationDomain, config: Dict[str, Any]):
+    def __init__(self, domain: EvaluationDomain, config: dict[str, Any]):
         self.domain = domain
         self.config = config
         self.domain_config = config.get("evaluation", {}).get("domains", {}).get(domain.value, {})
@@ -97,20 +102,15 @@ class BaseDomainEvaluator(ABC):
     @abstractmethod
     def load_evaluation_suite(self) -> DomainEvaluationSuite:
         """Load domain-specific evaluation queries and ground truth"""
-        pass
 
     @abstractmethod
     def calculate_domain_specific_metrics(
-        self,
-        query: EvaluationQuery,
-        result: Dict[str, Any]
-    ) -> Dict[str, float]:
+        self, query: EvaluationQuery, result: dict[str, Any]
+    ) -> dict[str, float]:
         """Calculate domain-specific evaluation metrics"""
-        pass
 
-    def evaluate_groundedness(self, claims: List[Dict[str, Any]], query: EvaluationQuery) -> float:
+    def evaluate_groundedness(self, claims: list[dict[str, Any]], query: EvaluationQuery) -> float:
         """Evaluate groundedness of claims against expected sources"""
-
         if not claims:
             return 0.0
 
@@ -130,9 +130,10 @@ class BaseDomainEvaluator(ABC):
 
         return grounded_claims / len(claims)
 
-    def evaluate_citation_precision(self, claims: List[Dict[str, Any]], query: EvaluationQuery) -> float:
+    def evaluate_citation_precision(
+        self, claims: list[dict[str, Any]], query: EvaluationQuery
+    ) -> float:
         """Evaluate precision of citations"""
-
         total_citations = 0
         valid_citations = 0
         expected_sources = set(query.expected_sources)
@@ -148,9 +149,10 @@ class BaseDomainEvaluator(ABC):
 
         return valid_citations / max(total_citations, 1)
 
-    def evaluate_recall_at_k(self, claims: List[Dict[str, Any]], query: EvaluationQuery, k: int = 10) -> float:
+    def evaluate_recall_at_k(
+        self, claims: list[dict[str, Any]], query: EvaluationQuery, k: int = 10
+    ) -> float:
         """Evaluate recall@k for claims"""
-
         expected_claims = set(query.expected_claims)
         generated_claims = set()
 
@@ -170,7 +172,6 @@ class BaseDomainEvaluator(ABC):
 
     def _claims_match(self, expected: str, generated: str, threshold: float = 0.7) -> bool:
         """Check if two claims match (simple text overlap)"""
-
         expected_words = set(expected.split())
         generated_words = set(generated.split())
 
@@ -184,12 +185,11 @@ class BaseDomainEvaluator(ABC):
 class MedicalEvaluator(BaseDomainEvaluator):
     """Evaluator for medical/healthcare domain"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         super().__init__(EvaluationDomain.MEDICAL, config)
 
     def load_evaluation_suite(self) -> DomainEvaluationSuite:
         """Load medical domain evaluation suite"""
-
         # Sample medical evaluation queries
         queries = [
             EvaluationQuery(
@@ -199,15 +199,15 @@ class MedicalEvaluator(BaseDomainEvaluator):
                 expected_claims=[
                     "COVID-19 vaccines show reduced effectiveness against Delta variant",
                     "Pfizer vaccine shows 64% effectiveness against Delta",
-                    "Booster doses restore effectiveness against variants"
+                    "Booster doses restore effectiveness against variants",
                 ],
                 expected_sources=[
                     "https://pubmed.ncbi.nlm.nih.gov/study1",
                     "https://nejm.org/article1",
-                    "https://cdc.gov/report1"
+                    "https://cdc.gov/report1",
                 ],
                 ground_truth_labels={"vaccine_effectiveness": 0.64, "variant": "delta"},
-                difficulty="medium"
+                difficulty="medium",
             ),
             EvaluationQuery(
                 query_id="med_002",
@@ -216,22 +216,22 @@ class MedicalEvaluator(BaseDomainEvaluator):
                 expected_claims=[
                     "mRNA vaccines show mild side effects in elderly",
                     "Most common side effect is injection site pain",
-                    "Serious adverse events are rare in elderly"
+                    "Serious adverse events are rare in elderly",
                 ],
                 expected_sources=[
                     "https://pubmed.ncbi.nlm.nih.gov/study2",
-                    "https://fda.gov/safety-report"
+                    "https://fda.gov/safety-report",
                 ],
                 ground_truth_labels={"population": "elderly", "vaccine_type": "mRNA"},
-                difficulty="hard"
-            )
+                difficulty="hard",
+            ),
         ]
 
         expected_metrics = {
             "groundedness": {"min": 0.7, "target": 0.85, "max": 1.0},
             "citation_precision": {"min": 0.8, "target": 0.9, "max": 1.0},
             "recall@10": {"min": 0.6, "target": 0.75, "max": 1.0},
-            "contradiction_rate": {"min": 0.0, "target": 0.05, "max": 0.2}
+            "contradiction_rate": {"min": 0.0, "target": 0.05, "max": 0.2},
         }
 
         return DomainEvaluationSuite(
@@ -239,16 +239,13 @@ class MedicalEvaluator(BaseDomainEvaluator):
             name="Medical Research Evaluation",
             description="Evaluation suite for medical and healthcare research",
             queries=queries,
-            expected_metrics=expected_metrics
+            expected_metrics=expected_metrics,
         )
 
     def calculate_domain_specific_metrics(
-        self,
-        query: EvaluationQuery,
-        result: Dict[str, Any]
-    ) -> Dict[str, float]:
+        self, query: EvaluationQuery, result: dict[str, Any]
+    ) -> dict[str, float]:
         """Calculate medical-specific metrics"""
-
         claims = result.get("claims", [])
 
         metrics = {
@@ -256,20 +253,24 @@ class MedicalEvaluator(BaseDomainEvaluator):
             "citation_precision": self.evaluate_citation_precision(claims, query),
             "recall@10": self.evaluate_recall_at_k(claims, query, 10),
             "medical_source_ratio": self._evaluate_medical_source_ratio(claims),
-            "clinical_evidence_ratio": self._evaluate_clinical_evidence_ratio(claims)
+            "clinical_evidence_ratio": self._evaluate_clinical_evidence_ratio(claims),
         }
 
         return metrics
 
-    def _evaluate_medical_source_ratio(self, claims: List[Dict[str, Any]]) -> float:
+    def _evaluate_medical_source_ratio(self, claims: list[dict[str, Any]]) -> float:
         """Evaluate ratio of medical sources used"""
-
         total_sources = 0
         medical_sources = 0
 
         medical_domains = {
-            "pubmed.ncbi.nlm.nih.gov", "nejm.org", "thelancet.com",
-            "jama.jamanetwork.com", "bmj.com", "cdc.gov", "who.int"
+            "pubmed.ncbi.nlm.nih.gov",
+            "nejm.org",
+            "thelancet.com",
+            "jama.jamanetwork.com",
+            "bmj.com",
+            "cdc.gov",
+            "who.int",
         }
 
         for claim in claims:
@@ -284,9 +285,8 @@ class MedicalEvaluator(BaseDomainEvaluator):
 
         return medical_sources / max(total_sources, 1)
 
-    def _evaluate_clinical_evidence_ratio(self, claims: List[Dict[str, Any]]) -> float:
+    def _evaluate_clinical_evidence_ratio(self, claims: list[dict[str, Any]]) -> float:
         """Evaluate ratio of claims with clinical evidence"""
-
         if not claims:
             return 0.0
 
@@ -304,12 +304,11 @@ class MedicalEvaluator(BaseDomainEvaluator):
 class LegalEvaluator(BaseDomainEvaluator):
     """Evaluator for legal domain"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         super().__init__(EvaluationDomain.LEGAL, config)
 
     def load_evaluation_suite(self) -> DomainEvaluationSuite:
         """Load legal domain evaluation suite"""
-
         queries = [
             EvaluationQuery(
                 query_id="legal_001",
@@ -318,21 +317,21 @@ class LegalEvaluator(BaseDomainEvaluator):
                 expected_claims=[
                     "AI systems must ensure data subject rights under GDPR",
                     "Automated decision making requires explicit consent",
-                    "Data protection impact assessments required for high-risk AI"
+                    "Data protection impact assessments required for high-risk AI",
                 ],
                 expected_sources=[
                     "https://eur-lex.europa.eu/legal-content/gdpr",
-                    "https://edpb.europa.eu/guidelines"
+                    "https://edpb.europa.eu/guidelines",
                 ],
                 ground_truth_labels={"regulation": "GDPR", "domain": "AI"},
-                difficulty="hard"
+                difficulty="hard",
             )
         ]
 
         expected_metrics = {
             "groundedness": {"min": 0.8, "target": 0.9, "max": 1.0},
             "citation_precision": {"min": 0.85, "target": 0.95, "max": 1.0},
-            "legal_authority_ratio": {"min": 0.7, "target": 0.85, "max": 1.0}
+            "legal_authority_ratio": {"min": 0.7, "target": 0.85, "max": 1.0},
         }
 
         return DomainEvaluationSuite(
@@ -340,36 +339,36 @@ class LegalEvaluator(BaseDomainEvaluator):
             name="Legal Research Evaluation",
             description="Evaluation suite for legal research and compliance",
             queries=queries,
-            expected_metrics=expected_metrics
+            expected_metrics=expected_metrics,
         )
 
     def calculate_domain_specific_metrics(
-        self,
-        query: EvaluationQuery,
-        result: Dict[str, Any]
-    ) -> Dict[str, float]:
+        self, query: EvaluationQuery, result: dict[str, Any]
+    ) -> dict[str, float]:
         """Calculate legal-specific metrics"""
-
         claims = result.get("claims", [])
 
         metrics = {
             "groundedness": self.evaluate_groundedness(claims, query),
             "citation_precision": self.evaluate_citation_precision(claims, query),
             "legal_authority_ratio": self._evaluate_legal_authority_ratio(claims),
-            "statutory_reference_ratio": self._evaluate_statutory_reference_ratio(claims)
+            "statutory_reference_ratio": self._evaluate_statutory_reference_ratio(claims),
         }
 
         return metrics
 
-    def _evaluate_legal_authority_ratio(self, claims: List[Dict[str, Any]]) -> float:
+    def _evaluate_legal_authority_ratio(self, claims: list[dict[str, Any]]) -> float:
         """Evaluate ratio of authoritative legal sources"""
-
         total_sources = 0
         authoritative_sources = 0
 
         legal_authorities = {
-            "eur-lex.europa.eu", "law.gov", "supremecourt.gov",
-            "courtlistener.com", "westlaw.com", "lexisnexis.com"
+            "eur-lex.europa.eu",
+            "law.gov",
+            "supremecourt.gov",
+            "courtlistener.com",
+            "westlaw.com",
+            "lexisnexis.com",
         }
 
         for claim in claims:
@@ -384,9 +383,8 @@ class LegalEvaluator(BaseDomainEvaluator):
 
         return authoritative_sources / max(total_sources, 1)
 
-    def _evaluate_statutory_reference_ratio(self, claims: List[Dict[str, Any]]) -> float:
+    def _evaluate_statutory_reference_ratio(self, claims: list[dict[str, Any]]) -> float:
         """Evaluate ratio of claims with statutory references"""
-
         if not claims:
             return 0.0
 
@@ -404,12 +402,11 @@ class LegalEvaluator(BaseDomainEvaluator):
 class FinancialEvaluator(BaseDomainEvaluator):
     """Evaluator for financial domain"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         super().__init__(EvaluationDomain.FINANCIAL, config)
 
     def load_evaluation_suite(self) -> DomainEvaluationSuite:
         """Load financial domain evaluation suite"""
-
         queries = [
             EvaluationQuery(
                 query_id="fin_001",
@@ -418,21 +415,18 @@ class FinancialEvaluator(BaseDomainEvaluator):
                 expected_claims=[
                     "Fed raises interest rates to combat inflation",
                     "Higher rates reduce money supply and spending",
-                    "Rate increases show effectiveness after 12-18 months"
+                    "Rate increases show effectiveness after 12-18 months",
                 ],
-                expected_sources=[
-                    "https://federalreserve.gov/fomc",
-                    "https://sec.gov/filings"
-                ],
+                expected_sources=["https://federalreserve.gov/fomc", "https://sec.gov/filings"],
                 ground_truth_labels={"topic": "monetary_policy", "timeframe": "2023-2024"},
-                difficulty="medium"
+                difficulty="medium",
             )
         ]
 
         expected_metrics = {
             "groundedness": {"min": 0.75, "target": 0.85, "max": 1.0},
             "citation_precision": {"min": 0.8, "target": 0.9, "max": 1.0},
-            "quantitative_accuracy": {"min": 0.7, "target": 0.85, "max": 1.0}
+            "quantitative_accuracy": {"min": 0.7, "target": 0.85, "max": 1.0},
         }
 
         return DomainEvaluationSuite(
@@ -440,36 +434,38 @@ class FinancialEvaluator(BaseDomainEvaluator):
             name="Financial Research Evaluation",
             description="Evaluation suite for financial and economic research",
             queries=queries,
-            expected_metrics=expected_metrics
+            expected_metrics=expected_metrics,
         )
 
     def calculate_domain_specific_metrics(
-        self,
-        query: EvaluationQuery,
-        result: Dict[str, Any]
-    ) -> Dict[str, float]:
+        self, query: EvaluationQuery, result: dict[str, Any]
+    ) -> dict[str, float]:
         """Calculate financial-specific metrics"""
-
         claims = result.get("claims", [])
 
         metrics = {
             "groundedness": self.evaluate_groundedness(claims, query),
             "citation_precision": self.evaluate_citation_precision(claims, query),
             "financial_source_ratio": self._evaluate_financial_source_ratio(claims),
-            "quantitative_claim_ratio": self._evaluate_quantitative_claim_ratio(claims)
+            "quantitative_claim_ratio": self._evaluate_quantitative_claim_ratio(claims),
         }
 
         return metrics
 
-    def _evaluate_financial_source_ratio(self, claims: List[Dict[str, Any]]) -> float:
+    def _evaluate_financial_source_ratio(self, claims: list[dict[str, Any]]) -> float:
         """Evaluate ratio of authoritative financial sources"""
-
         total_sources = 0
         financial_sources = 0
 
         financial_authorities = {
-            "federalreserve.gov", "sec.gov", "treasury.gov", "imf.org",
-            "worldbank.org", "bis.org", "bloomberg.com", "reuters.com"
+            "federalreserve.gov",
+            "sec.gov",
+            "treasury.gov",
+            "imf.org",
+            "worldbank.org",
+            "bis.org",
+            "bloomberg.com",
+            "reuters.com",
         }
 
         for claim in claims:
@@ -484,17 +480,17 @@ class FinancialEvaluator(BaseDomainEvaluator):
 
         return financial_sources / max(total_sources, 1)
 
-    def _evaluate_quantitative_claim_ratio(self, claims: List[Dict[str, Any]]) -> float:
+    def _evaluate_quantitative_claim_ratio(self, claims: list[dict[str, Any]]) -> float:
         """Evaluate ratio of claims with quantitative data"""
-
         if not claims:
             return 0.0
 
         import re
+
         quantitative_claims = 0
 
         # Pattern for numbers with financial context
-        number_pattern = r'\d+(?:\.\d+)?%|\$\d+|\d+\s*basis\s*points|\d+(?:\.\d+)?\s*trillion|\d+(?:\.\d+)?\s*billion'
+        number_pattern = r"\d+(?:\.\d+)?%|\$\d+|\d+\s*basis\s*points|\d+(?:\.\d+)?\s*trillion|\d+(?:\.\d+)?\s*billion"
 
         for claim in claims:
             claim_text = claim.get("text", "")
@@ -507,7 +503,7 @@ class FinancialEvaluator(BaseDomainEvaluator):
 class DomainEvaluationRunner:
     """Main evaluation runner for all domains"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.evaluation_config = config.get("evaluation", {})
 
@@ -515,7 +511,7 @@ class DomainEvaluationRunner:
         self.evaluators = {
             EvaluationDomain.MEDICAL: MedicalEvaluator(config),
             EvaluationDomain.LEGAL: LegalEvaluator(config),
-            EvaluationDomain.FINANCIAL: FinancialEvaluator(config)
+            EvaluationDomain.FINANCIAL: FinancialEvaluator(config),
         }
 
         # Results storage
@@ -528,10 +524,9 @@ class DomainEvaluationRunner:
         self,
         domain: EvaluationDomain,
         research_system: Any,  # The actual research system to evaluate
-        save_results: bool = True
-    ) -> Dict[str, Any]:
+        save_results: bool = True,
+    ) -> dict[str, Any]:
         """Run evaluation for a specific domain"""
-
         if domain not in self.evaluators:
             raise ValueError(f"No evaluator for domain: {domain}")
 
@@ -541,29 +536,33 @@ class DomainEvaluationRunner:
         logger.info(f"Running {domain.value} evaluation with {suite.get_query_count()} queries")
 
         results = []
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
 
         for query in suite.queries:
             try:
                 # Run query through research system
-                query_start = datetime.now(timezone.utc)
+                query_start = datetime.now(UTC)
 
                 # This would call the actual research system
                 # For now, we'll simulate the call
                 system_result = self._simulate_research_system_call(research_system, query)
 
-                query_end = datetime.now(timezone.utc)
+                query_end = datetime.now(UTC)
                 execution_time_ms = (query_end - query_start).total_seconds() * 1000
 
                 # Calculate metrics
                 metrics = evaluator.calculate_domain_specific_metrics(query, system_result)
 
                 # Add standard metrics
-                metrics.update({
-                    "execution_time_ms": execution_time_ms,
-                    "claims_count": len(system_result.get("claims", [])),
-                    "evidence_count": sum(len(c.get("evidence", [])) for c in system_result.get("claims", []))
-                })
+                metrics.update(
+                    {
+                        "execution_time_ms": execution_time_ms,
+                        "claims_count": len(system_result.get("claims", [])),
+                        "evidence_count": sum(
+                            len(c.get("evidence", [])) for c in system_result.get("claims", [])
+                        ),
+                    }
+                )
 
                 result = EvaluationResult(
                     query_id=query.query_id,
@@ -571,7 +570,7 @@ class DomainEvaluationRunner:
                     metrics=metrics,
                     claims_generated=system_result.get("claims", []),
                     execution_time_ms=execution_time_ms,
-                    metadata={"query_difficulty": query.difficulty}
+                    metadata={"query_difficulty": query.difficulty},
                 )
 
                 results.append(result)
@@ -584,7 +583,7 @@ class DomainEvaluationRunner:
                     metrics={},
                     claims_generated=[],
                     execution_time_ms=0.0,
-                    errors=[str(e)]
+                    errors=[str(e)],
                 )
                 results.append(error_result)
                 logger.error(f"Failed to evaluate query {query.query_id}: {e}")
@@ -601,7 +600,7 @@ class DomainEvaluationRunner:
             "failed_queries": len([r for r in results if r.errors]),
             "summary_metrics": evaluation_summary,
             "expected_metrics": suite.expected_metrics,
-            "individual_results": [self._result_to_dict(r) for r in results]
+            "individual_results": [self._result_to_dict(r) for r in results],
         }
 
         if save_results:
@@ -609,9 +608,10 @@ class DomainEvaluationRunner:
 
         return evaluation_data
 
-    def _simulate_research_system_call(self, research_system: Any, query: EvaluationQuery) -> Dict[str, Any]:
+    def _simulate_research_system_call(
+        self, research_system: Any, query: EvaluationQuery
+    ) -> dict[str, Any]:
         """Simulate calling the research system (placeholder)"""
-
         # In actual implementation, this would call:
         # return research_system.execute_research_workflow(query.query_text)
 
@@ -620,22 +620,17 @@ class DomainEvaluationRunner:
             "claims": [
                 {
                     "text": f"Mock claim for {query.query_text}",
-                    "evidence": [
-                        {"source_url": "https://example.com/source1", "confidence": 0.8}
-                    ],
-                    "confidence": 0.7
+                    "evidence": [{"source_url": "https://example.com/source1", "confidence": 0.8}],
+                    "confidence": 0.7,
                 }
             ],
-            "metadata": {"execution_time": 1500}
+            "metadata": {"execution_time": 1500},
         }
 
     def _calculate_evaluation_summary(
-        self,
-        suite: DomainEvaluationSuite,
-        results: List[EvaluationResult]
-    ) -> Dict[str, float]:
+        self, suite: DomainEvaluationSuite, results: list[EvaluationResult]
+    ) -> dict[str, float]:
         """Calculate summary metrics across all queries"""
-
         successful_results = [r for r in results if not r.errors]
 
         if not successful_results:
@@ -648,7 +643,9 @@ class DomainEvaluationRunner:
 
         summary = {}
         for metric_name in metric_names:
-            values = [r.metrics[metric_name] for r in successful_results if metric_name in r.metrics]
+            values = [
+                r.metrics[metric_name] for r in successful_results if metric_name in r.metrics
+            ]
             if values:
                 summary[f"{metric_name}_avg"] = statistics.mean(values)
                 summary[f"{metric_name}_std"] = statistics.stdev(values) if len(values) > 1 else 0.0
@@ -666,9 +663,8 @@ class DomainEvaluationRunner:
 
         return summary
 
-    def _result_to_dict(self, result: EvaluationResult) -> Dict[str, Any]:
+    def _result_to_dict(self, result: EvaluationResult) -> dict[str, Any]:
         """Convert evaluation result to dictionary"""
-
         return {
             "query_id": result.query_id,
             "domain": result.domain.value,
@@ -676,22 +672,21 @@ class DomainEvaluationRunner:
             "claims_count": len(result.claims_generated),
             "execution_time_ms": result.execution_time_ms,
             "errors": result.errors,
-            "metadata": result.metadata
+            "metadata": result.metadata,
         }
 
-    def _save_evaluation_results(self, domain: EvaluationDomain, evaluation_data: Dict[str, Any]):
+    def _save_evaluation_results(self, domain: EvaluationDomain, evaluation_data: dict[str, Any]):
         """Save evaluation results to files"""
-
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Save JSON results
         json_file = self.results_dir / f"{domain.value}_evaluation_{timestamp}.json"
-        with open(json_file, 'w', encoding='utf-8') as f:
+        with open(json_file, "w", encoding="utf-8") as f:
             json.dump(evaluation_data, f, indent=2, ensure_ascii=False)
 
         # Save CSV summary
         csv_file = self.results_dir / f"{domain.value}_summary_{timestamp}.csv"
-        with open(csv_file, 'w', newline='', encoding='utf-8') as f:
+        with open(csv_file, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
 
             # Write header
@@ -711,9 +706,8 @@ class DomainEvaluationRunner:
 
         logger.info(f"Evaluation results saved: {json_file}, {csv_file}")
 
-    def run_all_domains(self, research_system: Any) -> Dict[str, Any]:
+    def run_all_domains(self, research_system: Any) -> dict[str, Any]:
         """Run evaluation across all domains"""
-
         all_results = {}
 
         for domain in self.evaluators.keys():
@@ -731,20 +725,24 @@ class DomainEvaluationRunner:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         combined_file = self.results_dir / f"combined_evaluation_{timestamp}.json"
 
-        with open(combined_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                "evaluation_timestamp": datetime.now(timezone.utc).isoformat(),
-                "domains_evaluated": list(all_results.keys()),
-                "combined_summary": combined_summary,
-                "domain_results": all_results
-            }, f, indent=2, ensure_ascii=False)
+        with open(combined_file, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "evaluation_timestamp": datetime.now(UTC).isoformat(),
+                    "domains_evaluated": list(all_results.keys()),
+                    "combined_summary": combined_summary,
+                    "domain_results": all_results,
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
 
         logger.info(f"Combined evaluation results saved: {combined_file}")
         return all_results
 
-    def _create_combined_summary(self, all_results: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_combined_summary(self, all_results: dict[str, Any]) -> dict[str, Any]:
         """Create summary across all domains"""
-
         total_queries = 0
         total_successful = 0
         total_failed = 0
@@ -775,11 +773,11 @@ class DomainEvaluationRunner:
             "total_queries": total_queries,
             "success_rate": total_successful / max(total_queries, 1),
             "domain_scores": domain_scores,
-            "overall_score": statistics.mean(domain_scores.values()) if domain_scores else 0.0
+            "overall_score": statistics.mean(domain_scores.values()) if domain_scores else 0.0,
         }
 
 
-def create_domain_evaluation_runner(config: Dict[str, Any]) -> DomainEvaluationRunner:
+def create_domain_evaluation_runner(config: dict[str, Any]) -> DomainEvaluationRunner:
     """Factory function for domain evaluation runner"""
     return DomainEvaluationRunner(config)
 
@@ -791,21 +789,20 @@ if __name__ == "__main__":
             "domains": {
                 "medical": {"enabled": True},
                 "legal": {"enabled": True},
-                "financial": {"enabled": True}
+                "financial": {"enabled": True},
             }
         },
-        "evaluation_results": "test_evaluation_results"
+        "evaluation_results": "test_evaluation_results",
     }
 
     runner = DomainEvaluationRunner(config)
 
     # Run medical domain evaluation
     medical_results = runner.run_domain_evaluation(
-        EvaluationDomain.MEDICAL,
-        None  # Mock research system
+        EvaluationDomain.MEDICAL, None  # Mock research system
     )
 
-    print(f"Medical evaluation completed:")
+    print("Medical evaluation completed:")
     print(f"- Total queries: {medical_results['total_queries']}")
     print(f"- Successful: {medical_results['successful_queries']}")
     print(f"- Key metrics: {list(medical_results['summary_metrics'].keys())[:5]}")

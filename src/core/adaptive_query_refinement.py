@@ -1,60 +1,62 @@
 #!/usr/bin/env python3
-"""
-Adaptive Query Refinement Loop
+"""Adaptive Query Refinement Loop
 Iteratively extracts uncovered entities and generates sub-queries with confidence-based fan-out
 
 Author: Senior IT Specialist
 """
 
-import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Set, Tuple
 from dataclasses import dataclass
-import json
-import re
-from datetime import datetime
-import numpy as np
+from typing import Any
 
-import structlog
-from transformers import AutoTokenizer, AutoModelForTokenClassification
 import spacy
+import structlog
+from transformers import AutoModelForTokenClassification, AutoTokenizer
 
 logger = structlog.get_logger(__name__)
+
 
 @dataclass
 class QueryEntity:
     """Extracted entity from query"""
+
     text: str
     label: str  # PERSON, ORG, GPE, PRODUCT, etc.
     confidence: float
     start: int
     end: int
 
+
 @dataclass
 class SubQuery:
     """Generated sub-query for refinement"""
+
     text: str
-    entities: List[QueryEntity]
+    entities: list[QueryEntity]
     confidence: float
     parent_query: str
     iteration: int
     coverage_gain_potential: float
 
+
 @dataclass
 class CoverageAnalysis:
     """Analysis of coverage gaps in current results"""
-    uncovered_entities: List[QueryEntity]
-    missing_aspects: List[str]
-    confidence_gaps: List[Dict[str, Any]]
+
+    uncovered_entities: list[QueryEntity]
+    missing_aspects: list[str]
+    confidence_gaps: list[dict[str, Any]]
     coverage_score: float
     potential_gain: float
+
 
 class EntityExtractor:
     """NER-based entity extraction for query refinement"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
-        self.model_name = config.get("ner_model", "dbmdz/bert-large-cased-finetuned-conll03-english")
+        self.model_name = config.get(
+            "ner_model", "dbmdz/bert-large-cased-finetuned-conll03-english"
+        )
 
         # Initialize models
         self.tokenizer = None
@@ -76,7 +78,7 @@ class EntityExtractor:
             logger.warning("spaCy model not found, using basic extraction")
             self.nlp = None
 
-    def extract_entities(self, text: str) -> List[QueryEntity]:
+    def extract_entities(self, text: str) -> list[QueryEntity]:
         """Extract entities from text using both transformer and spaCy"""
         entities = []
 
@@ -94,9 +96,8 @@ class EntityExtractor:
 
         return entities
 
-    def _extract_transformer_entities(self, text: str) -> List[QueryEntity]:
+    def _extract_transformer_entities(self, text: str) -> list[QueryEntity]:
         """Extract entities using transformer NER model"""
-
         # Tokenize
         inputs = self.tokenizer(text, return_tensors="pt", truncation=True, padding=True)
 
@@ -115,7 +116,7 @@ class EntityExtractor:
         current_entity = None
         current_tokens = []
 
-        for i, (token, pred_id) in enumerate(zip(tokens, predicted_token_class[0])):
+        for i, (token, pred_id) in enumerate(zip(tokens, predicted_token_class[0], strict=False)):
             if token in ["[CLS]", "[SEP]", "[PAD]"]:
                 continue
 
@@ -124,7 +125,9 @@ class EntityExtractor:
             if label.startswith("B-"):  # Beginning of entity
                 if current_entity:
                     # Save previous entity
-                    entities.append(self._create_entity_from_tokens(current_tokens, current_entity, text))
+                    entities.append(
+                        self._create_entity_from_tokens(current_tokens, current_entity, text)
+                    )
 
                 current_entity = label[2:]  # Remove B- prefix
                 current_tokens = [(token, i)]
@@ -132,11 +135,12 @@ class EntityExtractor:
             elif label.startswith("I-") and current_entity == label[2:]:  # Inside entity
                 current_tokens.append((token, i))
 
-            else:  # Outside entity
-                if current_entity:
-                    entities.append(self._create_entity_from_tokens(current_tokens, current_entity, text))
-                    current_entity = None
-                    current_tokens = []
+            elif current_entity:
+                entities.append(
+                    self._create_entity_from_tokens(current_tokens, current_entity, text)
+                )
+                current_entity = None
+                current_tokens = []
 
         # Handle last entity
         if current_entity:
@@ -144,7 +148,7 @@ class EntityExtractor:
 
         return entities
 
-    def _extract_spacy_entities(self, text: str) -> List[QueryEntity]:
+    def _extract_spacy_entities(self, text: str) -> list[QueryEntity]:
         """Extract entities using spaCy"""
         doc = self.nlp(text)
 
@@ -155,16 +159,16 @@ class EntityExtractor:
                 label=ent.label_,
                 confidence=0.8,  # spaCy doesn't provide confidence scores
                 start=ent.start_char,
-                end=ent.end_char
+                end=ent.end_char,
             )
             entities.append(entity)
 
         return entities
 
-    def _create_entity_from_tokens(self, tokens: List[Tuple[str, int]],
-                                 entity_type: str, original_text: str) -> QueryEntity:
+    def _create_entity_from_tokens(
+        self, tokens: list[tuple[str, int]], entity_type: str, original_text: str
+    ) -> QueryEntity:
         """Create entity from transformer tokens"""
-
         # Reconstruct text from tokens
         entity_text = self.tokenizer.convert_tokens_to_string([t[0] for t in tokens])
 
@@ -177,12 +181,11 @@ class EntityExtractor:
             label=entity_type,
             confidence=0.9,  # High confidence for transformer predictions
             start=max(0, start),
-            end=end
+            end=end,
         )
 
-    def _deduplicate_entities(self, entities: List[QueryEntity]) -> List[QueryEntity]:
+    def _deduplicate_entities(self, entities: list[QueryEntity]) -> list[QueryEntity]:
         """Remove duplicate entities with overlap resolution"""
-
         # Sort by start position
         entities.sort(key=lambda x: x.start)
 
@@ -191,7 +194,7 @@ class EntityExtractor:
             # Check for overlap with existing entities
             overlaps = False
             for existing in deduplicated:
-                if (entity.start < existing.end and entity.end > existing.start):
+                if entity.start < existing.end and entity.end > existing.start:
                     # Overlap detected - keep the one with higher confidence
                     if entity.confidence > existing.confidence:
                         deduplicated.remove(existing)
@@ -204,10 +207,11 @@ class EntityExtractor:
 
         return deduplicated
 
+
 class QueryRefinementEngine:
     """Adaptive query refinement with coverage analysis"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.refinement_config = config.get("query_refinement", {})
 
@@ -231,11 +235,10 @@ class QueryRefinementEngine:
         await self.entity_extractor.initialize()
         self.logger.info("Query refinement engine initialized")
 
-    async def refine_query_iteratively(self, initial_query: str,
-                                     initial_results: List[Dict[str, Any]],
-                                     retrieval_engine) -> Dict[str, Any]:
+    async def refine_query_iteratively(
+        self, initial_query: str, initial_results: list[dict[str, Any]], retrieval_engine
+    ) -> dict[str, Any]:
         """Iteratively refine query until coverage plateau reached"""
-
         self.logger.info(f"Starting iterative refinement: {initial_query[:50]}...")
 
         # Initialize state
@@ -248,7 +251,7 @@ class QueryRefinementEngine:
             "iterations": [],
             "final_coverage": 0.0,
             "total_subqueries": 0,
-            "convergence_reason": ""
+            "convergence_reason": "",
         }
 
         while current_iteration < self.max_iterations:
@@ -268,7 +271,7 @@ class QueryRefinementEngine:
                 current_query,
                 coverage.uncovered_entities,
                 coverage.missing_aspects,
-                current_iteration
+                current_iteration,
             )
 
             if not subqueries:
@@ -280,8 +283,7 @@ class QueryRefinementEngine:
             for subquery in subqueries:
                 if subquery.confidence >= self.confidence_threshold:
                     subquery_results = await retrieval_engine.hierarchical_search(
-                        subquery.text,
-                        top_k=5
+                        subquery.text, top_k=5
                     )
                     iteration_results.extend(subquery_results)
 
@@ -294,7 +296,7 @@ class QueryRefinementEngine:
                 "coverage_before": coverage.coverage_score,
                 "subqueries": [sq.text for sq in subqueries],
                 "new_results_count": len(iteration_results),
-                "total_results": len(all_results)
+                "total_results": len(all_results),
             }
             refinement_log["iterations"].append(iteration_log)
 
@@ -303,7 +305,9 @@ class QueryRefinementEngine:
         # Final coverage analysis
         final_coverage = await self._analyze_coverage(current_query, all_results)
         refinement_log["final_coverage"] = final_coverage.coverage_score
-        refinement_log["total_subqueries"] = sum(len(it["subqueries"]) for it in refinement_log["iterations"])
+        refinement_log["total_subqueries"] = sum(
+            len(it["subqueries"]) for it in refinement_log["iterations"]
+        )
 
         if current_iteration >= self.max_iterations:
             refinement_log["convergence_reason"] = "max_iterations_reached"
@@ -313,12 +317,14 @@ class QueryRefinementEngine:
         return {
             "refined_results": all_results,
             "refinement_log": refinement_log,
-            "coverage_improvement": final_coverage.coverage_score - (self.coverage_history[0] if self.coverage_history else 0)
+            "coverage_improvement": final_coverage.coverage_score
+            - (self.coverage_history[0] if self.coverage_history else 0),
         }
 
-    async def _analyze_coverage(self, query: str, results: List[Dict[str, Any]]) -> CoverageAnalysis:
+    async def _analyze_coverage(
+        self, query: str, results: list[dict[str, Any]]
+    ) -> CoverageAnalysis:
         """Analyze coverage gaps in current results"""
-
         # Extract entities from original query
         query_entities = self.entity_extractor.extract_entities(query)
 
@@ -351,19 +357,18 @@ class QueryRefinementEngine:
             missing_aspects=missing_aspects,
             confidence_gaps=[],  # Could be enhanced with confidence analysis
             coverage_score=coverage_score,
-            potential_gain=potential_gain
+            potential_gain=potential_gain,
         )
 
-    def _identify_missing_aspects(self, query: str, results: List[Dict[str, Any]]) -> List[str]:
+    def _identify_missing_aspects(self, query: str, results: list[dict[str, Any]]) -> list[str]:
         """Identify missing aspects using keyword analysis"""
-
         # Common research aspects
         aspect_keywords = {
             "methodology": ["method", "approach", "technique", "procedure"],
             "results": ["result", "finding", "outcome", "conclusion"],
             "limitations": ["limitation", "constraint", "drawback", "issue"],
             "future_work": ["future", "next", "recommend", "suggest"],
-            "comparison": ["compare", "versus", "different", "alternative"]
+            "comparison": ["compare", "versus", "different", "alternative"],
         }
 
         # Check which aspects are missing from results
@@ -376,12 +381,14 @@ class QueryRefinementEngine:
 
         return missing_aspects
 
-    async def _generate_subqueries(self, original_query: str,
-                                 uncovered_entities: List[QueryEntity],
-                                 missing_aspects: List[str],
-                                 iteration: int) -> List[SubQuery]:
+    async def _generate_subqueries(
+        self,
+        original_query: str,
+        uncovered_entities: list[QueryEntity],
+        missing_aspects: list[str],
+        iteration: int,
+    ) -> list[SubQuery]:
         """Generate sub-queries for uncovered entities and aspects"""
-
         subqueries = []
 
         # Generate entity-based sub-queries
@@ -394,7 +401,7 @@ class QueryRefinementEngine:
                 confidence=entity.confidence,
                 parent_query=original_query,
                 iteration=iteration,
-                coverage_gain_potential=0.2
+                coverage_gain_potential=0.2,
             )
             subqueries.append(subquery)
 
@@ -403,7 +410,7 @@ class QueryRefinementEngine:
             "methodology": f"methodology approach {original_query}",
             "results": f"results findings {original_query}",
             "limitations": f"limitations issues {original_query}",
-            "comparison": f"comparison alternatives {original_query}"
+            "comparison": f"comparison alternatives {original_query}",
         }
 
         for aspect in missing_aspects[:2]:  # Limit to top 2 aspects
@@ -416,18 +423,17 @@ class QueryRefinementEngine:
                     confidence=0.7,  # Medium confidence for aspect queries
                     parent_query=original_query,
                     iteration=iteration,
-                    coverage_gain_potential=0.15
+                    coverage_gain_potential=0.15,
                 )
                 subqueries.append(subquery)
 
         # Sort by coverage gain potential and confidence
         subqueries.sort(key=lambda sq: (sq.coverage_gain_potential, sq.confidence), reverse=True)
 
-        return subqueries[:self.max_subqueries_per_iteration]
+        return subqueries[: self.max_subqueries_per_iteration]
 
     def _check_plateau(self) -> bool:
         """Check if coverage improvement has plateaued"""
-
         if len(self.coverage_history) < 2:
             return False
 
@@ -436,10 +442,10 @@ class QueryRefinementEngine:
 
         return last_improvement < self.coverage_plateau_threshold
 
-    def _merge_results(self, existing_results: List[Dict[str, Any]],
-                      new_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _merge_results(
+        self, existing_results: list[dict[str, Any]], new_results: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Merge new results with existing ones, avoiding duplicates"""
-
         # Create set of existing URLs for deduplication
         existing_urls = {r.get("url", "") for r in existing_results}
 
@@ -456,6 +462,7 @@ class QueryRefinementEngine:
 
         return merged
 
-def create_query_refinement_engine(config: Dict[str, Any]) -> QueryRefinementEngine:
+
+def create_query_refinement_engine(config: dict[str, Any]) -> QueryRefinementEngine:
     """Factory function for query refinement engine"""
     return QueryRefinementEngine(config)

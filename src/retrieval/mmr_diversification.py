@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""
-MMR (Maximal Marginal Relevance) Diversification
+"""MMR (Maximal Marginal Relevance) Diversification
 Diversifikuje výsledky pro pokrytí různých aspektů dotazu
 
 Author: Senior Python/MLOps Agent
 """
 
-import numpy as np
-import logging
-from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
+import logging
 import time
-from sklearn.metrics.pairwise import cosine_similarity
+from typing import Any
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MMRResult:
     """Výsledek MMR diversifikace"""
+
     document_id: str
     original_rank: int
     mmr_rank: int
@@ -31,7 +31,7 @@ class MMRResult:
 class MMRDiversifier:
     """MMR Diversification engine"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.mmr_config = config.get("retrieval", {}).get("mmr", {})
         self.enabled = self.mmr_config.get("enabled", False)
@@ -49,12 +49,10 @@ class MMRDiversifier:
         self.embedding_model = embedding_model
         logger.info("MMR Diversifier initialized")
 
-    async def diversify_results(self,
-                               documents: List[Dict[str, Any]],
-                               query_embedding: np.ndarray,
-                               k: int = 20) -> List[MMRResult]:
-        """
-        Diversifikace výsledků pomocí MMR
+    async def diversify_results(
+        self, documents: list[dict[str, Any]], query_embedding: np.ndarray, k: int = 20
+    ) -> list[MMRResult]:
+        """Diversifikace výsledků pomocí MMR
 
         Args:
             documents: Seznam dokumentů s embeddingy a skóre
@@ -63,6 +61,7 @@ class MMRDiversifier:
 
         Returns:
             List MMRResult s diversifikovanými výsledky
+
         """
         start_time = time.time()
 
@@ -76,8 +75,9 @@ class MMRDiversifier:
                     relevance_score=doc.get("score", 0.0),
                     diversity_score=0.0,
                     mmr_score=doc.get("score", 0.0),
-                    selected_for_diversity=False
-                ) for i, doc in enumerate(documents[:k])
+                    selected_for_diversity=False,
+                )
+                for i, doc in enumerate(documents[:k])
             ]
 
         try:
@@ -100,7 +100,7 @@ class MMRDiversifier:
                     break
 
                 best_idx = None
-                best_mmr_score = -float('inf')
+                best_mmr_score = -float("inf")
 
                 for idx in remaining_indices:
                     # MMR skóre = λ * relevance - (1-λ) * max_similarity_to_selected
@@ -109,14 +109,12 @@ class MMRDiversifier:
                     if selected_docs:
                         # Najdi maximální podobnost k již vybraným dokumentům
                         max_sim = self._max_similarity_to_selected(
-                            doc_embeddings[idx],
-                            [doc_embeddings[s["idx"]] for s in selected_docs]
+                            doc_embeddings[idx], [doc_embeddings[s["idx"]] for s in selected_docs]
                         )
                     else:
                         max_sim = 0.0
 
-                    mmr_score = (self.lambda_param * relevance -
-                               (1 - self.lambda_param) * max_sim)
+                    mmr_score = self.lambda_param * relevance - (1 - self.lambda_param) * max_sim
 
                     if mmr_score > best_mmr_score:
                         best_mmr_score = mmr_score
@@ -124,19 +122,24 @@ class MMRDiversifier:
 
                 if best_idx is not None:
                     doc = documents[best_idx]
-                    diversity_score = 1.0 - (0.0 if not selected_docs else
-                                           self._max_similarity_to_selected(
-                                               doc_embeddings[best_idx],
-                                               [doc_embeddings[s["idx"]] for s in selected_docs]
-                                           ))
+                    diversity_score = 1.0 - (
+                        0.0
+                        if not selected_docs
+                        else self._max_similarity_to_selected(
+                            doc_embeddings[best_idx],
+                            [doc_embeddings[s["idx"]] for s in selected_docs],
+                        )
+                    )
 
-                    selected_docs.append({
-                        "idx": best_idx,
-                        "doc": doc,
-                        "relevance": relevance_scores[best_idx],
-                        "diversity": diversity_score,
-                        "mmr_score": best_mmr_score
-                    })
+                    selected_docs.append(
+                        {
+                            "idx": best_idx,
+                            "doc": doc,
+                            "relevance": relevance_scores[best_idx],
+                            "diversity": diversity_score,
+                            "mmr_score": best_mmr_score,
+                        }
+                    )
 
                     remaining_indices.remove(best_idx)
 
@@ -146,19 +149,23 @@ class MMRDiversifier:
                 doc = selected["doc"]
                 original_rank = selected["idx"]
 
-                results.append(MMRResult(
-                    document_id=doc.get("id", f"doc_{original_rank}"),
-                    original_rank=original_rank,
-                    mmr_rank=mmr_rank,
-                    relevance_score=selected["relevance"],
-                    diversity_score=selected["diversity"],
-                    mmr_score=selected["mmr_score"],
-                    selected_for_diversity=selected["diversity"] > self.diversity_threshold
-                ))
+                results.append(
+                    MMRResult(
+                        document_id=doc.get("id", f"doc_{original_rank}"),
+                        original_rank=original_rank,
+                        mmr_rank=mmr_rank,
+                        relevance_score=selected["relevance"],
+                        diversity_score=selected["diversity"],
+                        mmr_score=selected["mmr_score"],
+                        selected_for_diversity=selected["diversity"] > self.diversity_threshold,
+                    )
+                )
 
             processing_time = time.time() - start_time
-            logger.info(f"MMR diversification completed in {processing_time:.2f}s, "
-                       f"processed {len(documents)} docs, selected {len(results)}")
+            logger.info(
+                f"MMR diversification completed in {processing_time:.2f}s, "
+                f"processed {len(documents)} docs, selected {len(results)}"
+            )
 
             return results
 
@@ -166,9 +173,8 @@ class MMRDiversifier:
             logger.error(f"MMR diversification failed: {e}")
             return self._fallback_ranking(documents, k)
 
-    def _extract_embeddings(self, documents: List[Dict[str, Any]]) -> Optional[np.ndarray]:
+    def _extract_embeddings(self, documents: list[dict[str, Any]]) -> np.ndarray | None:
         """Extrakce embeddingů z dokumentů"""
-
         embeddings = []
         for doc in documents:
             # Různé možné umístění embeddingů
@@ -197,10 +203,10 @@ class MMRDiversifier:
             return np.vstack(embeddings)
         return None
 
-    def _calculate_relevance_scores(self, doc_embeddings: np.ndarray,
-                                   query_embedding: np.ndarray) -> np.ndarray:
+    def _calculate_relevance_scores(
+        self, doc_embeddings: np.ndarray, query_embedding: np.ndarray
+    ) -> np.ndarray:
         """Výpočet relevance scores mezi dokumenty a dotazem"""
-
         # Normalizace embeddingů
         doc_embeddings_norm = doc_embeddings / np.linalg.norm(doc_embeddings, axis=1, keepdims=True)
         query_embedding_norm = query_embedding / np.linalg.norm(query_embedding)
@@ -213,10 +219,10 @@ class MMRDiversifier:
 
         return relevance_scores
 
-    def _max_similarity_to_selected(self, doc_embedding: np.ndarray,
-                                   selected_embeddings: List[np.ndarray]) -> float:
+    def _max_similarity_to_selected(
+        self, doc_embedding: np.ndarray, selected_embeddings: list[np.ndarray]
+    ) -> float:
         """Maximální podobnost k již vybraným dokumentům"""
-
         if not selected_embeddings:
             return 0.0
 
@@ -230,9 +236,8 @@ class MMRDiversifier:
 
         return max(similarities)
 
-    def _fallback_ranking(self, documents: List[Dict[str, Any]], k: int) -> List[MMRResult]:
+    def _fallback_ranking(self, documents: list[dict[str, Any]], k: int) -> list[MMRResult]:
         """Fallback ranking při selhání MMR"""
-
         return [
             MMRResult(
                 document_id=doc.get("id", f"doc_{i}"),
@@ -241,14 +246,15 @@ class MMRDiversifier:
                 relevance_score=doc.get("score", 0.0),
                 diversity_score=0.0,
                 mmr_score=doc.get("score", 0.0),
-                selected_for_diversity=False
-            ) for i, doc in enumerate(documents[:k])
+                selected_for_diversity=False,
+            )
+            for i, doc in enumerate(documents[:k])
         ]
 
-    async def analyze_diversity_coverage(self, results: List[MMRResult],
-                                        documents: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def analyze_diversity_coverage(
+        self, results: list[MMRResult], documents: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Analýza pokrytí různorodosti"""
-
         if not results or not self.enabled:
             return {"diversity_analysis": "disabled"}
 
@@ -277,27 +283,27 @@ class MMRDiversifier:
                 "mean": np.mean(relevance_scores),
                 "std": np.std(relevance_scores),
                 "min": min(relevance_scores),
-                "max": max(relevance_scores)
+                "max": max(relevance_scores),
             },
             "diversity_stats": {
                 "mean": np.mean(diversity_scores),
                 "std": np.std(diversity_scores),
                 "min": min(diversity_scores),
-                "max": max(diversity_scores)
+                "max": max(diversity_scores),
             },
             "mmr_stats": {
                 "mean": np.mean(mmr_scores),
                 "std": np.std(mmr_scores),
                 "min": min(mmr_scores),
-                "max": max(mmr_scores)
+                "max": max(mmr_scores),
             },
             "lambda_parameter": self.lambda_param,
-            "diversity_threshold": self.diversity_threshold
+            "diversity_threshold": self.diversity_threshold,
         }
 
 
 # Factory funkce
-async def create_mmr_diversifier(config: Dict[str, Any], embedding_model=None) -> MMRDiversifier:
+async def create_mmr_diversifier(config: dict[str, Any], embedding_model=None) -> MMRDiversifier:
     """Factory funkce pro vytvoření MMR diversifieru"""
     diversifier = MMRDiversifier(config)
     if embedding_model:

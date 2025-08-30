@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
-"""
-Counter-Evidence Detection System
+"""Counter-Evidence Detection System
 Specializovaný systém pro detekci a analýzu protikladných důkazů
 
 Author: Senior Python/MLOps Agent
 """
 
-import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple, Set
+from collections import defaultdict
 from dataclasses import dataclass
-import json
+import logging
 import re
 import time
-from collections import defaultdict
-import math
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CounterEvidence:
     """Protikladný důkaz"""
+
     evidence_id: str
     original_claim: str
     counter_claim: str
@@ -37,9 +34,10 @@ class CounterEvidence:
 @dataclass
 class ContradictionAnalysis:
     """Analýza rozporů mezi důkazy"""
+
     claim_id: str
-    supporting_evidence: List[str]
-    counter_evidence: List[CounterEvidence]
+    supporting_evidence: list[str]
+    counter_evidence: list[CounterEvidence]
     contradiction_strength: float
     resolution_strategy: str
     confidence_adjustment: float
@@ -49,18 +47,19 @@ class ContradictionAnalysis:
 @dataclass
 class DisagreementCoverage:
     """Metriky pokrytí disagreement"""
+
     total_claims: int
     claims_with_counter_evidence: int
     disagreement_ratio: float
     quality_counter_evidence: int
     coverage_score: float
-    detailed_analysis: List[ContradictionAnalysis]
+    detailed_analysis: list[ContradictionAnalysis]
 
 
 class CounterEvidenceDetector:
     """Detektor protikladných důkazů s pokročilou analýzou"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.counter_evidence_config = config.get("counter_evidence", {})
 
@@ -74,51 +73,48 @@ class CounterEvidenceDetector:
 
         # Quality thresholds
         self.quality_thresholds = self.counter_evidence_config.get("quality_thresholds", {})
-        self.min_disagreement_coverage = self.quality_thresholds.get("min_disagreement_coverage", 0.3)
+        self.min_disagreement_coverage = self.quality_thresholds.get(
+            "min_disagreement_coverage", 0.3
+        )
 
         # Analysis cache
         self.analysis_cache = {}
 
-    def _load_contradiction_patterns(self) -> Dict[str, List[str]]:
+    def _load_contradiction_patterns(self) -> dict[str, list[str]]:
         """Načtení vzorů pro detekci rozporů"""
-
         patterns = {
             "direct_negation": [
-                r'\b(not|no|never|none|neither|nor)\s+',
-                r'\b(incorrect|false|wrong|untrue|inaccurate)\b',
-                r'\b(refutes?|disproves?|contradicts?|disputes?)\b',
-                r'\b(fails to|unable to|cannot|does not)\b'
+                r"\b(not|no|never|none|neither|nor)\s+",
+                r"\b(incorrect|false|wrong|untrue|inaccurate)\b",
+                r"\b(refutes?|disproves?|contradicts?|disputes?)\b",
+                r"\b(fails to|unable to|cannot|does not)\b",
             ],
-
             "contrast_indicators": [
-                r'\b(however|but|although|though|despite|nevertheless)\b',
-                r'\b(on the contrary|in contrast|conversely|opposite)\b',
-                r'\b(while|whereas|instead|rather than)\b',
-                r'\b(alternatively|different|contrary to)\b'
+                r"\b(however|but|although|though|despite|nevertheless)\b",
+                r"\b(on the contrary|in contrast|conversely|opposite)\b",
+                r"\b(while|whereas|instead|rather than)\b",
+                r"\b(alternatively|different|contrary to)\b",
             ],
-
             "questioning_validity": [
-                r'\b(questionable|doubtful|uncertain|unclear)\b',
-                r'\b(limited evidence|insufficient data|weak support)\b',
-                r'\b(controversy|debate|disagreement|dispute)\b',
-                r'\b(challenges?|criticizes?|questions?)\b'
+                r"\b(questionable|doubtful|uncertain|unclear)\b",
+                r"\b(limited evidence|insufficient data|weak support)\b",
+                r"\b(controversy|debate|disagreement|dispute)\b",
+                r"\b(challenges?|criticizes?|questions?)\b",
             ],
-
             "methodological_criticism": [
-                r'\b(flawed methodology|biased sample|inadequate controls)\b',
-                r'\b(correlation not causation|confounding factors)\b',
-                r'\b(replication crisis|irreproducible|unreliable)\b',
-                r'\b(statistical significance|p-hacking|publication bias)\b'
-            ]
+                r"\b(flawed methodology|biased sample|inadequate controls)\b",
+                r"\b(correlation not causation|confounding factors)\b",
+                r"\b(replication crisis|irreproducible|unreliable)\b",
+                r"\b(statistical significance|p-hacking|publication bias)\b",
+            ],
         }
 
         return patterns
 
-    async def detect_counter_evidence(self,
-                                    claims: List[Dict[str, Any]],
-                                    evidence_passages: List[Dict[str, Any]]) -> DisagreementCoverage:
-        """
-        Hlavní detekce counter-evidence pro všechny claims
+    async def detect_counter_evidence(
+        self, claims: list[dict[str, Any]], evidence_passages: list[dict[str, Any]]
+    ) -> DisagreementCoverage:
+        """Hlavní detekce counter-evidence pro všechny claims
 
         Args:
             claims: Seznam claims s evidence bindings
@@ -126,8 +122,8 @@ class CounterEvidenceDetector:
 
         Returns:
             DisagreementCoverage s complete analysis
-        """
 
+        """
         logger.info(f"Starting counter-evidence detection for {len(claims)} claims")
 
         if not self.enable_counter_search:
@@ -150,28 +146,35 @@ class CounterEvidenceDetector:
 
         return coverage
 
-    async def _analyze_claim_contradictions(self,
-                                          claim: Dict[str, Any],
-                                          evidence_passages: List[Dict[str, Any]]) -> ContradictionAnalysis:
+    async def _analyze_claim_contradictions(
+        self, claim: dict[str, Any], evidence_passages: list[dict[str, Any]]
+    ) -> ContradictionAnalysis:
         """Analýza rozporů pro konkrétní claim"""
-
         claim_text = claim.get("text", "")
         claim_id = claim.get("id", "unknown")
 
         # Find potential counter-evidence
-        counter_evidence = await self._find_counter_evidence_for_claim(claim_text, evidence_passages)
+        counter_evidence = await self._find_counter_evidence_for_claim(
+            claim_text, evidence_passages
+        )
 
         # Analyze contradiction strength
-        contradiction_strength = self._calculate_contradiction_strength(claim_text, counter_evidence)
+        contradiction_strength = self._calculate_contradiction_strength(
+            claim_text, counter_evidence
+        )
 
         # Determine resolution strategy
         resolution_strategy = self._determine_resolution_strategy(claim, counter_evidence)
 
         # Calculate confidence adjustment
-        confidence_adjustment = self._calculate_confidence_adjustment(counter_evidence, contradiction_strength)
+        confidence_adjustment = self._calculate_confidence_adjustment(
+            counter_evidence, contradiction_strength
+        )
 
         # Generate analysis notes
-        analysis_notes = self._generate_analysis_notes(claim, counter_evidence, contradiction_strength)
+        analysis_notes = self._generate_analysis_notes(
+            claim, counter_evidence, contradiction_strength
+        )
 
         analysis = ContradictionAnalysis(
             claim_id=claim_id,
@@ -180,16 +183,15 @@ class CounterEvidenceDetector:
             contradiction_strength=contradiction_strength,
             resolution_strategy=resolution_strategy,
             confidence_adjustment=confidence_adjustment,
-            analysis_notes=analysis_notes
+            analysis_notes=analysis_notes,
         )
 
         return analysis
 
-    async def _find_counter_evidence_for_claim(self,
-                                             claim_text: str,
-                                             evidence_passages: List[Dict[str, Any]]) -> List[CounterEvidence]:
+    async def _find_counter_evidence_for_claim(
+        self, claim_text: str, evidence_passages: list[dict[str, Any]]
+    ) -> list[CounterEvidence]:
         """Nalezení counter-evidence pro konkrétní claim"""
-
         counter_evidence = []
         claim_terms = set(claim_text.lower().split())
 
@@ -206,19 +208,17 @@ class CounterEvidenceDetector:
 
         # Sort by confidence and limit count
         counter_evidence.sort(key=lambda x: x.confidence, reverse=True)
-        return counter_evidence[:self.max_counter_evidence_per_claim]
+        return counter_evidence[: self.max_counter_evidence_per_claim]
 
-    def _detect_contradictions_in_passage(self,
-                                        claim_text: str,
-                                        passage_content: str,
-                                        doc_id: str) -> List[CounterEvidence]:
+    def _detect_contradictions_in_passage(
+        self, claim_text: str, passage_content: str, doc_id: str
+    ) -> list[CounterEvidence]:
         """Detekce rozporů v konkrétní pasáži"""
-
         contradictions = []
         claim_terms = set(claim_text.lower().split())
 
         # Split passage into sentences
-        sentences = re.split(r'[.!?]+\s+', passage_content)
+        sentences = re.split(r"[.!?]+\s+", passage_content)
         char_offset = 0
 
         for sentence in sentences:
@@ -257,7 +257,7 @@ class CounterEvidenceDetector:
                                 evidence_text=sentence,
                                 char_start=start_pos,
                                 char_end=start_pos + len(sentence),
-                                credibility_score=self._assess_source_credibility(doc_id)
+                                credibility_score=self._assess_source_credibility(doc_id),
                             )
 
                             contradictions.append(contradiction)
@@ -267,13 +267,10 @@ class CounterEvidenceDetector:
 
         return contradictions
 
-    def _calculate_contradiction_confidence(self,
-                                          claim_text: str,
-                                          counter_sentence: str,
-                                          contradiction_type: str,
-                                          term_overlap: int) -> float:
+    def _calculate_contradiction_confidence(
+        self, claim_text: str, counter_sentence: str, contradiction_type: str, term_overlap: int
+    ) -> float:
         """Výpočet confidence pro contradiction"""
-
         base_confidence = 0.5
 
         # Adjust by contradiction type strength
@@ -281,7 +278,7 @@ class CounterEvidenceDetector:
             "direct_negation": 0.9,
             "methodological_criticism": 0.8,
             "contrast_indicators": 0.7,
-            "questioning_validity": 0.6
+            "questioning_validity": 0.6,
         }
 
         base_confidence *= type_weights.get(contradiction_type, 0.5)
@@ -291,12 +288,12 @@ class CounterEvidenceDetector:
         base_confidence += overlap_boost
 
         # Boost for strong contradiction indicators
-        strong_indicators = ['not', 'false', 'incorrect', 'refutes', 'disproves']
+        strong_indicators = ["not", "false", "incorrect", "refutes", "disproves"]
         if any(indicator in counter_sentence.lower() for indicator in strong_indicators):
             base_confidence += 0.2
 
         # Penalty for weak language
-        weak_indicators = ['might', 'could', 'possibly', 'perhaps', 'maybe']
+        weak_indicators = ["might", "could", "possibly", "perhaps", "maybe"]
         if any(indicator in counter_sentence.lower() for indicator in weak_indicators):
             base_confidence -= 0.2
 
@@ -304,22 +301,19 @@ class CounterEvidenceDetector:
 
     def _assess_source_credibility(self, doc_id: str) -> float:
         """Odhad credibility zdroje"""
-
         # Simple heuristic based on source type (would be enhanced with real credibility data)
-        if any(indicator in doc_id.lower() for indicator in ['academic', 'journal', 'research']):
+        if any(indicator in doc_id.lower() for indicator in ["academic", "journal", "research"]):
             return 0.9
-        elif any(indicator in doc_id.lower() for indicator in ['government', 'official']):
+        if any(indicator in doc_id.lower() for indicator in ["government", "official"]):
             return 0.8
-        elif any(indicator in doc_id.lower() for indicator in ['news', 'media']):
+        if any(indicator in doc_id.lower() for indicator in ["news", "media"]):
             return 0.6
-        else:
-            return 0.5
+        return 0.5
 
-    def _calculate_contradiction_strength(self,
-                                        claim_text: str,
-                                        counter_evidence: List[CounterEvidence]) -> float:
+    def _calculate_contradiction_strength(
+        self, claim_text: str, counter_evidence: list[CounterEvidence]
+    ) -> float:
         """Výpočet celkové síly contradictions"""
-
         if not counter_evidence:
             return 0.0
 
@@ -339,11 +333,10 @@ class CounterEvidenceDetector:
 
         return min(total_strength, 1.0)
 
-    def _determine_resolution_strategy(self,
-                                     claim: Dict[str, Any],
-                                     counter_evidence: List[CounterEvidence]) -> str:
+    def _determine_resolution_strategy(
+        self, claim: dict[str, Any], counter_evidence: list[CounterEvidence]
+    ) -> str:
         """Určení strategie pro řešení rozporů"""
-
         if not counter_evidence:
             return "no_contradiction"
 
@@ -358,20 +351,18 @@ class CounterEvidenceDetector:
         # Determine strategy based on contradiction characteristics
         if avg_confidence >= 0.8 and total_contradictions >= 3:
             return "major_dispute_flag"
-        elif "direct_negation" in type_counts and type_counts["direct_negation"] >= 2:
+        if "direct_negation" in type_counts and type_counts["direct_negation"] >= 2:
             return "direct_contradiction_warning"
-        elif "methodological_criticism" in type_counts:
+        if "methodological_criticism" in type_counts:
             return "methodological_concerns_note"
-        elif avg_confidence >= 0.6:
+        if avg_confidence >= 0.6:
             return "moderate_disagreement_flag"
-        else:
-            return "minor_contradiction_note"
+        return "minor_contradiction_note"
 
-    def _calculate_confidence_adjustment(self,
-                                       counter_evidence: List[CounterEvidence],
-                                       contradiction_strength: float) -> float:
+    def _calculate_confidence_adjustment(
+        self, counter_evidence: list[CounterEvidence], contradiction_strength: float
+    ) -> float:
         """Výpočet úpravy confidence na základě contradictions"""
-
         if not counter_evidence:
             return 0.0
 
@@ -383,24 +374,29 @@ class CounterEvidenceDetector:
         credibility_penalty = high_credibility_count * 0.1
 
         # Additional penalty for direct contradictions
-        direct_contradictions = sum(1 for e in counter_evidence if e.contradiction_type == "direct_negation")
+        direct_contradictions = sum(
+            1 for e in counter_evidence if e.contradiction_type == "direct_negation"
+        )
         direct_penalty = direct_contradictions * 0.15
 
         total_adjustment = base_adjustment + credibility_penalty + direct_penalty
 
         return min(total_adjustment, 0.8)  # Maximum 80% confidence reduction
 
-    def _generate_analysis_notes(self,
-                               claim: Dict[str, Any],
-                               counter_evidence: List[CounterEvidence],
-                               contradiction_strength: float) -> str:
+    def _generate_analysis_notes(
+        self,
+        claim: dict[str, Any],
+        counter_evidence: list[CounterEvidence],
+        contradiction_strength: float,
+    ) -> str:
         """Generování analysis notes"""
-
         if not counter_evidence:
             return "No contradictory evidence found."
 
         notes = []
-        notes.append(f"Found {len(counter_evidence)} contradictory evidence(s) with strength {contradiction_strength:.2f}")
+        notes.append(
+            f"Found {len(counter_evidence)} contradictory evidence(s) with strength {contradiction_strength:.2f}"
+        )
 
         # Group by contradiction type
         type_groups = defaultdict(list)
@@ -409,7 +405,9 @@ class CounterEvidenceDetector:
 
         for contradiction_type, evidences in type_groups.items():
             avg_confidence = sum(e.confidence for e in evidences) / len(evidences)
-            notes.append(f"- {contradiction_type}: {len(evidences)} instance(s), avg confidence {avg_confidence:.2f}")
+            notes.append(
+                f"- {contradiction_type}: {len(evidences)} instance(s), avg confidence {avg_confidence:.2f}"
+            )
 
         # Highlight high-confidence contradictions
         high_conf_contradictions = [e for e in counter_evidence if e.confidence >= 0.8]
@@ -420,12 +418,14 @@ class CounterEvidenceDetector:
 
         return " ".join(notes)
 
-    def _calculate_disagreement_coverage(self,
-                                       detailed_analysis: List[ContradictionAnalysis]) -> DisagreementCoverage:
+    def _calculate_disagreement_coverage(
+        self, detailed_analysis: list[ContradictionAnalysis]
+    ) -> DisagreementCoverage:
         """Výpočet disagreement coverage metrics"""
-
         total_claims = len(detailed_analysis)
-        claims_with_counter_evidence = sum(1 for analysis in detailed_analysis if analysis.counter_evidence)
+        claims_with_counter_evidence = sum(
+            1 for analysis in detailed_analysis if analysis.counter_evidence
+        )
 
         disagreement_ratio = claims_with_counter_evidence / total_claims if total_claims > 0 else 0
 
@@ -433,7 +433,8 @@ class CounterEvidenceDetector:
         quality_counter_evidence = 0
         for analysis in detailed_analysis:
             quality_evidence = [
-                e for e in analysis.counter_evidence
+                e
+                for e in analysis.counter_evidence
                 if e.confidence >= 0.7 and e.credibility_score >= 0.7
             ]
             quality_counter_evidence += len(quality_evidence)
@@ -449,17 +450,15 @@ class CounterEvidenceDetector:
             disagreement_ratio=disagreement_ratio,
             quality_counter_evidence=quality_counter_evidence,
             coverage_score=coverage_score,
-            detailed_analysis=detailed_analysis
+            detailed_analysis=detailed_analysis,
         )
 
         return coverage
 
-    def _calculate_coverage_score(self,
-                                disagreement_ratio: float,
-                                quality_counter_evidence: int,
-                                total_claims: int) -> float:
+    def _calculate_coverage_score(
+        self, disagreement_ratio: float, quality_counter_evidence: int, total_claims: int
+    ) -> float:
         """Výpočet overall coverage score"""
-
         # Base score from disagreement ratio
         base_score = disagreement_ratio
 
@@ -476,30 +475,28 @@ class CounterEvidenceDetector:
 
     def _empty_disagreement_coverage(self, total_claims: int) -> DisagreementCoverage:
         """Prázdná disagreement coverage když je detekce vypnuta"""
-
         return DisagreementCoverage(
             total_claims=total_claims,
             claims_with_counter_evidence=0,
             disagreement_ratio=0.0,
             quality_counter_evidence=0,
             coverage_score=0.0,
-            detailed_analysis=[]
+            detailed_analysis=[],
         )
 
-    async def generate_disagreement_report(self, coverage: DisagreementCoverage) -> Dict[str, Any]:
+    async def generate_disagreement_report(self, coverage: DisagreementCoverage) -> dict[str, Any]:
         """Generování disagreement report"""
-
         report = {
             "disagreement_summary": {
                 "total_claims": coverage.total_claims,
                 "claims_with_counter_evidence": coverage.claims_with_counter_evidence,
                 "disagreement_ratio": f"{coverage.disagreement_ratio:.1%}",
                 "quality_counter_evidence": coverage.quality_counter_evidence,
-                "coverage_score": f"{coverage.coverage_score:.3f}"
+                "coverage_score": f"{coverage.coverage_score:.3f}",
             },
             "detailed_contradictions": [],
             "pattern_analysis": self._analyze_contradiction_patterns(coverage.detailed_analysis),
-            "recommendations": self._generate_recommendations(coverage)
+            "recommendations": self._generate_recommendations(coverage),
         }
 
         # Add detailed contradiction analysis
@@ -518,18 +515,19 @@ class CounterEvidenceDetector:
                             "contradiction_type": evidence.contradiction_type,
                             "confidence": evidence.confidence,
                             "credibility_score": evidence.credibility_score,
-                            "source_doc_id": evidence.source_doc_id
+                            "source_doc_id": evidence.source_doc_id,
                         }
                         for evidence in analysis.counter_evidence
-                    ]
+                    ],
                 }
                 report["detailed_contradictions"].append(detail)
 
         return report
 
-    def _analyze_contradiction_patterns(self, detailed_analysis: List[ContradictionAnalysis]) -> Dict[str, Any]:
+    def _analyze_contradiction_patterns(
+        self, detailed_analysis: list[ContradictionAnalysis]
+    ) -> dict[str, Any]:
         """Analýza vzorů v contradictions"""
-
         pattern_counts = defaultdict(int)
         total_contradictions = 0
 
@@ -541,33 +539,43 @@ class CounterEvidenceDetector:
         pattern_analysis = {
             "total_contradictions": total_contradictions,
             "pattern_distribution": dict(pattern_counts),
-            "most_common_pattern": max(pattern_counts.items(), key=lambda x: x[1])[0] if pattern_counts else "none"
+            "most_common_pattern": (
+                max(pattern_counts.items(), key=lambda x: x[1])[0] if pattern_counts else "none"
+            ),
         }
 
         return pattern_analysis
 
-    def _generate_recommendations(self, coverage: DisagreementCoverage) -> List[str]:
+    def _generate_recommendations(self, coverage: DisagreementCoverage) -> list[str]:
         """Generování doporučení na základě disagreement analysis"""
-
         recommendations = []
 
         if coverage.disagreement_ratio < 0.2:
-            recommendations.append("Low disagreement coverage detected. Consider expanding counter-evidence search.")
+            recommendations.append(
+                "Low disagreement coverage detected. Consider expanding counter-evidence search."
+            )
 
         if coverage.quality_counter_evidence == 0:
-            recommendations.append("No high-quality counter-evidence found. Verify search comprehensiveness.")
+            recommendations.append(
+                "No high-quality counter-evidence found. Verify search comprehensiveness."
+            )
 
         if coverage.coverage_score < self.min_disagreement_coverage:
-            recommendations.append(f"Coverage score ({coverage.coverage_score:.2f}) below threshold ({self.min_disagreement_coverage}). Enhance disagreement detection.")
+            recommendations.append(
+                f"Coverage score ({coverage.coverage_score:.2f}) below threshold ({self.min_disagreement_coverage}). Enhance disagreement detection."
+            )
 
         # Analysis-specific recommendations
         high_contradiction_claims = [
-            analysis for analysis in coverage.detailed_analysis
+            analysis
+            for analysis in coverage.detailed_analysis
             if analysis.contradiction_strength >= 0.7
         ]
 
         if high_contradiction_claims:
-            recommendations.append(f"Found {len(high_contradiction_claims)} claim(s) with high contradiction. Consider additional verification.")
+            recommendations.append(
+                f"Found {len(high_contradiction_claims)} claim(s) with high contradiction. Consider additional verification."
+            )
 
         if not recommendations:
             recommendations.append("Disagreement coverage analysis completed successfully.")

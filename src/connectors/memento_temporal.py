@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-"""
-Memento Temporal Connector
+"""Memento Temporal Connector
 TimeMap→TimeGate orchestrace přes milníkové datumy s diff analýzou
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import logging
-import aiohttp
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import json
-import hashlib
-import re
-from urllib.parse import urljoin, urlparse
 import difflib
+import hashlib
+import logging
 from pathlib import Path
+import re
+from typing import Any
+from urllib.parse import urlparse
+
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +24,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MementoSnapshot:
     """Memento snapshot s temporal metadata"""
+
     url: str
     original_url: str
     datetime: datetime
@@ -34,55 +34,64 @@ class MementoSnapshot:
     content_hash: str
     archive_name: str
     rel_type: str  # first, last, next, prev, memento
-    extraction_metadata: Dict[str, Any]
+    extraction_metadata: dict[str, Any]
 
 
 @dataclass
 class TemporalDiff:
     """Diff mezi dvěma snapshoty"""
+
     snapshot_a: MementoSnapshot
     snapshot_b: MementoSnapshot
     diff_type: str  # additions, deletions, modifications
-    diff_chunks: List[Dict[str, Any]]
+    diff_chunks: list[dict[str, Any]]
     similarity_score: float
-    change_summary: Dict[str, Any]
+    change_summary: dict[str, Any]
     significance_score: float
 
 
 @dataclass
 class MementoTemporalResult:
     """Výsledek temporal analysis"""
+
     original_url: str
-    query_timespan: Tuple[datetime, datetime]
-    snapshots: List[MementoSnapshot]
-    temporal_diffs: List[TemporalDiff]
-    milestone_analysis: Dict[str, Any]
-    change_timeline: List[Dict[str, Any]]
+    query_timespan: tuple[datetime, datetime]
+    snapshots: list[MementoSnapshot]
+    temporal_diffs: list[TemporalDiff]
+    milestone_analysis: dict[str, Any]
+    change_timeline: list[dict[str, Any]]
     processing_time: float
-    quality_metrics: Dict[str, float]
+    quality_metrics: dict[str, float]
 
 
 class MementoTemporalConnector:
     """Memento connector pro temporal analysis s diff tracking"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.memento_config = config.get("memento", {})
 
         # Memento API settings
-        self.memento_aggregator = self.memento_config.get("aggregator", "http://timetravel.mementoweb.org")
-        self.archive_endpoints = self.memento_config.get("archive_endpoints", {
-            "wayback_machine": "http://web.archive.org/web",
-            "archive_today": "http://archive.today",
-            "library_congress": "http://webarchive.loc.gov"
-        })
+        self.memento_aggregator = self.memento_config.get(
+            "aggregator", "http://timetravel.mementoweb.org"
+        )
+        self.archive_endpoints = self.memento_config.get(
+            "archive_endpoints",
+            {
+                "wayback_machine": "http://web.archive.org/web",
+                "archive_today": "http://archive.today",
+                "library_congress": "http://webarchive.loc.gov",
+            },
+        )
 
         # Temporal settings
-        self.milestone_intervals = self.memento_config.get("milestone_intervals", [
-            "1_year", "6_months", "3_months", "1_month", "1_week"
-        ])
+        self.milestone_intervals = self.memento_config.get(
+            "milestone_intervals", ["1_year", "6_months", "3_months", "1_month", "1_week"]
+        )
         self.max_snapshots = self.memento_config.get("max_snapshots", 20)
-        self.min_content_change = self.memento_config.get("min_content_change", 0.05)  # 5% change threshold
+        self.min_content_change = self.memento_config.get(
+            "min_content_change", 0.05
+        )  # 5% change threshold
 
         # Request settings
         self.timeout = self.memento_config.get("timeout", 30)
@@ -105,19 +114,16 @@ class MementoTemporalConnector:
 
     async def initialize(self):
         """Inicializace konektoru"""
-
         logger.info("Initializing Memento Temporal Connector...")
 
         timeout = aiohttp.ClientTimeout(total=self.timeout)
         headers = {
             "User-Agent": "DeepResearchTool/1.0 Memento-Temporal-Analysis",
-            "Accept": "application/link-format, text/html, */*"
+            "Accept": "application/link-format, text/html, */*",
         }
 
         self.session = aiohttp.ClientSession(
-            timeout=timeout,
-            headers=headers,
-            connector=aiohttp.TCPConnector(limit=10)
+            timeout=timeout, headers=headers, connector=aiohttp.TCPConnector(limit=10)
         )
 
         logger.info("✅ Memento Temporal Connector initialized")
@@ -127,12 +133,10 @@ class MementoTemporalConnector:
         if self.session:
             await self.session.close()
 
-    async def analyze_temporal_evolution(self,
-                                       url: str,
-                                       start_date: Optional[datetime] = None,
-                                       end_date: Optional[datetime] = None) -> MementoTemporalResult:
-        """
-        Hlavní temporal analysis funkce
+    async def analyze_temporal_evolution(
+        self, url: str, start_date: datetime | None = None, end_date: datetime | None = None
+    ) -> MementoTemporalResult:
+        """Hlavní temporal analysis funkce
 
         Args:
             url: URL pro temporal analysis
@@ -141,15 +145,15 @@ class MementoTemporalConnector:
 
         Returns:
             MementoTemporalResult s temporal evolution analysis
-        """
 
+        """
         start_time = asyncio.get_event_loop().time()
 
         # Set default timespan
         if not end_date:
             end_date = datetime.now()
         if not start_date:
-            start_date = end_date - timedelta(days=5*365)  # 5 years back
+            start_date = end_date - timedelta(days=5 * 365)  # 5 years back
 
         logger.info(f"Starting temporal analysis for {url} from {start_date} to {end_date}")
 
@@ -186,10 +190,12 @@ class MementoTemporalConnector:
                 milestone_analysis=milestone_analysis,
                 change_timeline=change_timeline,
                 processing_time=processing_time,
-                quality_metrics=quality_metrics
+                quality_metrics=quality_metrics,
             )
 
-            logger.info(f"Temporal analysis completed: {len(snapshots)} snapshots, {len(temporal_diffs)} diffs")
+            logger.info(
+                f"Temporal analysis completed: {len(snapshots)} snapshots, {len(temporal_diffs)} diffs"
+            )
 
             return result
 
@@ -197,12 +203,10 @@ class MementoTemporalConnector:
             logger.error(f"Temporal analysis failed: {e}")
             raise
 
-    async def _get_timemap(self,
-                          url: str,
-                          start_date: datetime,
-                          end_date: datetime) -> List[Dict[str, Any]]:
+    async def _get_timemap(
+        self, url: str, start_date: datetime, end_date: datetime
+    ) -> list[dict[str, Any]]:
         """Získání TimeMap pro URL"""
-
         # Build TimeMap request URL
         timemap_url = f"{self.memento_aggregator}/timemap/link/{url}"
 
@@ -211,26 +215,23 @@ class MementoTemporalConnector:
                 if response.status == 200:
                     link_format_content = await response.text()
                     return self._parse_timemap_links(link_format_content, start_date, end_date)
-                else:
-                    logger.warning(f"TimeMap request failed: {response.status}")
-                    return []
+                logger.warning(f"TimeMap request failed: {response.status}")
+                return []
 
         except Exception as e:
             logger.error(f"TimeMap fetch error: {e}")
             return []
 
-    def _parse_timemap_links(self,
-                           link_format_content: str,
-                           start_date: datetime,
-                           end_date: datetime) -> List[Dict[str, Any]]:
+    def _parse_timemap_links(
+        self, link_format_content: str, start_date: datetime, end_date: datetime
+    ) -> list[dict[str, Any]]:
         """Parse TimeMap link format response"""
-
         mementos = []
 
-        for line in link_format_content.strip().split('\n'):
+        for line in link_format_content.strip().split("\n"):
             if 'rel="memento"' in line:
                 # Parse link format: <url>; rel="memento"; datetime="..."
-                url_match = re.search(r'<([^>]+)>', line)
+                url_match = re.search(r"<([^>]+)>", line)
                 datetime_match = re.search(r'datetime="([^"]+)"', line)
 
                 if url_match and datetime_match:
@@ -238,15 +239,19 @@ class MementoTemporalConnector:
                     datetime_str = datetime_match.group(1)
 
                     try:
-                        memento_datetime = datetime.strptime(datetime_str, "%a, %d %b %Y %H:%M:%S GMT")
+                        memento_datetime = datetime.strptime(
+                            datetime_str, "%a, %d %b %Y %H:%M:%S GMT"
+                        )
 
                         # Filter by date range
                         if start_date <= memento_datetime <= end_date:
-                            mementos.append({
-                                "url": memento_url,
-                                "datetime": memento_datetime,
-                                "datetime_str": datetime_str
-                            })
+                            mementos.append(
+                                {
+                                    "url": memento_url,
+                                    "datetime": memento_datetime,
+                                    "datetime_str": datetime_str,
+                                }
+                            )
 
                     except ValueError:
                         logger.warning(f"Failed to parse memento datetime: {datetime_str}")
@@ -257,9 +262,10 @@ class MementoTemporalConnector:
         logger.info(f"Found {len(mementos)} mementos in timespan")
         return mementos
 
-    def _calculate_milestone_dates(self, start_date: datetime, end_date: datetime) -> List[datetime]:
+    def _calculate_milestone_dates(
+        self, start_date: datetime, end_date: datetime
+    ) -> list[datetime]:
         """Výpočet milestone dates pro sampling"""
-
         milestones = []
 
         for interval in self.milestone_intervals:
@@ -287,19 +293,18 @@ class MementoTemporalConnector:
         # Remove duplicates and sort
         milestones = sorted(list(set(milestones)))
 
-        return milestones[:self.max_snapshots]  # Limit number of milestones
+        return milestones[: self.max_snapshots]  # Limit number of milestones
 
-    async def _select_milestone_snapshots(self,
-                                        timemap: List[Dict[str, Any]],
-                                        milestone_dates: List[datetime]) -> List[Dict[str, Any]]:
+    async def _select_milestone_snapshots(
+        self, timemap: list[dict[str, Any]], milestone_dates: list[datetime]
+    ) -> list[dict[str, Any]]:
         """Výběr snapshots closest to milestone dates"""
-
         selected = []
 
         for milestone_date in milestone_dates:
             # Find closest memento to milestone date
             closest_memento = None
-            min_time_diff = float('inf')
+            min_time_diff = float("inf")
 
             for memento in timemap:
                 time_diff = abs((memento["datetime"] - milestone_date).total_seconds())
@@ -319,15 +324,16 @@ class MementoTemporalConnector:
 
         return selected
 
-    async def _fetch_snapshots_content(self, selected_snapshots: List[Dict[str, Any]]) -> List[MementoSnapshot]:
+    async def _fetch_snapshots_content(
+        self, selected_snapshots: list[dict[str, Any]]
+    ) -> list[MementoSnapshot]:
         """Fetch content for selected snapshots"""
-
         snapshots = []
 
         # Process in batches for concurrent requests
         batch_size = self.concurrent_requests
         for i in range(0, len(selected_snapshots), batch_size):
-            batch = selected_snapshots[i:i + batch_size]
+            batch = selected_snapshots[i : i + batch_size]
 
             batch_tasks = []
             for snapshot_data in batch:
@@ -347,9 +353,10 @@ class MementoTemporalConnector:
 
         return snapshots
 
-    async def _fetch_snapshot_content(self, snapshot_data: Dict[str, Any]) -> Optional[MementoSnapshot]:
+    async def _fetch_snapshot_content(
+        self, snapshot_data: dict[str, Any]
+    ) -> MementoSnapshot | None:
         """Fetch content for single snapshot"""
-
         memento_url = snapshot_data["url"]
 
         try:
@@ -380,15 +387,14 @@ class MementoTemporalConnector:
                             "fetch_timestamp": asyncio.get_event_loop().time(),
                             "response_status": response.status,
                             "content_type": response.headers.get("content-type", ""),
-                            "original_length": len(content)
-                        }
+                            "original_length": len(content),
+                        },
                     )
 
                     return snapshot
 
-                else:
-                    logger.warning(f"Snapshot fetch failed: {response.status} for {memento_url}")
-                    return None
+                logger.warning(f"Snapshot fetch failed: {response.status} for {memento_url}")
+                return None
 
         except Exception as e:
             logger.error(f"Snapshot content fetch error: {e}")
@@ -396,44 +402,50 @@ class MementoTemporalConnector:
 
     def _extract_text_content(self, html_content: str) -> str:
         """Extrakce čistého textu z HTML snapshot"""
-
         try:
             # Remove script and style elements
-            html_content = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
-            html_content = re.sub(r'<style[^>]*>.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+            html_content = re.sub(
+                r"<script[^>]*>.*?</script>", "", html_content, flags=re.DOTALL | re.IGNORECASE
+            )
+            html_content = re.sub(
+                r"<style[^>]*>.*?</style>", "", html_content, flags=re.DOTALL | re.IGNORECASE
+            )
 
             # Remove HTML tags
-            text = re.sub(r'<[^>]+>', '', html_content)
+            text = re.sub(r"<[^>]+>", "", html_content)
 
             # Clean up whitespace
-            text = re.sub(r'\s+', ' ', text).strip()
+            text = re.sub(r"\s+", " ", text).strip()
 
             # Limit size for diff analysis
             if len(text) > self.max_diff_size:
-                text = text[:self.max_diff_size]
+                text = text[: self.max_diff_size]
 
             return text
 
         except Exception as e:
             logger.warning(f"Text extraction failed: {e}")
-            return html_content[:self.max_diff_size] if len(html_content) > self.max_diff_size else html_content
+            return (
+                html_content[: self.max_diff_size]
+                if len(html_content) > self.max_diff_size
+                else html_content
+            )
 
     def _determine_archive_name(self, memento_url: str) -> str:
         """Určení názvu archivu z URL"""
-
         if "web.archive.org" in memento_url:
             return "wayback_machine"
-        elif "archive.today" in memento_url or "archive.is" in memento_url:
+        if "archive.today" in memento_url or "archive.is" in memento_url:
             return "archive_today"
-        elif "webarchive.loc.gov" in memento_url:
+        if "webarchive.loc.gov" in memento_url:
             return "library_congress"
-        else:
-            parsed = urlparse(memento_url)
-            return parsed.netloc
+        parsed = urlparse(memento_url)
+        return parsed.netloc
 
-    async def _calculate_temporal_diffs(self, snapshots: List[MementoSnapshot]) -> List[TemporalDiff]:
+    async def _calculate_temporal_diffs(
+        self, snapshots: list[MementoSnapshot]
+    ) -> list[TemporalDiff]:
         """Výpočet temporal diffs mezi consecutive snapshots"""
-
         temporal_diffs = []
 
         for i in range(len(snapshots) - 1):
@@ -450,26 +462,28 @@ class MementoTemporalConnector:
 
         return temporal_diffs
 
-    async def _calculate_content_diff(self,
-                                    snapshot_a: MementoSnapshot,
-                                    snapshot_b: MementoSnapshot) -> Optional[TemporalDiff]:
+    async def _calculate_content_diff(
+        self, snapshot_a: MementoSnapshot, snapshot_b: MementoSnapshot
+    ) -> TemporalDiff | None:
         """Výpočet diff mezi dvěma snapshots"""
-
         try:
             # Split content into lines for difflib
-            lines_a = snapshot_a.content.split('\n')
-            lines_b = snapshot_b.content.split('\n')
+            lines_a = snapshot_a.content.split("\n")
+            lines_b = snapshot_b.content.split("\n")
 
             # Calculate similarity ratio
             similarity_score = difflib.SequenceMatcher(None, lines_a, lines_b).ratio()
 
             # Generate unified diff
-            diff_lines = list(difflib.unified_diff(
-                lines_a, lines_b,
-                fromfile=f"snapshot_{snapshot_a.datetime.isoformat()}",
-                tofile=f"snapshot_{snapshot_b.datetime.isoformat()}",
-                n=self.diff_context_lines
-            ))
+            diff_lines = list(
+                difflib.unified_diff(
+                    lines_a,
+                    lines_b,
+                    fromfile=f"snapshot_{snapshot_a.datetime.isoformat()}",
+                    tofile=f"snapshot_{snapshot_b.datetime.isoformat()}",
+                    n=self.diff_context_lines,
+                )
+            )
 
             # Analyze changes
             change_summary = self._analyze_diff_changes(diff_lines)
@@ -478,7 +492,9 @@ class MementoTemporalConnector:
             diff_type = self._classify_diff_type(change_summary)
 
             # Calculate significance score
-            significance_score = self._calculate_change_significance(change_summary, similarity_score)
+            significance_score = self._calculate_change_significance(
+                change_summary, similarity_score
+            )
 
             # Skip insignificant changes
             if significance_score < self.min_content_change:
@@ -494,7 +510,7 @@ class MementoTemporalConnector:
                 diff_chunks=diff_chunks,
                 similarity_score=similarity_score,
                 change_summary=change_summary,
-                significance_score=significance_score
+                significance_score=significance_score,
             )
 
             return temporal_diff
@@ -503,19 +519,18 @@ class MementoTemporalConnector:
             logger.error(f"Diff calculation failed: {e}")
             return None
 
-    def _analyze_diff_changes(self, diff_lines: List[str]) -> Dict[str, Any]:
+    def _analyze_diff_changes(self, diff_lines: list[str]) -> dict[str, Any]:
         """Analýza změn v diff"""
-
         additions = 0
         deletions = 0
         modifications = 0
 
         for line in diff_lines:
-            if line.startswith('+') and not line.startswith('+++'):
+            if line.startswith("+") and not line.startswith("+++"):
                 additions += 1
-            elif line.startswith('-') and not line.startswith('---'):
+            elif line.startswith("-") and not line.startswith("---"):
                 deletions += 1
-            elif line.startswith('!'):
+            elif line.startswith("!"):
                 modifications += 1
 
         total_changes = additions + deletions + modifications
@@ -525,33 +540,30 @@ class MementoTemporalConnector:
             "deletions": deletions,
             "modifications": modifications,
             "total_changes": total_changes,
-            "change_ratio": total_changes / len(diff_lines) if diff_lines else 0
+            "change_ratio": total_changes / len(diff_lines) if diff_lines else 0,
         }
 
-    def _classify_diff_type(self, change_summary: Dict[str, Any]) -> str:
+    def _classify_diff_type(self, change_summary: dict[str, Any]) -> str:
         """Klasifikace typu změny"""
-
         additions = change_summary["additions"]
         deletions = change_summary["deletions"]
 
         if additions > deletions * 2:
             return "major_additions"
-        elif deletions > additions * 2:
+        if deletions > additions * 2:
             return "major_deletions"
-        elif additions > 0 and deletions > 0:
+        if additions > 0 and deletions > 0:
             return "content_modifications"
-        elif additions > 0:
+        if additions > 0:
             return "minor_additions"
-        elif deletions > 0:
+        if deletions > 0:
             return "minor_deletions"
-        else:
-            return "no_significant_change"
+        return "no_significant_change"
 
-    def _calculate_change_significance(self,
-                                     change_summary: Dict[str, Any],
-                                     similarity_score: float) -> float:
+    def _calculate_change_significance(
+        self, change_summary: dict[str, Any], similarity_score: float
+    ) -> float:
         """Výpočet significance score pro změnu"""
-
         # Base significance from change ratio
         change_ratio = change_summary["change_ratio"]
 
@@ -563,64 +575,60 @@ class MementoTemporalConnector:
 
         return min(significance, 1.0)
 
-    def _create_diff_chunks(self, diff_lines: List[str]) -> List[Dict[str, Any]]:
+    def _create_diff_chunks(self, diff_lines: list[str]) -> list[dict[str, Any]]:
         """Vytvoření diff chunks pro detailed analysis"""
-
         chunks = []
         current_chunk = []
         chunk_type = None
 
         for line in diff_lines:
-            if line.startswith('@@'):  # Chunk header
+            if line.startswith("@@"):  # Chunk header
                 if current_chunk:
-                    chunks.append({
-                        "type": chunk_type,
-                        "lines": current_chunk.copy()
-                    })
+                    chunks.append({"type": chunk_type, "lines": current_chunk.copy()})
                     current_chunk = []
 
                 chunk_type = "context"
-            elif line.startswith('+'):
+            elif line.startswith("+"):
                 chunk_type = "addition"
-            elif line.startswith('-'):
+            elif line.startswith("-"):
                 chunk_type = "deletion"
-            elif line.startswith('!'):
+            elif line.startswith("!"):
                 chunk_type = "modification"
 
             current_chunk.append(line)
 
         # Add final chunk
         if current_chunk:
-            chunks.append({
-                "type": chunk_type,
-                "lines": current_chunk
-            })
+            chunks.append({"type": chunk_type, "lines": current_chunk})
 
         return chunks
 
-    def _analyze_milestones(self,
-                          snapshots: List[MementoSnapshot],
-                          temporal_diffs: List[TemporalDiff]) -> Dict[str, Any]:
+    def _analyze_milestones(
+        self, snapshots: list[MementoSnapshot], temporal_diffs: list[TemporalDiff]
+    ) -> dict[str, Any]:
         """Analýza milestones a významných změn"""
-
         analysis = {
             "total_snapshots": len(snapshots),
             "total_diffs": len(temporal_diffs),
-            "timespan_days": (snapshots[-1].datetime - snapshots[0].datetime).days if len(snapshots) >= 2 else 0,
+            "timespan_days": (
+                (snapshots[-1].datetime - snapshots[0].datetime).days if len(snapshots) >= 2 else 0
+            ),
             "major_changes": [],
             "content_evolution": {},
-            "archive_distribution": {}
+            "archive_distribution": {},
         }
 
         # Identify major changes
         for diff in temporal_diffs:
             if diff.significance_score >= 0.3:  # Major change threshold
-                analysis["major_changes"].append({
-                    "timestamp": diff.snapshot_b.datetime.isoformat(),
-                    "change_type": diff.diff_type,
-                    "significance": diff.significance_score,
-                    "summary": diff.change_summary
-                })
+                analysis["major_changes"].append(
+                    {
+                        "timestamp": diff.snapshot_b.datetime.isoformat(),
+                        "change_type": diff.diff_type,
+                        "significance": diff.significance_score,
+                        "summary": diff.change_summary,
+                    }
+                )
 
         # Archive distribution
         archive_counts = {}
@@ -630,47 +638,53 @@ class MementoTemporalConnector:
 
         return analysis
 
-    def _build_change_timeline(self,
-                             snapshots: List[MementoSnapshot],
-                             temporal_diffs: List[TemporalDiff]) -> List[Dict[str, Any]]:
+    def _build_change_timeline(
+        self, snapshots: list[MementoSnapshot], temporal_diffs: list[TemporalDiff]
+    ) -> list[dict[str, Any]]:
         """Sestavení change timeline"""
-
         timeline = []
 
         # Add snapshots to timeline
         for snapshot in snapshots:
-            timeline.append({
-                "type": "snapshot",
-                "timestamp": snapshot.datetime.isoformat(),
-                "archive": snapshot.archive_name,
-                "content_length": snapshot.content_length,
-                "content_hash": snapshot.content_hash
-            })
+            timeline.append(
+                {
+                    "type": "snapshot",
+                    "timestamp": snapshot.datetime.isoformat(),
+                    "archive": snapshot.archive_name,
+                    "content_length": snapshot.content_length,
+                    "content_hash": snapshot.content_hash,
+                }
+            )
 
         # Add significant changes to timeline
         for diff in temporal_diffs:
             if diff.significance_score >= 0.1:  # Include significant changes
-                timeline.append({
-                    "type": "change",
-                    "timestamp": diff.snapshot_b.datetime.isoformat(),
-                    "change_type": diff.diff_type,
-                    "significance": diff.significance_score,
-                    "similarity": diff.similarity_score,
-                    "changes": diff.change_summary
-                })
+                timeline.append(
+                    {
+                        "type": "change",
+                        "timestamp": diff.snapshot_b.datetime.isoformat(),
+                        "change_type": diff.diff_type,
+                        "significance": diff.significance_score,
+                        "similarity": diff.similarity_score,
+                        "changes": diff.change_summary,
+                    }
+                )
 
         # Sort by timestamp
         timeline.sort(key=lambda x: x["timestamp"])
 
         return timeline
 
-    def _calculate_quality_metrics(self,
-                                 snapshots: List[MementoSnapshot],
-                                 temporal_diffs: List[TemporalDiff]) -> Dict[str, float]:
+    def _calculate_quality_metrics(
+        self, snapshots: list[MementoSnapshot], temporal_diffs: list[TemporalDiff]
+    ) -> dict[str, float]:
         """Výpočet quality metrics pro temporal analysis"""
-
         if not snapshots:
-            return {"temporal_coverage": 0.0, "change_detection_rate": 0.0, "archive_diversity": 0.0}
+            return {
+                "temporal_coverage": 0.0,
+                "change_detection_rate": 0.0,
+                "archive_diversity": 0.0,
+            }
 
         # Temporal coverage
         if len(snapshots) >= 2:
@@ -683,25 +697,30 @@ class MementoTemporalConnector:
         # Change detection rate
         total_possible_comparisons = len(snapshots) - 1
         detected_changes = len(temporal_diffs)
-        change_detection_rate = detected_changes / total_possible_comparisons if total_possible_comparisons > 0 else 0
+        change_detection_rate = (
+            detected_changes / total_possible_comparisons if total_possible_comparisons > 0 else 0
+        )
 
         # Archive diversity
         unique_archives = len(set(snapshot.archive_name for snapshot in snapshots))
         archive_diversity = unique_archives / len(snapshots)
 
         # Average change significance
-        avg_significance = sum(diff.significance_score for diff in temporal_diffs) / len(temporal_diffs) if temporal_diffs else 0
+        avg_significance = (
+            sum(diff.significance_score for diff in temporal_diffs) / len(temporal_diffs)
+            if temporal_diffs
+            else 0
+        )
 
         return {
             "temporal_coverage": temporal_coverage,
             "change_detection_rate": change_detection_rate,
             "archive_diversity": archive_diversity,
-            "avg_change_significance": avg_significance
+            "avg_change_significance": avg_significance,
         }
 
-    async def get_connector_status(self) -> Dict[str, Any]:
+    async def get_connector_status(self) -> dict[str, Any]:
         """Získání status konektoru"""
-
         try:
             # Test Memento aggregator
             test_url = f"{self.memento_aggregator}/timemap/link/example.com"
@@ -725,5 +744,5 @@ class MementoTemporalConnector:
             "archive_endpoints": archive_status,
             "cache_enabled": self.cache_enabled,
             "max_snapshots": self.max_snapshots,
-            "milestone_intervals": self.milestone_intervals
+            "milestone_intervals": self.milestone_intervals,
         }

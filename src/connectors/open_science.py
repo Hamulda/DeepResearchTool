@@ -1,38 +1,36 @@
 #!/usr/bin/env python3
-"""
-Open Science konektor
+"""Open Science konektor
 OpenAlex→Crossref→Unpaywall→Europe PMC orchestrace s fallbacky
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import json
-import hashlib
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime
-import aiohttp
-import aiofiles
+import hashlib
+import json
 from pathlib import Path
-import re
-from urllib.parse import quote
+from typing import Any
+
+import aiofiles
+import aiohttp
 
 
 @dataclass
 class ScientificPaper:
     """Vědecký článek s metadaty"""
+
     doi: str
     title: str
-    authors: List[str]
+    authors: list[str]
     abstract: str
     publication_date: str
     journal: str
     open_access_status: str
-    pdf_url: Optional[str]
+    pdf_url: str | None
     citations_count: int
-    references: List[str]
-    funding_info: List[str]
+    references: list[str]
+    funding_info: list[str]
     source_api: str
     confidence_score: float
 
@@ -40,7 +38,7 @@ class ScientificPaper:
 class OpenScienceConnector:
     """Open science API orchestrátor"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.cache_dir = Path(config.get("cache_dir", "research_cache/open_science"))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -53,18 +51,18 @@ class OpenScienceConnector:
 
         # Rate limits (requests per second)
         self.rate_limits = {
-            "openalex": 0.1,    # 10 req/s
-            "crossref": 0.05,   # 20 req/s
-            "unpaywall": 0.1,   # 10 req/s
-            "europepmc": 0.1    # 10 req/s
+            "openalex": 0.1,  # 10 req/s
+            "crossref": 0.05,  # 20 req/s
+            "unpaywall": 0.1,  # 10 req/s
+            "europepmc": 0.1,  # 10 req/s
         }
 
         self.email = config.get("email", "research@example.com")
         self.max_retries = config.get("max_retries", 3)
 
-    async def search_scientific_papers(self,
-                                     query: str,
-                                     max_results: int = 50) -> List[ScientificPaper]:
+    async def search_scientific_papers(
+        self, query: str, max_results: int = 50
+    ) -> list[ScientificPaper]:
         """Orchestrovaná vyhledávání napříč API"""
         print(f"🔬 Searching scientific papers for: {query}")
 
@@ -90,14 +88,14 @@ class OpenScienceConnector:
         print(f"✅ Found {len(enhanced_papers)} unique scientific papers")
         return enhanced_papers[:max_results]
 
-    async def _search_openalex(self, query: str, max_results: int) -> List[ScientificPaper]:
+    async def _search_openalex(self, query: str, max_results: int) -> list[ScientificPaper]:
         """Vyhledá v OpenAlex"""
         cache_key = hashlib.md5(f"openalex_{query}_{max_results}".encode()).hexdigest()
         cache_file = self.cache_dir / f"openalex_{cache_key}.json"
 
         # Kontrola cache
         if cache_file.exists():
-            async with aiofiles.open(cache_file, 'r') as f:
+            async with aiofiles.open(cache_file) as f:
                 cached_data = json.loads(await f.read())
                 return [ScientificPaper(**item) for item in cached_data]
 
@@ -111,7 +109,7 @@ class OpenScienceConnector:
             "search": query,
             "per-page": min(max_results, 200),
             "mailto": self.email,
-            "sort": "relevance_score:desc"
+            "sort": "relevance_score:desc",
         }
 
         try:
@@ -132,12 +130,12 @@ class OpenScienceConnector:
 
         # Cache výsledky
         cache_data = [self._paper_to_dict(p) for p in papers]
-        async with aiofiles.open(cache_file, 'w') as f:
+        async with aiofiles.open(cache_file, "w") as f:
             await f.write(json.dumps(cache_data, indent=2))
 
         return papers
 
-    def _parse_openalex_work(self, work: Dict[str, Any]) -> Optional[ScientificPaper]:
+    def _parse_openalex_work(self, work: dict[str, Any]) -> ScientificPaper | None:
         """Parsuje OpenAlex work do ScientificPaper"""
         try:
             # Extract basic info
@@ -190,14 +188,14 @@ class OpenScienceConnector:
                 references=[],  # Will be filled by enhancement
                 funding_info=[],
                 source_api="openalex",
-                confidence_score=0.9  # High confidence for OpenAlex
+                confidence_score=0.9,  # High confidence for OpenAlex
             )
 
         except Exception as e:
             print(f"❌ Failed to parse OpenAlex work: {e}")
             return None
 
-    def _reconstruct_abstract(self, inverted_index: Dict[str, List[int]]) -> str:
+    def _reconstruct_abstract(self, inverted_index: dict[str, list[int]]) -> str:
         """Rekonstruuje abstract z inverted indexu"""
         word_positions = []
         for word, positions in inverted_index.items():
@@ -207,14 +205,14 @@ class OpenScienceConnector:
         word_positions.sort(key=lambda x: x[0])
         return " ".join([word for _, word in word_positions])
 
-    async def _search_europepmc(self, query: str, max_results: int) -> List[ScientificPaper]:
+    async def _search_europepmc(self, query: str, max_results: int) -> list[ScientificPaper]:
         """Vyhledá v Europe PMC"""
         cache_key = hashlib.md5(f"europepmc_{query}_{max_results}".encode()).hexdigest()
         cache_file = self.cache_dir / f"europepmc_{cache_key}.json"
 
         # Kontrola cache
         if cache_file.exists():
-            async with aiofiles.open(cache_file, 'r') as f:
+            async with aiofiles.open(cache_file) as f:
                 cached_data = json.loads(await f.read())
                 return [ScientificPaper(**item) for item in cached_data]
 
@@ -228,7 +226,7 @@ class OpenScienceConnector:
             "query": query,
             "format": "json",
             "pageSize": min(max_results, 1000),
-            "sort": "relevance"
+            "sort": "relevance",
         }
 
         try:
@@ -249,12 +247,12 @@ class OpenScienceConnector:
 
         # Cache výsledky
         cache_data = [self._paper_to_dict(p) for p in papers]
-        async with aiofiles.open(cache_file, 'w') as f:
+        async with aiofiles.open(cache_file, "w") as f:
             await f.write(json.dumps(cache_data, indent=2))
 
         return papers
 
-    def _parse_europepmc_result(self, result: Dict[str, Any]) -> Optional[ScientificPaper]:
+    def _parse_europepmc_result(self, result: dict[str, Any]) -> ScientificPaper | None:
         """Parsuje Europe PMC result do ScientificPaper"""
         try:
             # DOI
@@ -301,14 +299,14 @@ class OpenScienceConnector:
                 references=[],
                 funding_info=[],
                 source_api="europepmc",
-                confidence_score=0.8  # Good confidence for Europe PMC
+                confidence_score=0.8,  # Good confidence for Europe PMC
             )
 
         except Exception as e:
             print(f"❌ Failed to parse Europe PMC result: {e}")
             return None
 
-    def _deduplicate_papers(self, papers: List[ScientificPaper]) -> List[ScientificPaper]:
+    def _deduplicate_papers(self, papers: list[ScientificPaper]) -> list[ScientificPaper]:
         """Deduplikuje papers podle DOI"""
         seen_dois = set()
         unique_papers = []
@@ -320,7 +318,9 @@ class OpenScienceConnector:
 
         return unique_papers
 
-    async def _enhance_papers_metadata(self, papers: List[ScientificPaper]) -> List[ScientificPaper]:
+    async def _enhance_papers_metadata(
+        self, papers: list[ScientificPaper]
+    ) -> list[ScientificPaper]:
         """Enhance papers s Crossref a Unpaywall"""
         enhanced_papers = []
 
@@ -341,7 +341,7 @@ class OpenScienceConnector:
 
         return enhanced_papers
 
-    async def _get_crossref_metadata(self, doi: str) -> Optional[Dict[str, Any]]:
+    async def _get_crossref_metadata(self, doi: str) -> dict[str, Any] | None:
         """Získá metadata z Crossref"""
         if not doi:
             return None
@@ -350,9 +350,7 @@ class OpenScienceConnector:
         await asyncio.sleep(self.rate_limits["crossref"])
 
         url = f"{self.crossref_base}/works/{doi}"
-        headers = {
-            "User-Agent": f"DeepResearchTool/1.0 (mailto:{self.email})"
-        }
+        headers = {"User-Agent": f"DeepResearchTool/1.0 (mailto:{self.email})"}
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -366,7 +364,7 @@ class OpenScienceConnector:
 
         return None
 
-    async def _get_unpaywall_data(self, doi: str) -> Optional[Dict[str, Any]]:
+    async def _get_unpaywall_data(self, doi: str) -> dict[str, Any] | None:
         """Získá open access info z Unpaywall"""
         if not doi:
             return None
@@ -388,9 +386,9 @@ class OpenScienceConnector:
 
         return None
 
-    def _merge_crossref_data(self,
-                           paper: ScientificPaper,
-                           crossref_data: Dict[str, Any]) -> ScientificPaper:
+    def _merge_crossref_data(
+        self, paper: ScientificPaper, crossref_data: dict[str, Any]
+    ) -> ScientificPaper:
         """Merguje Crossref data do paper"""
         # Update references
         references = []
@@ -419,12 +417,12 @@ class OpenScienceConnector:
             references=references,
             funding_info=funding_info,
             source_api=paper.source_api,
-            confidence_score=min(1.0, paper.confidence_score + 0.1)  # Bonus for enhanced
+            confidence_score=min(1.0, paper.confidence_score + 0.1),  # Bonus for enhanced
         )
 
-    def _merge_unpaywall_data(self,
-                            paper: ScientificPaper,
-                            unpaywall_data: Dict[str, Any]) -> ScientificPaper:
+    def _merge_unpaywall_data(
+        self, paper: ScientificPaper, unpaywall_data: dict[str, Any]
+    ) -> ScientificPaper:
         """Merguje Unpaywall data do paper"""
         # Update open access status
         oa_status = paper.open_access_status
@@ -450,10 +448,10 @@ class OpenScienceConnector:
             references=paper.references,
             funding_info=paper.funding_info,
             source_api=paper.source_api,
-            confidence_score=min(1.0, paper.confidence_score + 0.05)  # Small bonus
+            confidence_score=min(1.0, paper.confidence_score + 0.05),  # Small bonus
         )
 
-    def _paper_to_dict(self, paper: ScientificPaper) -> Dict[str, Any]:
+    def _paper_to_dict(self, paper: ScientificPaper) -> dict[str, Any]:
         """Konvertuje ScientificPaper na dict pro cache"""
         return {
             "doi": paper.doi,
@@ -468,15 +466,15 @@ class OpenScienceConnector:
             "references": paper.references,
             "funding_info": paper.funding_info,
             "source_api": paper.source_api,
-            "confidence_score": paper.confidence_score
+            "confidence_score": paper.confidence_score,
         }
 
-    def get_api_usage_stats(self) -> Dict[str, Any]:
+    def get_api_usage_stats(self) -> dict[str, Any]:
         """Vrátí statistiky API usage"""
         # V produkci by se trackovala real usage
         return {
             "apis_available": ["openalex", "crossref", "unpaywall", "europepmc"],
             "rate_limits": self.rate_limits,
             "cache_dir": str(self.cache_dir),
-            "email_contact": self.email
+            "email_contact": self.email,
         }

@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""
-Enhanced RRF (Reciprocal Rank Fusion) s priory a MMR diversifikace
+"""Enhanced RRF (Reciprocal Rank Fusion) s priory a MMR diversifikace
 Authority/recency priory + diversifikační MMR algoritmus
 
 Author: Senior Python/MLOps Agent
 """
 
-import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple, Set
 from dataclasses import dataclass
+from datetime import datetime
+import logging
 import math
-import numpy as np
-from datetime import datetime, timedelta
 import time
+from typing import Any
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +20,14 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RRFConfig:
     """Konfigurace RRF systému"""
+
     k_parameter: int = 60  # RRF konstantní parameter
     authority_weight: float = 0.3  # Váha authority prioru
-    recency_weight: float = 0.2   # Váha recency prioru
+    recency_weight: float = 0.2  # Váha recency prioru
     diversity_weight: float = 0.1  # Váha diversity bonusu
 
     # Source authority mapping
-    source_authorities: Dict[str, float] = None  # domain -> authority score
+    source_authorities: dict[str, float] = None  # domain -> authority score
 
     # Recency parameters
     recency_decay_days: int = 365  # Dny pro exponential decay
@@ -43,12 +43,13 @@ class RRFConfig:
 @dataclass
 class RankedDocument:
     """Dokument s ranking metadata"""
+
     doc_id: str
     content: str
     original_score: float
     rank_position: int
     source_domain: str
-    timestamp: Optional[datetime] = None
+    timestamp: datetime | None = None
 
     # RRF komponenty
     rrf_score: float = 0.0
@@ -58,8 +59,8 @@ class RankedDocument:
     final_score: float = 0.0
 
     # Metadata
-    fusion_sources: List[str] = None  # Které retrieval systémy našly tento dokument
-    similarity_vector: Optional[np.ndarray] = None
+    fusion_sources: list[str] = None  # Které retrieval systémy našly tento dokument
+    similarity_vector: np.ndarray | None = None
 
 
 class SourceAuthorityManager:
@@ -81,7 +82,7 @@ class SourceAuthorityManager:
             "wikipedia.org": 0.6,
             "reddit.com": 0.3,
             "twitter.com": 0.2,
-            "unknown": 0.5
+            "unknown": 0.5,
         }
 
         # Merge s user-defined authorities
@@ -107,7 +108,7 @@ class SourceAuthorityManager:
         self.authority_cache[domain] = score
         return score
 
-    def update_authorities(self, new_authorities: Dict[str, float]):
+    def update_authorities(self, new_authorities: dict[str, float]):
         """Aktualizuje authority scores"""
         self.default_authorities.update(new_authorities)
         self.authority_cache.clear()  # Clear cache
@@ -119,7 +120,7 @@ class RecencyScorer:
     def __init__(self, config: RRFConfig):
         self.config = config
 
-    def calculate_recency_bonus(self, timestamp: Optional[datetime]) -> float:
+    def calculate_recency_bonus(self, timestamp: datetime | None) -> float:
         """Vypočítá recency bonus na základě timestamp"""
         if not timestamp:
             return 0.0
@@ -145,19 +146,16 @@ class MMRDiversifier:
         self.embedding_model = embedding_model
 
     async def diversify_results(
-        self,
-        ranked_docs: List[RankedDocument],
-        query_embedding: Optional[np.ndarray] = None
-    ) -> List[RankedDocument]:
-        """
-        Aplikuje MMR diversifikaci na ranked dokumenty
+        self, ranked_docs: list[RankedDocument], query_embedding: np.ndarray | None = None
+    ) -> list[RankedDocument]:
+        """Aplikuje MMR diversifikaci na ranked dokumenty
         """
         if not self.config.mmr_enabled or len(ranked_docs) <= 1:
             return ranked_docs
 
         # Vezmi top diversity_k dokumentů pro MMR
-        candidates = ranked_docs[:self.config.diversity_k]
-        remaining = ranked_docs[self.config.diversity_k:]
+        candidates = ranked_docs[: self.config.diversity_k]
+        remaining = ranked_docs[self.config.diversity_k :]
 
         # Získej embeddings pro diversifikaci
         await self._ensure_embeddings(candidates)
@@ -174,7 +172,7 @@ class MMRDiversifier:
         # Iterativně vybírej dokumenty s nejvyšším MMR score
         while remaining_candidates and len(selected) < self.config.diversity_k:
             best_doc = None
-            best_mmr_score = -float('inf')
+            best_mmr_score = -float("inf")
 
             for doc in remaining_candidates:
                 mmr_score = self._calculate_mmr_score(doc, selected, query_embedding)
@@ -194,7 +192,7 @@ class MMRDiversifier:
 
         return final_results
 
-    async def _ensure_embeddings(self, docs: List[RankedDocument]):
+    async def _ensure_embeddings(self, docs: list[RankedDocument]):
         """Zajistí, že všechny dokumenty mají embeddings"""
         for doc in docs:
             if doc.similarity_vector is None:
@@ -205,7 +203,9 @@ class MMRDiversifier:
                     except Exception as e:
                         logger.warning(f"Failed to generate embedding for doc {doc.doc_id}: {e}")
                         # Fallback na random embedding
-                        doc.similarity_vector = np.random.normal(0, 1, 384)  # Default embedding size
+                        doc.similarity_vector = np.random.normal(
+                            0, 1, 384
+                        )  # Default embedding size
                 else:
                     # Mock embedding
                     doc.similarity_vector = np.random.normal(0, 1, 384)
@@ -213,8 +213,8 @@ class MMRDiversifier:
     def _calculate_mmr_score(
         self,
         doc: RankedDocument,
-        selected: List[RankedDocument],
-        query_embedding: Optional[np.ndarray]
+        selected: list[RankedDocument],
+        query_embedding: np.ndarray | None,
     ) -> float:
         """Vypočítá MMR score pro dokument"""
         relevance_score = doc.final_score  # Use current final score as relevance
@@ -225,7 +225,9 @@ class MMRDiversifier:
             similarities = []
             for selected_doc in selected:
                 if selected_doc.similarity_vector is not None:
-                    sim = self._cosine_similarity(doc.similarity_vector, selected_doc.similarity_vector)
+                    sim = self._cosine_similarity(
+                        doc.similarity_vector, selected_doc.similarity_vector
+                    )
                     similarities.append(sim)
 
             if similarities:
@@ -233,8 +235,8 @@ class MMRDiversifier:
 
         # MMR formula: λ * relevance - (1-λ) * max_similarity
         mmr_score = (
-            self.config.diversity_lambda * relevance_score -
-            (1 - self.config.diversity_lambda) * max_similarity
+            self.config.diversity_lambda * relevance_score
+            - (1 - self.config.diversity_lambda) * max_similarity
         )
 
         return mmr_score
@@ -253,7 +255,7 @@ class MMRDiversifier:
         except Exception:
             return 0.0
 
-    def _apply_diversity_penalties(self, docs: List[RankedDocument]):
+    def _apply_diversity_penalties(self, docs: list[RankedDocument]):
         """Aplikuje diversity penalties na final scores"""
         for i, doc in enumerate(docs):
             # Penalty roste s pozicí v diversifikovaném seznamu
@@ -276,20 +278,20 @@ class EnhancedRRF:
             "avg_input_sources": 0.0,
             "avg_authority_bonus": 0.0,
             "avg_recency_bonus": 0.0,
-            "mmr_diversifications": 0
+            "mmr_diversifications": 0,
         }
 
     async def fuse_results(
         self,
-        retrieval_results: Dict[str, List[Dict[str, Any]]],
-        query_embedding: Optional[np.ndarray] = None
-    ) -> Tuple[List[RankedDocument], Dict[str, Any]]:
-        """
-        Hlavní RRF fusion s priory a MMR
+        retrieval_results: dict[str, list[dict[str, Any]]],
+        query_embedding: np.ndarray | None = None,
+    ) -> tuple[list[RankedDocument], dict[str, Any]]:
+        """Hlavní RRF fusion s priory a MMR
 
         Args:
             retrieval_results: {"source_name": [documents]}
             query_embedding: Query embedding pro MMR
+
         """
         start_time = time.time()
         self.fusion_stats["total_fusions"] += 1
@@ -299,7 +301,7 @@ class EnhancedRRF:
             "input_counts": {source: len(docs) for source, docs in retrieval_results.items()},
             "rrf_k_parameter": self.config.k_parameter,
             "authority_weight": self.config.authority_weight,
-            "recency_weight": self.config.recency_weight
+            "recency_weight": self.config.recency_weight,
         }
 
         # 1. Vytvoř ranking pro každý source
@@ -326,13 +328,19 @@ class EnhancedRRF:
 
         # 7. Aktualizuj statistiky
         elapsed_time = time.time() - start_time
-        fusion_metadata.update({
-            "fusion_time_seconds": elapsed_time,
-            "output_documents": len(fused_docs),
-            "mmr_enabled": self.config.mmr_enabled,
-            "avg_authority_bonus": np.mean([doc.authority_bonus for doc in fused_docs]) if fused_docs else 0,
-            "avg_recency_bonus": np.mean([doc.recency_bonus for doc in fused_docs]) if fused_docs else 0
-        })
+        fusion_metadata.update(
+            {
+                "fusion_time_seconds": elapsed_time,
+                "output_documents": len(fused_docs),
+                "mmr_enabled": self.config.mmr_enabled,
+                "avg_authority_bonus": (
+                    np.mean([doc.authority_bonus for doc in fused_docs]) if fused_docs else 0
+                ),
+                "avg_recency_bonus": (
+                    np.mean([doc.recency_bonus for doc in fused_docs]) if fused_docs else 0
+                ),
+            }
+        )
 
         self._update_fusion_stats(len(retrieval_results), fusion_metadata)
 
@@ -340,7 +348,9 @@ class EnhancedRRF:
 
         return fused_docs, fusion_metadata
 
-    def _create_document_ranking(self, docs: List[Dict[str, Any]], source_name: str) -> List[RankedDocument]:
+    def _create_document_ranking(
+        self, docs: list[dict[str, Any]], source_name: str
+    ) -> list[RankedDocument]:
         """Vytvoří ranking dokumentů z jednoho source"""
         ranked_docs = []
 
@@ -358,14 +368,16 @@ class EnhancedRRF:
                 rank_position=i,
                 source_domain=domain,
                 timestamp=timestamp,
-                fusion_sources=[source_name]
+                fusion_sources=[source_name],
             )
 
             ranked_docs.append(ranked_doc)
 
         return ranked_docs
 
-    def _perform_rrf_fusion(self, source_rankings: Dict[str, List[RankedDocument]]) -> List[RankedDocument]:
+    def _perform_rrf_fusion(
+        self, source_rankings: dict[str, list[RankedDocument]]
+    ) -> list[RankedDocument]:
         """Provede základní RRF fusion"""
         doc_scores = {}  # doc_id -> RankedDocument
 
@@ -379,8 +391,7 @@ class EnhancedRRF:
                     existing_doc.rrf_score += rrf_score
                     existing_doc.fusion_sources.append(source_name)
                     # Použij lepší original score
-                    if doc.original_score > existing_doc.original_score:
-                        existing_doc.original_score = doc.original_score
+                    existing_doc.original_score = max(existing_doc.original_score, doc.original_score)
                 else:
                     # Nový dokument
                     doc.rrf_score = rrf_score
@@ -388,7 +399,7 @@ class EnhancedRRF:
 
         return list(doc_scores.values())
 
-    def _apply_priory(self, docs: List[RankedDocument]):
+    def _apply_priory(self, docs: list[RankedDocument]):
         """Aplikuje authority a recency priory"""
         for doc in docs:
             # Authority bonus
@@ -399,20 +410,17 @@ class EnhancedRRF:
             recency_bonus = self.recency_scorer.calculate_recency_bonus(doc.timestamp)
             doc.recency_bonus = recency_bonus * self.config.recency_weight
 
-    def _calculate_final_scores(self, docs: List[RankedDocument]):
+    def _calculate_final_scores(self, docs: list[RankedDocument]):
         """Vypočítá final scores pro všechny dokumenty"""
         for doc in docs:
-            doc.final_score = (
-                doc.rrf_score +
-                doc.authority_bonus +
-                doc.recency_bonus
-            )
+            doc.final_score = doc.rrf_score + doc.authority_bonus + doc.recency_bonus
 
     def _extract_domain(self, url: str, source: str) -> str:
         """Extrahuje domain z URL nebo source"""
         if url:
             try:
                 from urllib.parse import urlparse
+
                 parsed = urlparse(url)
                 return parsed.netloc.lower()
             except:
@@ -424,7 +432,7 @@ class EnhancedRRF:
 
         return "unknown"
 
-    def _parse_timestamp(self, timestamp_str: Any, date_str: Any) -> Optional[datetime]:
+    def _parse_timestamp(self, timestamp_str: Any, date_str: Any) -> datetime | None:
         """Parsuje timestamp z různých formátů"""
         for ts in [timestamp_str, date_str]:
             if not ts:
@@ -433,7 +441,7 @@ class EnhancedRRF:
             try:
                 if isinstance(ts, datetime):
                     return ts
-                elif isinstance(ts, str):
+                if isinstance(ts, str):
                     # Zkus různé formáty
                     for fmt in ["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"]:
                         try:
@@ -445,7 +453,7 @@ class EnhancedRRF:
 
         return None
 
-    def _update_fusion_stats(self, num_sources: int, metadata: Dict[str, Any]):
+    def _update_fusion_stats(self, num_sources: int, metadata: dict[str, Any]):
         """Aktualizuje fusion statistiky"""
         alpha = 0.1  # Exponential moving average
 
@@ -475,11 +483,11 @@ class EnhancedRRF:
                 alpha * avg_rec + (1 - alpha) * self.fusion_stats["avg_recency_bonus"]
             )
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Získá statistiky RRF systému"""
         return self.fusion_stats.copy()
 
-    def update_config(self, new_config: Dict[str, Any]):
+    def update_config(self, new_config: dict[str, Any]):
         """Aktualizuje konfiguraci za běhu"""
         for key, value in new_config.items():
             if hasattr(self.config, key):
@@ -491,10 +499,7 @@ class EnhancedRRF:
 
 
 # Factory funkce
-def create_enhanced_rrf(
-    config: Dict[str, Any],
-    embedding_model=None
-) -> EnhancedRRF:
+def create_enhanced_rrf(config: dict[str, Any], embedding_model=None) -> EnhancedRRF:
     """Factory funkce pro vytvoření Enhanced RRF systému"""
     rrf_config_dict = config.get("retrieval", {}).get("rrf", {})
     rrf_config = RRFConfig(**rrf_config_dict)
@@ -503,9 +508,4 @@ def create_enhanced_rrf(
 
 
 # Export hlavních tříd
-__all__ = [
-    "RRFConfig",
-    "RankedDocument",
-    "EnhancedRRF",
-    "create_enhanced_rrf"
-]
+__all__ = ["EnhancedRRF", "RRFConfig", "RankedDocument", "create_enhanced_rrf"]

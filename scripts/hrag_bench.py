@@ -30,7 +30,7 @@ class HierarchicalRAGBenchmark:
             "machine learning bias detection methods",
             "climate change mitigation strategies",
             "artificial intelligence explainability",
-            "renewable energy grid integration"
+            "renewable energy grid integration",
         ]
 
         # Hierarchical levels to test
@@ -43,8 +43,9 @@ class HierarchicalRAGBenchmark:
             {"document": 8000, "section": 2000, "passage": 512},
         ]
 
-    async def benchmark_hierarchy_level(self, query: str, levels: int,
-                                      chunk_config: Dict[str, int]) -> Dict[str, Any]:
+    async def benchmark_hierarchy_level(
+        self, query: str, levels: int, chunk_config: Dict[str, int]
+    ) -> Dict[str, Any]:
         """Benchmark jedné úrovně hierarchie"""
 
         start_time = time.time()
@@ -78,7 +79,7 @@ class HierarchicalRAGBenchmark:
                 "precision_score": precision_score,
                 "f1_score": 2 * (recall_score * precision_score) / (recall_score + precision_score),
                 "throughput": documents_processed / latency,
-                "error": None
+                "error": None,
             }
 
         except Exception as e:
@@ -87,7 +88,7 @@ class HierarchicalRAGBenchmark:
                 "hierarchy_levels": levels,
                 "chunk_config": chunk_config,
                 "error": str(e),
-                "latency": time.time() - start_time
+                "latency": time.time() - start_time,
             }
 
     async def run_full_benchmark(self) -> Dict[str, Any]:
@@ -101,10 +102,12 @@ class HierarchicalRAGBenchmark:
             "test_queries": self.test_queries,
             "hierarchy_levels_tested": self.hierarchy_levels,
             "chunk_configurations": self.chunk_configurations,
-            "results": []
+            "results": [],
         }
 
-        total_tests = len(self.test_queries) * len(self.hierarchy_levels) * len(self.chunk_configurations)
+        total_tests = (
+            len(self.test_queries) * len(self.hierarchy_levels) * len(self.chunk_configurations)
+        )
         completed_tests = 0
 
         # Benchmark each combination
@@ -122,9 +125,11 @@ class HierarchicalRAGBenchmark:
                     if result.get("error"):
                         print(f"    ❌ Error: {result['error']}")
                     else:
-                        print(f"    ✅ Latency: {result['latency']:.2f}s, "
-                              f"F1: {result['f1_score']:.3f}, "
-                              f"Throughput: {result['throughput']:.1f} docs/s")
+                        print(
+                            f"    ✅ Latency: {result['latency']:.2f}s, "
+                            f"F1: {result['f1_score']:.3f}, "
+                            f"Throughput: {result['throughput']:.1f} docs/s"
+                        )
 
                     print(f"    Progress: {completed_tests}/{total_tests}")
 
@@ -165,7 +170,7 @@ class HierarchicalRAGBenchmark:
                 "avg_throughput": statistics.mean([r["throughput"] for r in level_results]),
                 "avg_recall": statistics.mean([r["recall_score"] for r in level_results]),
                 "avg_precision": statistics.mean([r["precision_score"] for r in level_results]),
-                "test_count": len(level_results)
+                "test_count": len(level_results),
             }
 
         # Overall best configuration
@@ -178,10 +183,10 @@ class HierarchicalRAGBenchmark:
                 "chunk_config": best_result["chunk_config"],
                 "f1_score": best_result["f1_score"],
                 "latency": best_result["latency"],
-                "throughput": best_result["throughput"]
+                "throughput": best_result["throughput"],
             },
             "total_valid_tests": len(valid_results),
-            "total_failed_tests": len(results) - len(valid_results)
+            "total_failed_tests": len(results) - len(valid_results),
         }
 
     def _generate_recommendations(self, results: List[Dict[str, Any]]) -> List[str]:
@@ -202,8 +207,9 @@ class HierarchicalRAGBenchmark:
                 level_performance[level] = []
             level_performance[level].append(result["f1_score"])
 
-        best_level = max(level_performance.keys(),
-                        key=lambda x: statistics.mean(level_performance[x]))
+        best_level = max(
+            level_performance.keys(), key=lambda x: statistics.mean(level_performance[x])
+        )
         best_f1 = statistics.mean(level_performance[best_level])
 
         recommendations.append(f"OPTIMAL: Use {best_level} hierarchy levels (F1: {best_f1:.3f})")
@@ -211,7 +217,9 @@ class HierarchicalRAGBenchmark:
         # Latency analysis
         avg_latency = statistics.mean([r["latency"] for r in valid_results])
         if avg_latency > 5.0:
-            recommendations.append("PERFORMANCE: Consider reducing hierarchy levels or chunk sizes for better latency")
+            recommendations.append(
+                "PERFORMANCE: Consider reducing hierarchy levels or chunk sizes for better latency"
+            )
         elif avg_latency < 1.0:
             recommendations.append("OPTIMIZATION: System can handle more complex hierarchies")
 
@@ -223,7 +231,9 @@ class HierarchicalRAGBenchmark:
         # Quality analysis
         avg_f1 = statistics.mean([r["f1_score"] for r in valid_results])
         if avg_f1 < 0.7:
-            recommendations.append("QUALITY: Consider increasing hierarchy levels for better recall")
+            recommendations.append(
+                "QUALITY: Consider increasing hierarchy levels for better recall"
+            )
         elif avg_f1 > 0.9:
             recommendations.append("EXCELLENT: High F1 scores achieved across configurations")
 
@@ -241,7 +251,7 @@ async def main():
 
     # Load configuration
     try:
-        with open(args.config, 'r') as f:
+        with open(args.config, "r") as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
         print(f"❌ Configuration file {args.config} not found")
@@ -281,7 +291,7 @@ async def main():
 
     # Save results
     if args.output:
-        with open(args.output, 'w') as f:
+        with open(args.output, "w") as f:
             json.dump(results, f, indent=2, default=str)
         print(f"💾 Results saved to {args.output}")
 

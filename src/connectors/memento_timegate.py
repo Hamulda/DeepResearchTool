@@ -1,68 +1,73 @@
 #!/usr/bin/env python3
-"""
-Memento TimeMap/TimeGate konektor
+"""Memento TimeMap/TimeGate konektor
 Orchestrace snapshots a diff analýza změn v čase
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import json
-import hashlib
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime, timezone
-import aiohttp
-import aiofiles
-from pathlib import Path
+from datetime import UTC, datetime
 import difflib
+import hashlib
+import json
+from pathlib import Path
 import re
+from typing import Any
 from urllib.parse import urljoin, urlparse
+
+import aiofiles
+import aiohttp
 
 
 @dataclass
 class MementoSnapshot:
     """Memento snapshot s metadaty"""
+
     url: str
     datetime: datetime
     memento_url: str
     archive_name: str
     content: str
     content_hash: str
-    headers: Dict[str, str]
+    headers: dict[str, str]
     status_code: int
 
 
 @dataclass
 class ContentDiff:
     """Diff mezi snapshots"""
+
     snapshot1_url: str
     snapshot2_url: str
     snapshot1_date: datetime
     snapshot2_date: datetime
-    added_lines: List[str]
-    removed_lines: List[str]
-    modified_lines: List[Tuple[str, str]]
+    added_lines: list[str]
+    removed_lines: list[str]
+    modified_lines: list[tuple[str, str]]
     similarity_ratio: float
-    significant_changes: List[str]
+    significant_changes: list[str]
 
 
 class MementoConnector:
     """Memento konektor pro web archive access"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.cache_dir = Path(config.get("cache_dir", "research_cache/memento"))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.timegate_endpoints = config.get("timegate_endpoints", [
-            "https://web.archive.org/web/",
-            "https://archive.today/",
-            "https://timetravel.mementoweb.org/timegate/"
-        ])
+        self.timegate_endpoints = config.get(
+            "timegate_endpoints",
+            [
+                "https://web.archive.org/web/",
+                "https://archive.today/",
+                "https://timetravel.mementoweb.org/timegate/",
+            ],
+        )
         self.max_retries = config.get("max_retries", 3)
         self.retry_delay = config.get("retry_delay", 1.0)
 
-    async def get_timemap(self, url: str) -> List[MementoSnapshot]:
+    async def get_timemap(self, url: str) -> list[MementoSnapshot]:
         """Získá TimeMap pro URL"""
         print(f"🕐 Getting TimeMap for: {url}")
 
@@ -71,11 +76,11 @@ class MementoConnector:
 
         # Kontrola cache
         if cache_file.exists():
-            async with aiofiles.open(cache_file, 'r') as f:
+            async with aiofiles.open(cache_file) as f:
                 cached_data = json.loads(await f.read())
                 snapshots = []
                 for item in cached_data:
-                    item['datetime'] = datetime.fromisoformat(item['datetime'])
+                    item["datetime"] = datetime.fromisoformat(item["datetime"])
                     snapshots.append(MementoSnapshot(**item))
                 return snapshots
 
@@ -110,19 +115,17 @@ class MementoConnector:
                 "content": snapshot.content,
                 "content_hash": snapshot.content_hash,
                 "headers": snapshot.headers,
-                "status_code": snapshot.status_code
+                "status_code": snapshot.status_code,
             }
             cache_data.append(item)
 
-        async with aiofiles.open(cache_file, 'w') as f:
+        async with aiofiles.open(cache_file, "w") as f:
             await f.write(json.dumps(cache_data, indent=2))
 
         print(f"✅ Found {len(final_snapshots)} unique snapshots")
         return final_snapshots
 
-    async def _get_timemap_from_endpoint(self,
-                                       url: str,
-                                       timegate: str) -> List[MementoSnapshot]:
+    async def _get_timemap_from_endpoint(self, url: str, timegate: str) -> list[MementoSnapshot]:
         """Získá TimeMap z konkrétního endpointu"""
         snapshots = []
         archive_name = urlparse(timegate).netloc
@@ -136,7 +139,7 @@ class MementoConnector:
                 async with aiohttp.ClientSession() as session:
                     headers = {
                         "User-Agent": "DeepResearchTool/1.0 (+research@example.com)",
-                        "Accept": "application/link-format"
+                        "Accept": "application/link-format",
                     }
 
                     async with session.get(timemap_url, headers=headers) as response:
@@ -144,8 +147,7 @@ class MementoConnector:
                             timemap_content = await response.text()
                             snapshots = self._parse_timemap(timemap_content, archive_name)
                             break
-                        else:
-                            raise aiohttp.ClientError(f"HTTP {response.status}")
+                        raise aiohttp.ClientError(f"HTTP {response.status}")
 
             except Exception as e:
                 retry_count += 1
@@ -155,11 +157,11 @@ class MementoConnector:
 
         return snapshots
 
-    def _parse_timemap(self, timemap_content: str, archive_name: str) -> List[MementoSnapshot]:
+    def _parse_timemap(self, timemap_content: str, archive_name: str) -> list[MementoSnapshot]:
         """Parsuje TimeMap response"""
         snapshots = []
 
-        for line in timemap_content.strip().split('\n'):
+        for line in timemap_content.strip().split("\n"):
             if not line.strip():
                 continue
 
@@ -173,7 +175,7 @@ class MementoConnector:
                 try:
                     # Parse datetime
                     dt = datetime.strptime(datetime_str, "%a, %d %b %Y %H:%M:%S %Z")
-                    dt = dt.replace(tzinfo=timezone.utc)
+                    dt = dt.replace(tzinfo=UTC)
 
                     snapshot = MementoSnapshot(
                         url="",  # Will be filled when fetching content
@@ -183,7 +185,7 @@ class MementoConnector:
                         content="",  # Will be filled when fetching
                         content_hash="",
                         headers={},
-                        status_code=0
+                        status_code=0,
                     )
                     snapshots.append(snapshot)
 
@@ -200,7 +202,7 @@ class MementoConnector:
 
         # Kontrola cache
         if cache_file.exists():
-            async with aiofiles.open(cache_file, 'r') as f:
+            async with aiofiles.open(cache_file) as f:
                 content = await f.read()
                 snapshot.content = content
                 snapshot.content_hash = hashlib.md5(content.encode()).hexdigest()
@@ -210,9 +212,7 @@ class MementoConnector:
         while retry_count < self.max_retries:
             try:
                 async with aiohttp.ClientSession() as session:
-                    headers = {
-                        "User-Agent": "DeepResearchTool/1.0 (+research@example.com)"
-                    }
+                    headers = {"User-Agent": "DeepResearchTool/1.0 (+research@example.com)"}
 
                     async with session.get(snapshot.memento_url, headers=headers) as response:
                         if response.status == 200:
@@ -222,17 +222,18 @@ class MementoConnector:
                             cleaned_content = self._clean_html_content(content)
 
                             snapshot.content = cleaned_content
-                            snapshot.content_hash = hashlib.md5(cleaned_content.encode()).hexdigest()
+                            snapshot.content_hash = hashlib.md5(
+                                cleaned_content.encode()
+                            ).hexdigest()
                             snapshot.headers = dict(response.headers)
                             snapshot.status_code = response.status
 
                             # Cache obsah
-                            async with aiofiles.open(cache_file, 'w') as f:
+                            async with aiofiles.open(cache_file, "w") as f:
                                 await f.write(cleaned_content)
 
                             return snapshot
-                        else:
-                            raise aiohttp.ClientError(f"HTTP {response.status}")
+                        raise aiohttp.ClientError(f"HTTP {response.status}")
 
             except Exception as e:
                 retry_count += 1
@@ -248,28 +249,29 @@ class MementoConnector:
         import re
 
         # Remove HTML tags
-        text = re.sub(r'<[^>]+>', '', html_content)
+        text = re.sub(r"<[^>]+>", "", html_content)
 
         # Remove extra whitespace
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r"\s+", " ", text)
 
         # Remove common boilerplate
         boilerplate_patterns = [
-            r'Skip to main content',
-            r'Navigation menu',
-            r'Copyright \d{4}',
-            r'All rights reserved',
-            r'Privacy Policy',
-            r'Terms of Service'
+            r"Skip to main content",
+            r"Navigation menu",
+            r"Copyright \d{4}",
+            r"All rights reserved",
+            r"Privacy Policy",
+            r"Terms of Service",
         ]
 
         for pattern in boilerplate_patterns:
-            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE)
 
         return text.strip()
 
-    async def analyze_content_evolution(self,
-                                      snapshots: List[MementoSnapshot]) -> List[ContentDiff]:
+    async def analyze_content_evolution(
+        self, snapshots: list[MementoSnapshot]
+    ) -> list[ContentDiff]:
         """Analyzuje vývoj obsahu mezi snapshots"""
         print(f"📊 Analyzing content evolution across {len(snapshots)} snapshots")
 
@@ -292,20 +294,23 @@ class MementoConnector:
         print(f"✅ Generated {len(diffs)} content diffs")
         return diffs
 
-    def _calculate_content_diff(self,
-                              snapshot1: MementoSnapshot,
-                              snapshot2: MementoSnapshot) -> ContentDiff:
+    def _calculate_content_diff(
+        self, snapshot1: MementoSnapshot, snapshot2: MementoSnapshot
+    ) -> ContentDiff:
         """Vypočítá diff mezi dvěma snapshots"""
-        lines1 = snapshot1.content.split('\n')
-        lines2 = snapshot2.content.split('\n')
+        lines1 = snapshot1.content.split("\n")
+        lines2 = snapshot2.content.split("\n")
 
         # Unified diff
-        diff_lines = list(difflib.unified_diff(
-            lines1, lines2,
-            fromfile=f"snapshot_{snapshot1.datetime.isoformat()}",
-            tofile=f"snapshot_{snapshot2.datetime.isoformat()}",
-            lineterm=""
-        ))
+        diff_lines = list(
+            difflib.unified_diff(
+                lines1,
+                lines2,
+                fromfile=f"snapshot_{snapshot1.datetime.isoformat()}",
+                tofile=f"snapshot_{snapshot2.datetime.isoformat()}",
+                lineterm="",
+            )
+        )
 
         # Parse diff
         added_lines = []
@@ -313,9 +318,9 @@ class MementoConnector:
         modified_lines = []
 
         for line in diff_lines:
-            if line.startswith('+') and not line.startswith('+++'):
+            if line.startswith("+") and not line.startswith("+++"):
                 added_lines.append(line[1:])
-            elif line.startswith('-') and not line.startswith('---'):
+            elif line.startswith("-") and not line.startswith("---"):
                 removed_lines.append(line[1:])
 
         # Detect modifications (removed + added with similarity)
@@ -329,10 +334,14 @@ class MementoConnector:
                     break
 
         # Overall similarity
-        similarity_ratio = difflib.SequenceMatcher(None, snapshot1.content, snapshot2.content).ratio()
+        similarity_ratio = difflib.SequenceMatcher(
+            None, snapshot1.content, snapshot2.content
+        ).ratio()
 
         # Detect significant changes
-        significant_changes = self._detect_significant_changes(added_lines, removed_lines, modified_lines)
+        significant_changes = self._detect_significant_changes(
+            added_lines, removed_lines, modified_lines
+        )
 
         return ContentDiff(
             snapshot1_url=snapshot1.memento_url,
@@ -343,24 +352,42 @@ class MementoConnector:
             removed_lines=removed_lines,
             modified_lines=modified_lines,
             similarity_ratio=similarity_ratio,
-            significant_changes=significant_changes
+            significant_changes=significant_changes,
         )
 
-    def _detect_significant_changes(self,
-                                   added_lines: List[str],
-                                   removed_lines: List[str],
-                                   modified_lines: List[Tuple[str, str]]) -> List[str]:
+    def _detect_significant_changes(
+        self,
+        added_lines: list[str],
+        removed_lines: list[str],
+        modified_lines: list[tuple[str, str]],
+    ) -> list[str]:
         """Detekuje významné změny"""
         significant_changes = []
 
         # Keywords indicating significant changes
         significant_keywords = [
-            'error', 'warning', 'alert', 'notice', 'update', 'new', 'removed',
-            'deprecated', 'changed', 'modified', 'breaking', 'important',
-            'security', 'vulnerability', 'fix', 'bug', 'issue'
+            "error",
+            "warning",
+            "alert",
+            "notice",
+            "update",
+            "new",
+            "removed",
+            "deprecated",
+            "changed",
+            "modified",
+            "breaking",
+            "important",
+            "security",
+            "vulnerability",
+            "fix",
+            "bug",
+            "issue",
         ]
 
-        all_changes = added_lines + removed_lines + [f"{old} -> {new}" for old, new in modified_lines]
+        all_changes = (
+            added_lines + removed_lines + [f"{old} -> {new}" for old, new in modified_lines]
+        )
 
         for change in all_changes:
             change_lower = change.lower()
@@ -371,9 +398,7 @@ class MementoConnector:
 
         return significant_changes
 
-    def save_diff_artifacts(self,
-                          diffs: List[ContentDiff],
-                          output_dir: str) -> Dict[str, str]:
+    def save_diff_artifacts(self, diffs: list[ContentDiff], output_dir: str) -> dict[str, str]:
         """Uloží diff artefakty"""
         artifacts = {}
 
@@ -381,7 +406,7 @@ class MementoConnector:
         diff_summary = {
             "timestamp": datetime.now().isoformat(),
             "total_diffs": len(diffs),
-            "diffs": []
+            "diffs": [],
         }
 
         for i, diff in enumerate(diffs):
@@ -395,9 +420,9 @@ class MementoConnector:
                 "changes_summary": {
                     "added_lines": len(diff.added_lines),
                     "removed_lines": len(diff.removed_lines),
-                    "modified_lines": len(diff.modified_lines)
+                    "modified_lines": len(diff.modified_lines),
                 },
-                "significant_changes": diff.significant_changes
+                "significant_changes": diff.significant_changes,
             }
             diff_summary["diffs"].append(diff_data)
 

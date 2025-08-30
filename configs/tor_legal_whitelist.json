@@ -1,57 +1,30 @@
 {
-  "version": "1.0",
-  "description": "Legal whitelist pro Tor proxy - pouze eticky schválené domény",
-  "last_updated": "2025-08-28",
-  "allowed_domains": [
-    "*.edu",
-    "*.gov",
-    "*.org",
-    "arxiv.org",
-    "scholar.google.com",
-    "pubmed.ncbi.nlm.nih.gov",
-    "ieee.org",
-    "acm.org",
-    "wikipedia.org",
-    "*.wikipedia.org",
-    "github.com",
-    "stackoverflow.com",
-    "*.stackexchange.com",
+  "legal_domains": [
+    "httpbin.org",
+    "example.com",
+    "jsonplaceholder.typicode.com",
+    "httpstat.us",
+    "reqres.in",
+    "postman-echo.com",
     "news.ycombinator.com",
     "reddit.com",
-    "medium.com",
-    "towards-data-science.medium.com",
-    "*.nature.com",
-    "*.science.org",
-    "*.springer.com",
-    "*.elsevier.com",
-    "*.wiley.com",
-    "docs.python.org",
-    "pytorch.org",
-    "tensorflow.org",
-    "huggingface.co",
-    "openai.com",
-    "anthropic.com"
+    "github.com",
+    "stackoverflow.com"
   ],
-  "blocked_categories": [
-    "adult_content",
-    "gambling",
-    "illegal_markets",
-    "malware_distribution",
-    "phishing",
-    "copyright_infringement"
+  "onion_test_sites": [
+    "3g2upl4pq6kufc4m.onion",
+    "facebookcorewwwi.onion"
   ],
-  "ethical_guidelines": {
-    "research_only": true,
-    "respect_robots_txt": true,
-    "rate_limiting": true,
-    "user_agent_identification": true,
-    "no_personal_data_collection": true
-  },
-  "compliance": {
-    "gdpr": true,
-    "ccpa": true,
-    "academic_use": true,
-    "commercial_restrictions": "research_only"
+  "blocked_domains": [
+    "facebook.com",
+    "google.com",
+    "amazon.com",
+    "microsoft.com"
+  ],
+  "compliance_notes": {
+    "purpose": "Research and educational purposes only",
+    "restrictions": "Only access publicly available information",
+    "legal_disclaimer": "Users are responsible for compliance with local laws"
   }
 }
 

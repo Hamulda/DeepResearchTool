@@ -1,51 +1,52 @@
 #!/usr/bin/env python3
-"""
-Template-driven synthesis s přesnou citací
+"""Template-driven synthesis s přesnou citací
 Každé tvrzení má canonical doc ID + char-offsety pro audit
 
 Author: Senior Python/MLOps Agent
 """
 
+from dataclasses import dataclass
+from datetime import datetime
 import json
 import re
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime
+from typing import Any
 import uuid
 
 
 @dataclass
 class Citation:
     """Přesná citace s char-offsety"""
+
     doc_id: str
     char_start: int
     char_end: int
     source_text: str
     confidence: float
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 @dataclass
 class Claim:
     """Tvrzení s evidencí"""
+
     claim_id: str
     text: str
-    citations: List[Citation]
+    citations: list[Citation]
     confidence: float
     support_count: int
     contradict_count: int
-    conflict_sets: List[str]
+    conflict_sets: list[str]
 
 
 class TemplateBasedSynthesizer:
     """Template-driven syntéza s citačními sloty"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.min_citations_per_claim = config.get("min_citations_per_claim", 2)
         self.templates = self._load_templates()
 
-    def _load_templates(self) -> Dict[str, str]:
+    def _load_templates(self) -> dict[str, str]:
         """Načte syntézní templaty"""
         return {
             "claim_with_evidence": """
@@ -74,12 +75,10 @@ However, contradictory evidence suggests:
 ## Methodology
 Research conducted using multi-source retrieval with evidence verification.
 All claims require minimum {min_citations} independent sources.
-"""
+""",
         }
 
-    def synthesize_claims(self,
-                         evidence_contexts: List[Dict[str, Any]],
-                         query: str) -> List[Claim]:
+    def synthesize_claims(self, evidence_contexts: list[dict[str, Any]], query: str) -> list[Claim]:
         """Vytvoří claims s přesnými citacemi"""
         claims = []
 
@@ -101,15 +100,15 @@ All claims require minimum {min_citations} independent sources.
                     confidence=self._calculate_claim_confidence(citations),
                     support_count=len(citations),
                     contradict_count=0,  # Will be filled by verification
-                    conflict_sets=[]
+                    conflict_sets=[],
                 )
                 claims.append(claim)
 
         return claims
 
-    def _extract_potential_claims(self,
-                                 evidence_contexts: List[Dict[str, Any]],
-                                 query: str) -> List[str]:
+    def _extract_potential_claims(
+        self, evidence_contexts: list[dict[str, Any]], query: str
+    ) -> list[str]:
         """Extrahuje potenciální tvrzení z kontextů"""
         claims = []
 
@@ -117,7 +116,7 @@ All claims require minimum {min_citations} independent sources.
             content = context.get("content", "")
 
             # Jednoduché extrakce tvrzení pomocí sentence segmentation
-            sentences = re.split(r'[.!?]+', content)
+            sentences = re.split(r"[.!?]+", content)
 
             for sentence in sentences:
                 sentence = sentence.strip()
@@ -136,7 +135,7 @@ All claims require minimum {min_citations} independent sources.
         overlap = len(query_words.intersection(sentence_words))
         return overlap >= max(1, len(query_words) * 0.3)
 
-    def _deduplicate_claims(self, claims: List[str]) -> List[str]:
+    def _deduplicate_claims(self, claims: list[str]) -> list[str]:
         """Deduplikuje podobná tvrzení"""
         unique_claims = []
 
@@ -158,9 +157,9 @@ All claims require minimum {min_citations} independent sources.
 
         return unique_claims
 
-    def _find_supporting_evidence(self,
-                                 claim_text: str,
-                                 evidence_contexts: List[Dict[str, Any]]) -> List[Citation]:
+    def _find_supporting_evidence(
+        self, claim_text: str, evidence_contexts: list[dict[str, Any]]
+    ) -> list[Citation]:
         """Najde supporting evidence pro claim"""
         citations = []
         claim_words = set(claim_text.lower().split())
@@ -170,7 +169,7 @@ All claims require minimum {min_citations} independent sources.
             doc_id = context.get("doc_id", "unknown")
 
             # Najdi relevantní pasáže
-            sentences = re.split(r'[.!?]+', content)
+            sentences = re.split(r"[.!?]+", content)
 
             for i, sentence in enumerate(sentences):
                 sentence = sentence.strip()
@@ -196,16 +195,16 @@ All claims require minimum {min_citations} independent sources.
                             metadata={
                                 "source_type": context.get("source_type", "unknown"),
                                 "timestamp": datetime.now().isoformat(),
-                                "relevance_score": relevance
-                            }
+                                "relevance_score": relevance,
+                            },
                         )
                         citations.append(citation)
 
         # Seřaď podle confidence a vezmi top N
         citations.sort(key=lambda x: x.confidence, reverse=True)
-        return citations[:self.min_citations_per_claim * 2]  # Max 2x min required
+        return citations[: self.min_citations_per_claim * 2]  # Max 2x min required
 
-    def _calculate_claim_confidence(self, citations: List[Citation]) -> float:
+    def _calculate_claim_confidence(self, citations: list[Citation]) -> float:
         """Vypočítá confidence pro claim"""
         if not citations:
             return 0.0
@@ -219,7 +218,7 @@ All claims require minimum {min_citations} independent sources.
 
         return min(1.0, base_confidence + source_bonus)
 
-    def generate_synthesis_report(self, claims: List[Claim], query: str) -> str:
+    def generate_synthesis_report(self, claims: list[Claim], query: str) -> str:
         """Generuje finální syntézní report"""
         if not claims:
             return "No claims could be synthesized with sufficient evidence."
@@ -227,14 +226,15 @@ All claims require minimum {min_citations} independent sources.
         # Formatuj claims
         formatted_claims = []
         for i, claim in enumerate(claims, 1):
-            citations_text = "\n".join([
-                f"- [{c.doc_id}] {c.source_text[:100]}..."
-                for c in claim.citations[:3]  # Top 3 citations
-            ])
+            citations_text = "\n".join(
+                [
+                    f"- [{c.doc_id}] {c.source_text[:100]}..."
+                    for c in claim.citations[:3]  # Top 3 citations
+                ]
+            )
 
             claim_section = self.templates["claim_with_evidence"].format(
-                claim_text=f"{i}. {claim.text}",
-                citations=citations_text
+                claim_text=f"{i}. {claim.text}", citations=citations_text
             )
             formatted_claims.append(claim_section)
 
@@ -251,15 +251,14 @@ All claims require minimum {min_citations} independent sources.
             total_citations=total_citations,
             avg_citations=avg_citations,
             avg_confidence=avg_confidence,
-            min_citations=self.min_citations_per_claim
+            min_citations=self.min_citations_per_claim,
         )
 
         return report
 
-    def save_audit_artifacts(self,
-                           claims: List[Claim],
-                           query: str,
-                           output_dir: str) -> Dict[str, str]:
+    def save_audit_artifacts(
+        self, claims: list[Claim], query: str, output_dir: str
+    ) -> dict[str, str]:
         """Uloží audit artefakty"""
         artifacts = {}
 
@@ -280,20 +279,20 @@ All claims require minimum {min_citations} independent sources.
                         "char_end": c.char_end,
                         "source_text": c.source_text,
                         "confidence": c.confidence,
-                        "metadata": c.metadata
+                        "metadata": c.metadata,
                     }
                     for c in claim.citations
-                ]
+                ],
             }
             claims_data.append(claim_data)
 
         claims_file = f"{output_dir}/claims_audit.json"
         with open(claims_file, "w") as f:
-            json.dump({
-                "query": query,
-                "timestamp": datetime.now().isoformat(),
-                "claims": claims_data
-            }, f, indent=2)
+            json.dump(
+                {"query": query, "timestamp": datetime.now().isoformat(), "claims": claims_data},
+                f,
+                indent=2,
+            )
 
         artifacts["claims_audit"] = claims_file
 
@@ -304,12 +303,14 @@ All claims require minimum {min_citations} independent sources.
                 if citation.doc_id not in citation_map:
                     citation_map[citation.doc_id] = []
 
-                citation_map[citation.doc_id].append({
-                    "claim_id": claim.claim_id,
-                    "char_start": citation.char_start,
-                    "char_end": citation.char_end,
-                    "confidence": citation.confidence
-                })
+                citation_map[citation.doc_id].append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "char_start": citation.char_start,
+                        "char_end": citation.char_end,
+                        "confidence": citation.confidence,
+                    }
+                )
 
         citation_file = f"{output_dir}/citation_map.json"
         with open(citation_file, "w") as f:

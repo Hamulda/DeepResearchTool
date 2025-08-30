@@ -1,27 +1,28 @@
 #!/usr/bin/env python3
-"""
-Comprehensive evaluation system s metrikami a regression testing
+"""Comprehensive evaluation system s metrikami a regression testing
 Recall@k, nDCG@k, evidence coverage, citation precision, groundedness
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
+from dataclasses import asdict, dataclass
+from datetime import datetime
 import json
 import math
-import statistics
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional, Tuple, Any, Set
-from datetime import datetime
-import numpy as np
 from pathlib import Path
+import statistics
+from typing import Any
+
+import numpy as np
 
 
 @dataclass
 class EvaluationMetrics:
     """Evaluační metriky"""
-    recall_at_k: Dict[int, float]
-    ndcg_at_k: Dict[int, float]
+
+    recall_at_k: dict[int, float]
+    ndcg_at_k: dict[int, float]
     evidence_coverage: float
     citation_precision: float
     groundedness_score: float
@@ -37,14 +38,15 @@ class EvaluationMetrics:
 @dataclass
 class QueryEvaluation:
     """Evaluace jednotlivého dotazu"""
+
     query_id: str
     query_text: str
-    ground_truth_docs: List[str]
-    retrieved_docs: List[str]
-    relevance_scores: List[float]
-    generated_claims: List[str]
-    claim_citations: Dict[str, List[str]]
-    groundedness_scores: List[float]
+    ground_truth_docs: list[str]
+    retrieved_docs: list[str]
+    relevance_scores: list[float]
+    generated_claims: list[str]
+    claim_citations: dict[str, list[str]]
+    groundedness_scores: list[float]
     latency_ms: float
     context_tokens_used: int
     context_tokens_budget: int
@@ -53,18 +55,21 @@ class QueryEvaluation:
 class ComprehensiveEvaluator:
     """Komprehensivní evaluační systém"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.evaluation_sets = self._load_evaluation_sets()
         self.baseline_metrics = self._load_baseline_metrics()
-        self.regression_thresholds = config.get("regression_thresholds", {
-            "recall_at_10": -0.05,  # Max 5% pokles
-            "ndcg_at_10": -0.02,    # Max 2% pokles
-            "citation_precision": -0.03,  # Max 3% pokles
-            "groundedness_score": -0.05   # Max 5% pokles
-        })
+        self.regression_thresholds = config.get(
+            "regression_thresholds",
+            {
+                "recall_at_10": -0.05,  # Max 5% pokles
+                "ndcg_at_10": -0.02,  # Max 2% pokles
+                "citation_precision": -0.03,  # Max 3% pokles
+                "groundedness_score": -0.05,  # Max 5% pokles
+            },
+        )
 
-    def _load_evaluation_sets(self) -> Dict[str, List[Dict[str, Any]]]:
+    def _load_evaluation_sets(self) -> dict[str, list[dict[str, Any]]]:
         """Načte evaluační sady"""
         # V produkci by se načetly z konfiguračních souborů
         return {
@@ -74,15 +79,15 @@ class ComprehensiveEvaluator:
                     "query": "effects of climate change on Arctic ice",
                     "ground_truth_docs": ["doc1", "doc2", "doc3"],
                     "expected_claims": ["Arctic ice is declining", "Temperature rise is the cause"],
-                    "domain": "climate_science"
+                    "domain": "climate_science",
                 },
                 {
                     "query_id": "climate_002",
                     "query": "renewable energy adoption rates",
                     "ground_truth_docs": ["doc4", "doc5"],
                     "expected_claims": ["Solar energy growth is accelerating"],
-                    "domain": "climate_science"
-                }
+                    "domain": "climate_science",
+                },
             ],
             "medical_research": [
                 {
@@ -90,7 +95,7 @@ class ComprehensiveEvaluator:
                     "query": "COVID-19 vaccine effectiveness",
                     "ground_truth_docs": ["med1", "med2", "med3"],
                     "expected_claims": ["Vaccines reduce severe illness"],
-                    "domain": "medical_research"
+                    "domain": "medical_research",
                 }
             ],
             "legal_research": [
@@ -99,17 +104,17 @@ class ComprehensiveEvaluator:
                     "query": "patent law changes 2024",
                     "ground_truth_docs": ["legal1", "legal2"],
                     "expected_claims": ["New patent filing requirements"],
-                    "domain": "legal_research"
+                    "domain": "legal_research",
                 }
-            ]
+            ],
         }
 
-    def _load_baseline_metrics(self) -> Dict[str, float]:
+    def _load_baseline_metrics(self) -> dict[str, float]:
         """Načte baseline metriky"""
         baseline_file = Path("artifacts/baseline_metrics.json")
 
         if baseline_file.exists():
-            with open(baseline_file, 'r') as f:
+            with open(baseline_file) as f:
                 return json.load(f)
 
         # Default baseline
@@ -121,12 +126,12 @@ class ComprehensiveEvaluator:
             "groundedness_score": 0.70,
             "hallucination_rate": 0.15,
             "disagreement_coverage": 0.60,
-            "context_usage_efficiency": 0.75
+            "context_usage_efficiency": 0.75,
         }
 
-    async def run_comprehensive_evaluation(self,
-                                         research_system: Any,
-                                         evaluation_domains: List[str] = None) -> EvaluationMetrics:
+    async def run_comprehensive_evaluation(
+        self, research_system: Any, evaluation_domains: list[str] = None
+    ) -> EvaluationMetrics:
         """Spustí komprehensivní evaluaci"""
         print("🔬 Starting comprehensive evaluation...")
 
@@ -158,9 +163,7 @@ class ComprehensiveEvaluator:
 
         return metrics
 
-    async def _evaluate_domain(self,
-                              research_system: Any,
-                              domain: str) -> List[QueryEvaluation]:
+    async def _evaluate_domain(self, research_system: Any, domain: str) -> list[QueryEvaluation]:
         """Evaluuje jednu doménu"""
         print(f"📊 Evaluating domain: {domain}")
 
@@ -177,9 +180,9 @@ class ComprehensiveEvaluator:
 
         return evaluations
 
-    async def _evaluate_single_query(self,
-                                   research_system: Any,
-                                   query_data: Dict[str, Any]) -> QueryEvaluation:
+    async def _evaluate_single_query(
+        self, research_system: Any, query_data: dict[str, Any]
+    ) -> QueryEvaluation:
         """Evaluuje jednotlivý dotaz"""
         query_start = datetime.now()
 
@@ -202,9 +205,7 @@ class ComprehensiveEvaluator:
         )
 
         # Vypočítej groundedness scores
-        groundedness_scores = self._calculate_groundedness_scores(
-            generated_claims, claim_citations
-        )
+        groundedness_scores = self._calculate_groundedness_scores(generated_claims, claim_citations)
 
         return QueryEvaluation(
             query_id=query_data["query_id"],
@@ -217,31 +218,28 @@ class ComprehensiveEvaluator:
             groundedness_scores=groundedness_scores,
             latency_ms=latency_ms,
             context_tokens_used=context_tokens_used,
-            context_tokens_budget=context_tokens_budget
+            context_tokens_budget=context_tokens_budget,
         )
 
-    async def _mock_research_system_call(self, query: str) -> Dict[str, Any]:
+    async def _mock_research_system_call(self, query: str) -> dict[str, Any]:
         """Mock research system pro testing"""
         # Simuluje research system response
         await asyncio.sleep(0.1)  # Simulate processing time
 
         return {
             "retrieved_docs": [f"doc_{i}" for i in range(1, 11)],  # Top 10 docs
-            "claims": [
-                f"Claim 1 about {query[:20]}...",
-                f"Claim 2 regarding {query[:15]}..."
-            ],
+            "claims": [f"Claim 1 about {query[:20]}...", f"Claim 2 regarding {query[:15]}..."],
             "claim_citations": {
                 "Claim 1": ["doc_1", "doc_2"],
-                "Claim 2": ["doc_3", "doc_4", "doc_5"]
+                "Claim 2": ["doc_3", "doc_4", "doc_5"],
             },
             "context_tokens_used": 2048,
-            "context_tokens_budget": 4096
+            "context_tokens_budget": 4096,
         }
 
-    def _calculate_relevance_scores(self,
-                                  retrieved_docs: List[str],
-                                  ground_truth_docs: List[str]) -> List[float]:
+    def _calculate_relevance_scores(
+        self, retrieved_docs: list[str], ground_truth_docs: list[str]
+    ) -> list[float]:
         """Vypočítej relevance scores"""
         relevance_scores = []
 
@@ -255,21 +253,21 @@ class ComprehensiveEvaluator:
 
         return relevance_scores
 
-    def _calculate_doc_similarity(self, doc: str, ground_truth_docs: List[str]) -> float:
+    def _calculate_doc_similarity(self, doc: str, ground_truth_docs: list[str]) -> float:
         """Vypočítej podobnost dokumentu"""
         # Simplified similarity - v produkci by bylo sofistikovanější
-        doc_num = int(doc.split('_')[-1]) if '_' in doc else 0
+        doc_num = int(doc.split("_")[-1]) if "_" in doc else 0
 
         for gt_doc in ground_truth_docs:
-            gt_num = int(gt_doc.split('_')[-1]) if '_' in gt_doc else 0
+            gt_num = int(gt_doc.split("_")[-1]) if "_" in gt_doc else 0
             if abs(doc_num - gt_num) <= 2:  # Nearby docs are partially relevant
                 return 0.5
 
         return 0.0
 
-    def _calculate_groundedness_scores(self,
-                                     claims: List[str],
-                                     claim_citations: Dict[str, List[str]]) -> List[float]:
+    def _calculate_groundedness_scores(
+        self, claims: list[str], claim_citations: dict[str, list[str]]
+    ) -> list[float]:
         """Vypočítej groundedness scores"""
         scores = []
 
@@ -285,16 +283,22 @@ class ComprehensiveEvaluator:
 
         return scores
 
-    def _calculate_aggregate_metrics(self, evaluations: List[QueryEvaluation]) -> EvaluationMetrics:
+    def _calculate_aggregate_metrics(self, evaluations: list[QueryEvaluation]) -> EvaluationMetrics:
         """Vypočítej agregované metriky"""
         if not evaluations:
             return EvaluationMetrics(
-                recall_at_k={}, ndcg_at_k={}, evidence_coverage=0.0,
-                citation_precision=0.0, groundedness_score=0.0,
-                hallucination_rate=0.0, disagreement_coverage=0.0,
-                context_usage_efficiency=0.0, latency_p50=0.0,
-                latency_p95=0.0, total_queries=0,
-                timestamp=datetime.now().isoformat()
+                recall_at_k={},
+                ndcg_at_k={},
+                evidence_coverage=0.0,
+                citation_precision=0.0,
+                groundedness_score=0.0,
+                hallucination_rate=0.0,
+                disagreement_coverage=0.0,
+                context_usage_efficiency=0.0,
+                latency_p50=0.0,
+                latency_p95=0.0,
+                total_queries=0,
+                timestamp=datetime.now().isoformat(),
             )
 
         # Recall@k a nDCG@k
@@ -325,7 +329,9 @@ class ComprehensiveEvaluator:
         all_groundedness_scores = []
         for eval_result in evaluations:
             all_groundedness_scores.extend(eval_result.groundedness_scores)
-        groundedness_score = statistics.mean(all_groundedness_scores) if all_groundedness_scores else 0.0
+        groundedness_score = (
+            statistics.mean(all_groundedness_scores) if all_groundedness_scores else 0.0
+        )
 
         # Hallucination rate
         hallucination_rate = 1.0 - groundedness_score
@@ -355,7 +361,7 @@ class ComprehensiveEvaluator:
             latency_p50=latency_p50,
             latency_p95=latency_p95,
             total_queries=len(evaluations),
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
 
     def _calculate_recall_at_k(self, evaluation: QueryEvaluation, k: int) -> float:
@@ -373,8 +379,7 @@ class ComprehensiveEvaluator:
 
     def _calculate_ndcg_at_k(self, evaluation: QueryEvaluation, k: int) -> float:
         """Vypočítej nDCG@k"""
-        if k > len(evaluation.relevance_scores):
-            k = len(evaluation.relevance_scores)
+        k = min(k, len(evaluation.relevance_scores))
 
         if k == 0:
             return 0.0
@@ -395,7 +400,7 @@ class ComprehensiveEvaluator:
 
         return dcg / idcg if idcg > 0 else 0.0
 
-    def _calculate_evidence_coverage(self, evaluations: List[QueryEvaluation]) -> float:
+    def _calculate_evidence_coverage(self, evaluations: list[QueryEvaluation]) -> float:
         """Vypočítej evidence coverage"""
         total_claims = 0
         covered_claims = 0
@@ -409,7 +414,7 @@ class ComprehensiveEvaluator:
 
         return covered_claims / total_claims if total_claims > 0 else 0.0
 
-    def _calculate_citation_precision(self, evaluations: List[QueryEvaluation]) -> float:
+    def _calculate_citation_precision(self, evaluations: list[QueryEvaluation]) -> float:
         """Vypočítej citation precision"""
         total_citations = 0
         valid_citations = 0
@@ -424,20 +429,16 @@ class ComprehensiveEvaluator:
 
         return valid_citations / total_citations if total_citations > 0 else 0.0
 
-    def _check_regression_thresholds(self, metrics: EvaluationMetrics) -> Dict[str, Any]:
+    def _check_regression_thresholds(self, metrics: EvaluationMetrics) -> dict[str, Any]:
         """Kontrola regression thresholds"""
-        regression_check = {
-            "passed": True,
-            "failed_metrics": [],
-            "threshold_violations": {}
-        }
+        regression_check = {"passed": True, "failed_metrics": [], "threshold_violations": {}}
 
         # Kontrola klíčových metrik
         metric_checks = [
             ("recall_at_10", metrics.recall_at_k.get(10, 0.0)),
             ("ndcg_at_10", metrics.ndcg_at_k.get(10, 0.0)),
             ("citation_precision", metrics.citation_precision),
-            ("groundedness_score", metrics.groundedness_score)
+            ("groundedness_score", metrics.groundedness_score),
         ]
 
         for metric_name, current_value in metric_checks:
@@ -453,14 +454,14 @@ class ComprehensiveEvaluator:
                         "baseline": baseline_value,
                         "current": current_value,
                         "threshold": threshold,
-                        "violation": (baseline_value + threshold) - current_value
+                        "violation": (baseline_value + threshold) - current_value,
                     }
 
         return regression_check
 
-    def save_evaluation_results(self,
-                               metrics: EvaluationMetrics,
-                               output_dir: str) -> Dict[str, str]:
+    def save_evaluation_results(
+        self, metrics: EvaluationMetrics, output_dir: str
+    ) -> dict[str, str]:
         """Ulož evaluační výsledky"""
         artifacts = {}
 
@@ -486,9 +487,9 @@ class ComprehensiveEvaluator:
                 "nDCG@10": metrics.ndcg_at_k.get(10, 0.0),
                 "citation_precision": metrics.citation_precision,
                 "groundedness": metrics.groundedness_score,
-                "latency_p95": metrics.latency_p95
+                "latency_p95": metrics.latency_p95,
             },
-            "regression_passed": regression_check["passed"]
+            "regression_passed": regression_check["passed"],
         }
 
         summary_file = f"{output_dir}/evaluation_summary.json"
@@ -509,7 +510,7 @@ class ComprehensiveEvaluator:
             "hallucination_rate": metrics.hallucination_rate,
             "disagreement_coverage": metrics.disagreement_coverage,
             "context_usage_efficiency": metrics.context_usage_efficiency,
-            "timestamp": metrics.timestamp
+            "timestamp": metrics.timestamp,
         }
 
         baseline_file = Path("artifacts/baseline_metrics.json")

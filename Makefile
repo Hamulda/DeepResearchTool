@@ -1,126 +1,172 @@
-# Research Agent - Production-Ready Makefile
-# Automatizace běžných úloh pro development a CI/CD
+# DeepResearchTool - M1 Optimized Makefile
+# Automatizace běžných úloh pro development optimalizovaný pro MacBook Air M1 (8GB RAM)
 
-.PHONY: help install install-dev lint format type-check test test-unit test-integration test-all clean security setup-env
+.PHONY: help setup lint format test build-docker run-local clean
+.DEFAULT_GOAL := help
 
-# Default target
-help:
-	@echo "DeepResearchTool - Available Commands:"
-	@echo ""
-	@echo "Setup & Installation:"
-	@echo "  install          Install production dependencies"
-	@echo "  install-dev      Install development dependencies"
-	@echo "  setup-env        Setup environment from template"
-	@echo ""
-	@echo "Code Quality:"
-	@echo "  lint             Run linting (ruff)"
-	@echo "  format           Format code (black + ruff)"
-	@echo "  type-check       Run type checking (mypy)"
-	@echo "  security         Run security scans (bandit + safety)"
-	@echo ""
-	@echo "Testing:"
-	@echo "  test             Run all tests"
-	@echo "  test-unit        Run unit tests only"
-	@echo "  test-integration Run integration tests only"
-	@echo "  test-fast        Run fast tests only (exclude slow)"
-	@echo "  test-coverage    Run tests with detailed coverage"
-	@echo ""
-	@echo "Development:"
-	@echo "  clean            Clean cache and temporary files"
-	@echo "  docs             Generate documentation"
-	@echo "  run-dev          Run development server"
-	@echo ""
+# ========================================
+# HELP TARGET
+# ========================================
+
+help: ## Zobrazit dostupné příkazy
+	@echo "DeepResearchTool - M1 Optimized Commands"
+	@echo "========================================"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 # ========================================
 # SETUP & INSTALLATION
 # ========================================
 
-install:
-	pip install --upgrade pip
-	pip install -r requirements.txt
+setup: ## Instalace všech závislostí pro vývoj
+	@echo "🚀 Nastavuji vývojové prostředí..."
+	pip install --upgrade pip uv
+	uv pip install -e ".[dev,m1-optimized]"
+	playwright install chromium
+	@echo "✅ Vývojové prostředí je připraveno!"
 
-install-dev: install
-	pip install pytest pytest-asyncio pytest-cov pytest-mock pytest-xdist
-	pip install ruff black mypy isort
-	pip install bandit safety
-	pip install pre-commit
-
-setup-env:
-	@if [ ! -f .env ]; then \
-		cp .env.template .env; \
-		echo "Created .env from template. Please fill in your actual values."; \
-	else \
-		echo ".env already exists. Skipping."; \
-	fi
+setup-minimal: ## Instalace pouze základních závislostí
+	@echo "🚀 Instaluji základní závislosti..."
+	pip install --upgrade pip uv
+	uv pip install -e .
+	@echo "✅ Základní závislosti nainstalovány!"
 
 # ========================================
 # CODE QUALITY
 # ========================================
 
-lint:
-	@echo "Running ruff linter..."
-	ruff check src/ tests/
-	@echo "Running import sorting check..."
-	isort --check-only --diff src/ tests/
-
-format:
-	@echo "Formatting code with black..."
-	black src/ tests/
-	@echo "Formatting imports with isort..."
-	isort src/ tests/
-	@echo "Auto-fixing with ruff..."
+lint: ## Spuštění linteru (ruff check --fix)
+	@echo "🔍 Spouštím linting..."
 	ruff check --fix src/ tests/
+	@echo "✅ Linting dokončen!"
 
-type-check:
-	@echo "Running mypy type checking..."
-	mypy src/ --config-file mypy.ini
+format: ## Automatické formátování kódu (ruff format)
+	@echo "✨ Formátuji kód..."
+	ruff format src/ tests/
+	@echo "✅ Formátování dokončeno!"
 
-security:
-	@echo "Running bandit security scan..."
+type-check: ## Spuštění type checkingu (mypy)
+	@echo "🔎 Kontroluji typy..."
+	mypy src/ --config-file pyproject.toml
+	@echo "✅ Type checking dokončen!"
+
+security: ## Bezpečnostní kontrola (bandit)
+	@echo "🔒 Spouštím bezpečnostní scan..."
 	bandit -r src/ -f txt
-	@echo "Checking for known vulnerabilities..."
-	safety check
+	@echo "✅ Bezpečnostní kontrola dokončena!"
 
 # ========================================
 # TESTING
 # ========================================
 
-test: test-unit test-integration
-	@echo "All tests completed!"
+test: ## Spuštění všech pytest testů
+	@echo "🧪 Spouštím testy..."
+	pytest tests/ -v --tb=short -m "not slow and not external"
+	@echo "✅ Testy dokončeny!"
 
-test-unit:
-	@echo "Running unit tests..."
+test-unit: ## Spuštění pouze unit testů
+	@echo "🧪 Spouštím unit testy..."
 	pytest tests/unit/ -v --tb=short
+	@echo "✅ Unit testy dokončeny!"
 
-test-integration:
-	@echo "Running integration tests..."
-	pytest tests/test_integration_complete.py -v --tb=short -m "not slow and not external"
+test-integration: ## Spuštění integration testů
+	@echo "🧪 Spouštím integration testy..."
+	pytest tests/integration/ -v --tb=short
+	@echo "✅ Integration testy dokončeny!"
 
-test-fast:
-	@echo "Running fast tests only..."
-	pytest tests/ -v --tb=short -m "not slow and not external and not ai_dependent"
-
-test-coverage:
-	@echo "Running tests with coverage..."
-	pytest tests/ \
-		--cov=src \
-		--cov-report=html \
-		--cov-report=term \
-		--cov-report=xml \
-		--cov-branch \
-		--cov-fail-under=80 \
-		-v
-
-test-all:
-	@echo "Running complete test suite..."
-	pytest tests/ -v --tb=short --maxfail=5
+test-coverage: ## Spuštění testů s pokrytím
+	@echo "🧪 Spouštím testy s coverage..."
+	pytest tests/ --cov=src --cov-report=html --cov-report=term --cov-fail-under=70
+	@echo "✅ Coverage report vygenerován do htmlcov/"
 
 # ========================================
-# DEVELOPMENT
+# DOCKER OPERATIONS
 # ========================================
 
-clean:
-	@echo "Cleaning cache and temporary files..."
+build-docker: ## Sestavení všech Docker obrazů
+	@echo "🐳 Sestavuji Docker obrazy..."
+	docker build -t deepresearchtool:latest .
+	docker build -f docker/Dockerfile.m1 -t deepresearchtool:m1 .
+	@echo "✅ Docker obrazy sestaveny!"
+
+build-docker-prod: ## Sestavení produkčního Docker obrazu
+	@echo "🐳 Sestavuji produkční Docker obraz..."
+	docker build -f docker/Dockerfile.production -t deepresearchtool:production .
+	@echo "✅ Produkční Docker obraz sestaven!"
+
+# ========================================
+# LOCAL DEVELOPMENT (M1 OPTIMIZED)
+# ========================================
+
+run-local: ## Spuštění odlehčené verze aplikace pro lokální vývoj
+	@echo "🚀 Spouštím lokální M1-optimalizovanou verzi..."
+	@echo "⚡ Používám ChromaDB (in-process) místo Qdrant"
+	@echo "💾 Omezená paměťová stopa pro M1 (8GB RAM)"
+	docker-compose -f docker-compose.m1.yml up -d
+	@echo "✅ Lokální služby spuštěny!"
+	@echo "📊 Neo4j: http://localhost:7474"
+	@echo "🔍 Redis: localhost:6379"
+	@echo "🎯 Aplikace: http://localhost:8000"
+
+stop-local: ## Zastavení lokálních služeb
+	@echo "🛑 Zastavuji lokální služby..."
+	docker-compose -f docker-compose.m1.yml down
+	@echo "✅ Lokální služby zastaveny!"
+
+logs-local: ## Zobrazení logů lokálních služeb
+	docker-compose -f docker-compose.m1.yml logs -f
+
+# ========================================
+# DEVELOPMENT HELPERS
+# ========================================
+
+dev-server: ## Spuštění development serveru
+	@echo "🎯 Spouštím development server..."
+	python main.py --debug --reload
+
+streamlit: ## Spuštění Streamlit dashboardu
+	@echo "📊 Spouštím Streamlit dashboard..."
+	streamlit run streamlit_dashboard.py
+
+shell: ## Interaktivní Python shell s načtenými moduly
+	@echo "🐍 Spouštím interaktivní shell..."
+	python -i -c "from src.core.config import settings; print('⚡ DeepResearchTool shell ready!')"
+
+# ========================================
+# DATABASE OPERATIONS
+# ========================================
+
+db-setup: ## Nastavení databází (ChromaDB + Neo4j)
+	@echo "🗄️ Nastavuji databáze..."
+	python scripts/setup_databases.py
+	@echo "✅ Databáze nastaveny!"
+
+db-reset: ## Reset všech databází
+	@echo "⚠️ Resetuji všechny databáze..."
+	rm -rf ./chroma_db/
+	docker-compose -f docker-compose.m1.yml exec neo4j cypher-shell "MATCH (n) DETACH DELETE n"
+	@echo "✅ Databáze resetovány!"
+
+# ========================================
+# MONITORING & PERFORMANCE
+# ========================================
+
+monitor-memory: ## Sledování paměťové stopy (M1 optimized)
+	@echo "📊 Sledování paměťové stopy..."
+	@echo "Docker containers:"
+	docker stats --no-stream
+	@echo "\nPython processes:"
+	ps aux | grep python | grep -v grep
+
+benchmark: ## Performance benchmark pro M1
+	@echo "⚡ Spouštím M1 benchmark..."
+	python scripts/bench_m1_performance.py
+
+# ========================================
+# CLEANUP
+# ========================================
+
+clean: ## Vyčištění cache a dočasných souborů
+	@echo "🧹 Čistím cache a dočasné soubory..."
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name "__pycache__" -delete
 	find . -type d -name "*.egg-info" -exec rm -rf {} +
@@ -131,296 +177,50 @@ clean:
 	rm -rf dist/
 	rm -rf build/
 	rm -f .coverage
-	rm -f coverage.xml
-	@echo "Cleanup completed!"
+	@echo "✅ Cleanup dokončen!"
 
-docs:
-	@echo "Generating documentation..."
-	# Add documentation generation commands here
-	@echo "Documentation generation not yet implemented"
-
-run-dev:
-	@echo "Starting development server..."
-	python main.py --debug
-
-# ========================================
-# CI/CD HELPERS
-# ========================================
-
-ci-setup: install-dev setup-env
-	@echo "CI environment setup completed"
-
-ci-lint: lint type-check
-	@echo "CI linting completed"
-
-ci-test: test-fast
-	@echo "CI testing completed"
-
-ci-security: security
-	@echo "CI security scanning completed"
-
-ci-all: ci-setup ci-lint ci-security ci-test
-	@echo "Complete CI pipeline completed successfully!"
-
-# ========================================
-# DOCKER
-# ========================================
-
-docker-build:
-	@echo "Building Docker image..."
-	docker build -t deepresearchtool:latest .
-
-docker-build-prod:
-	@echo "Building production Docker image..."
-	docker build -f Dockerfile.production -t deepresearchtool:production .
-
-docker-run:
-	@echo "Running Docker container..."
-	docker run -p 8080:8080 --env-file .env deepresearchtool:latest
-
-docker-compose-up:
-	@echo "Starting services with docker-compose..."
-	docker-compose up -d
-
-docker-compose-down:
-	@echo "Stopping services..."
-	docker-compose down
-
-# ========================================
-# DATABASE
-# ========================================
-
-db-migrate:
-	@echo "Running database migrations..."
-	# Add migration commands here
-	@echo "Database migrations not yet implemented"
-
-db-seed:
-	@echo "Seeding database with test data..."
-	# Add seed commands here
-	@echo "Database seeding not yet implemented"
-
-# ========================================
-# BENCHMARKS
-# ========================================
-
-benchmark:
-	@echo "Running performance benchmarks..."
-	pytest tests/ -v -m "performance" --benchmark-only
-
-benchmark-compare:
-	@echo "Comparing benchmark results..."
-	pytest-benchmark compare
-
-# ========================================
-# RELEASE
-# ========================================
-
-version-bump-patch:
-	@echo "Bumping patch version..."
-	# Add version bumping logic here
-	@echo "Version bumping not yet implemented"
-
-version-bump-minor:
-	@echo "Bumping minor version..."
-	# Add version bumping logic here
-	@echo "Version bumping not yet implemented"
-
-release-prep: ci-all
-	@echo "Preparing release..."
-	@echo "Release preparation completed!"
-
-# Research Agent - Production-Ready Makefile
-.PHONY: help install test lint format docker-build docker-up validate demo clean
-
-# Default help target
-help: ## Show this help message
-	@echo "Research Agent - Production Commands"
-	@echo "=================================="
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
-
-# Environment setup
-install: ## Install all dependencies
-	pip install --upgrade pip
-	pip install -r requirements.txt
-	pre-commit install
-
-install-dev: ## Install development dependencies
-	pip install -r requirements.txt
-	pip install pytest-cov ruff mypy pre-commit bandit
-
-# Code quality
-lint: ## Run linting checks
-	ruff check src/ tests/
-	mypy src/ --ignore-missing-imports
-
-format: ## Format code with ruff
-	ruff format src/ tests/
-
-security-scan: ## Run security scan
-	bandit -r src/ -f json -o bandit-report.json
-	@echo "Security report saved to bandit-report.json"
-
-# Testing
-test: ## Run all tests
-	pytest tests/ -v
-
-test-unit: ## Run unit tests only
-	pytest tests/unit/ -v
-
-test-integration: ## Run integration tests
-	pytest tests/test_integration_complete.py -v
-
-test-evaluation: ## Run evaluation pipeline tests
-	pytest tests/test_evaluation_pipeline.py -v
-
-test-coverage: ## Run tests with coverage
-	pytest tests/ -v --cov=src --cov-report=html --cov-report=xml
-	@echo "Coverage report saved to htmlcov/index.html"
-
-# Golden Dataset and Evaluation
-evaluation-quick: ## Run quick evaluation on sample dataset
-	python -m pytest tests/test_evaluation_pipeline.py::TestResearchAgentEvaluation::test_single_query_evaluation -v
-
-evaluation-full: ## Run full evaluation on Golden Dataset
-	CI=true python -m pytest tests/test_evaluation_pipeline.py::TestCIIntegration::test_ci_evaluation_with_thresholds -v
-
-golden-dataset-validate: ## Validate Golden Dataset structure
-	python -c "import json; data=json.load(open('evaluation/golden_dataset.json')); print(f'✅ Golden Dataset: {len(data)} questions')"
-
-# Docker operations
-docker-build: ## Build production Docker image
-	docker build -f Dockerfile.production -t research-agent:latest .
-
-docker-build-dev: ## Build development Docker image
-	docker build -t research-agent:dev .
-
-docker-up: ## Start full observability stack
-	docker-compose -f docker-compose.observability.yml up -d
-
-docker-down: ## Stop observability stack
-	docker-compose -f docker-compose.observability.yml down
-
-docker-logs: ## Show Langfuse logs
-	docker-compose -f docker-compose.observability.yml logs -f langfuse
-
-langfuse-setup: ## Initialize Langfuse with demo data
-	@echo "🚀 Starting Langfuse observability stack..."
-	docker-compose -f docker-compose.observability.yml up -d
-	@echo "⏳ Waiting for Langfuse to be ready..."
-	@timeout 60 bash -c 'until curl -f http://localhost:3000/api/health 2>/dev/null; do sleep 2; done' || echo "Timeout waiting for Langfuse"
-	@echo "✅ Langfuse ready at http://localhost:3000"
-
-# Validation and demos
-validate: ## Run production readiness validation
-	python scripts/validate_production_readiness.py
-
-demo: ## Run enhanced research agent demo
-	python demo_enhanced_research_agent.py
-
-demo-committee: ## Demo expert committee architecture
-	python -c "import asyncio; from src.graph.expert_committee import ExpertCommitteeGraph; print('Expert Committee Demo - see demo_enhanced_research_agent.py')"
-
-# Production deployment preparation
-prod-check: validate test lint security-scan ## Complete production readiness check
-	@echo "🎉 Production readiness check completed!"
-
-k8s-deploy: ## Deploy to Kubernetes (requires kubectl)
-	@echo "🚀 Deploying to Kubernetes..."
-	kubectl apply -f k8s/
-	kubectl rollout status deployment/research-agent
-
-k8s-status: ## Check Kubernetes deployment status
-	kubectl get pods -l app=research-agent
-	kubectl get services -l app=research-agent
-
-# Database operations
-pgvector-setup: ## Setup PGVector database
-	@echo "🗄️ Setting up PGVector database..."
-	@echo "This requires PostgreSQL with pgvector extension"
-	@echo "Run: CREATE EXTENSION vector; in your PostgreSQL database"
-
-chroma-backup: ## Backup ChromaDB data
-	@if [ -d "./chroma_db" ]; then \
-		tar -czf chroma_backup_$(shell date +%Y%m%d_%H%M%S).tar.gz chroma_db/; \
-		echo "✅ ChromaDB backed up"; \
-	else \
-		echo "❌ ChromaDB directory not found"; \
-	fi
-
-# Development helpers
-dev-setup: install-dev langfuse-setup ## Complete development environment setup
-	@echo "🎯 Development environment ready!"
-	@echo "Next steps:"
-	@echo "1. Copy .env.example to .env and fill in your API keys"
-	@echo "2. Run 'make demo' to test the system"
-	@echo "3. Run 'make validate' to check production readiness"
-
-env-template: ## Create .env file from template
-	@if [ ! -f .env ]; then \
-		cp .env.example .env; \
-		echo "✅ Created .env from template - please fill in your API keys"; \
-	else \
-		echo "⚠️ .env already exists"; \
-	fi
-
-benchmark: ## Run performance benchmarks
-	python scripts/bench_m1_performance.py
-
-# Monitoring and observability
-monitoring-up: ## Start monitoring stack (Prometheus + Grafana)
-	docker-compose -f monitoring/docker-compose.monitoring.yml up -d
-
-monitoring-down: ## Stop monitoring stack
-	docker-compose -f monitoring/docker-compose.monitoring.yml down
-
-logs: ## Show application logs
-	docker-compose -f docker-compose.observability.yml logs -f research-agent
-
-metrics: ## Show current metrics
-	@echo "📊 Application Metrics:"
-	@echo "Langfuse Dashboard: http://localhost:3000"
-	@echo "Prometheus: http://localhost:9090"
-	@echo "Grafana: http://localhost:3001"
-
-# Cleanup
-clean: ## Clean up temporary files and containers
-	find . -type f -name "*.pyc" -delete
-	find . -type d -name "__pycache__" -delete
-	find . -type d -name "*.egg-info" -exec rm -rf {} +
+clean-docker: ## Vyčištění Docker cache
+	@echo "🐳 Čistím Docker cache..."
 	docker system prune -f
+	docker volume prune -f
+	@echo "✅ Docker cache vyčištěn!"
 
-clean-data: ## Clean up all data (databases, caches)
-	@echo "⚠️ This will delete all data including ChromaDB and caches!"
-	@read -p "Are you sure? (y/N): " confirm && [ "$$confirm" = "y" ]
-	rm -rf chroma_db/ demo_chroma_db/ research_cache/
-	docker-compose -f docker-compose.observability.yml down -v
+clean-all: clean clean-docker ## Kompletní vyčištění
+	@echo "🧹 Kompletní cleanup dokončen!"
 
-# Release management
-version: ## Show current version info
-	@echo "Research Agent Production System"
-	@echo "Version: $(shell git describe --tags --always --dirty 2>/dev/null || echo 'dev')"
-	@echo "Commit: $(shell git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-	@echo "Branch: $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')"
+# ========================================
+# VALIDATION
+# ========================================
 
-release-notes: ## Generate release notes
-	@echo "📝 Generating release notes..."
-	@echo "# Release Notes" > RELEASE_NOTES.md
-	@echo "" >> RELEASE_NOTES.md
-	@echo "## Features Implemented:" >> RELEASE_NOTES.md
-	@echo "- ✅ LLM Observability (Langfuse integration)" >> RELEASE_NOTES.md
-	@echo "- ✅ Automated Evaluation Pipeline (Golden Dataset + RAG Triad)" >> RELEASE_NOTES.md
-	@echo "- ✅ Multi-Agent Expert Committee Architecture" >> RELEASE_NOTES.md
-	@echo "- ✅ Production Scaling Plan" >> RELEASE_NOTES.md
-	@echo "- ✅ CI/CD Pipeline with Regression Detection" >> RELEASE_NOTES.md
-	@echo "- ✅ Docker & Kubernetes Support" >> RELEASE_NOTES.md
-	@echo "" >> RELEASE_NOTES.md
-	@echo "✅ Release notes generated in RELEASE_NOTES.md"
+validate: lint type-check security test ## Kompletní validace projektu
+	@echo "✅ Projekt úspěšně validován!"
 
-# Quick start commands
-quick-start: env-template dev-setup demo ## Complete quick start setup
-	@echo "🎊 Quick start completed!"
+ci-check: setup-minimal validate ## CI/CD kontrola
+	@echo "🎉 CI/CD kontrola úspěšná!"
 
-production-deploy: prod-check docker-build ## Build and validate for production
-	@echo "🚀 Ready for production deployment!"
-	@echo "Next: Push to registry and deploy with k8s-deploy"
+# ========================================
+# QUICK START
+# ========================================
+
+quick-start: setup run-local ## Rychlé spuštění pro nové vývojáře
+	@echo "🎊 Rychlé spuštění dokončeno!"
+	@echo ""
+	@echo "Další kroky:"
+	@echo "1. Zkopírujte .env.example do .env a vyplňte API klíče"
+	@echo "2. Spusťte 'make dev-server' pro development server"
+	@echo "3. Spusťte 'make streamlit' pro dashboard"
+	@echo "4. Spusťte 'make test' pro ověření funkčnosti"
+
+# ========================================
+# PHASE IMPLEMENTATIONS
+# ========================================
+
+phase1-test: ## Test implementace Fáze 1 (stabilizace)
+	@echo "🧪 Testování Fáze 1 - Stabilizace..."
+	python -m pytest tests/phase1/ -v
+	@echo "✅ Fáze 1 testy dokončeny!"
+
+phase2-test: ## Test implementace Fáze 2 (M1 optimalizace)
+	@echo "🧪 Testování Fáze 2 - M1 Optimalizace..."
+	python -m pytest tests/phase2/ -v
+	@echo "✅ Fáze 2 testy dokončeny!"

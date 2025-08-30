@@ -1,29 +1,24 @@
-"""
-Autonomní server pro Fázi 1 - spojuje ELT pipeline, RAG systém a lokální LLM.
+"""Autonomní server pro Fázi 1 - spojuje ELT pipeline, RAG systém a lokální LLM.
 Poskytuje REST API pro kompletní research workflow.
 """
 
-import asyncio
-import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-from datetime import datetime
-import json
-import os
 from contextlib import asynccontextmanager
+from datetime import datetime
+import os
+from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel, Field
+from starlette.responses import Response
 import structlog
 import uvicorn
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-from starlette.responses import Response
 
 from .elt_pipeline import ELTPipeline
+from .local_llm import LLMConfig, ModelDownloader, RAGLLMPipeline
 from .rag_system import LocalRAGSystem
-from .local_llm import RAGLLMPipeline, LLMConfig, ModelDownloader
 
 # Konfigurace strukturovaného logování
 structlog.configure(
@@ -32,7 +27,7 @@ structlog.configure(
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.dev.ConsoleRenderer()
+        structlog.dev.ConsoleRenderer(),
     ],
     wrapper_class=structlog.stdlib.BoundLogger,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -42,10 +37,10 @@ structlog.configure(
 logger = structlog.get_logger(__name__)
 
 # Prometheus metriky
-REQUEST_COUNT = Counter('autonomous_requests_total', 'Total requests', ['method', 'endpoint'])
-REQUEST_DURATION = Histogram('autonomous_request_duration_seconds', 'Request duration')
-DOCUMENTS_INDEXED = Counter('autonomous_documents_indexed_total', 'Documents indexed')
-QUERIES_PROCESSED = Counter('autonomous_queries_processed_total', 'Queries processed')
+REQUEST_COUNT = Counter("autonomous_requests_total", "Total requests", ["method", "endpoint"])
+REQUEST_DURATION = Histogram("autonomous_request_duration_seconds", "Request duration")
+DOCUMENTS_INDEXED = Counter("autonomous_documents_indexed_total", "Documents indexed")
+QUERIES_PROCESSED = Counter("autonomous_queries_processed_total", "Queries processed")
 
 
 # Pydantic modely pro API
@@ -55,7 +50,7 @@ class DocumentData(BaseModel):
     content: str
     url: str
     source: str = "api"
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class QueryRequest(BaseModel):
@@ -71,7 +66,7 @@ class ConversationMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    messages: List[ConversationMessage]
+    messages: list[ConversationMessage]
     use_rag: bool = True
 
 
@@ -82,9 +77,9 @@ class IndexingRequest(BaseModel):
 
 
 class SystemStats(BaseModel):
-    elt_pipeline: Dict[str, Any]
-    rag_system: Dict[str, Any]
-    llm_engine: Dict[str, Any]
+    elt_pipeline: dict[str, Any]
+    rag_system: dict[str, Any]
+    llm_engine: dict[str, Any]
     uptime_seconds: float
     total_documents: int
     total_queries: int
@@ -107,7 +102,7 @@ class AutonomousServer:
             title="Autonomous Research Platform",
             description="Fáze 1: Základní architektura s ELT, RAG a lokálním LLM",
             version="1.0.0",
-            lifespan=self.lifespan
+            lifespan=self.lifespan,
         )
 
         self._setup_middleware()
@@ -145,7 +140,7 @@ class AutonomousServer:
             return {
                 "status": "healthy",
                 "timestamp": datetime.now().isoformat(),
-                "uptime_seconds": (datetime.now() - self.start_time).total_seconds()
+                "uptime_seconds": (datetime.now() - self.start_time).total_seconds(),
             }
 
         @self.app.get("/metrics")
@@ -155,8 +150,7 @@ class AutonomousServer:
 
         @self.app.post("/documents/ingest")
         async def ingest_documents(
-            documents: List[DocumentData],
-            background_tasks: BackgroundTasks
+            documents: list[DocumentData], background_tasks: BackgroundTasks
         ):
             """Ingestuje dokumenty do ELT pipeline."""
             REQUEST_COUNT.labels(method="POST", endpoint="/documents/ingest").inc()
@@ -172,14 +166,12 @@ class AutonomousServer:
                             "url": doc.url,
                             "source": doc.source,
                             "metadata": doc.metadata,
-                            "ingested_at": datetime.now().isoformat()
+                            "ingested_at": datetime.now().isoformat(),
                         }
 
                 # Spuštění ingestu na pozadí
                 background_tasks.add_task(
-                    self._ingest_documents_background,
-                    document_stream(),
-                    "api_documents"
+                    self._ingest_documents_background, document_stream(), "api_documents"
                 )
 
                 DOCUMENTS_INDEXED.inc(len(documents))
@@ -187,7 +179,7 @@ class AutonomousServer:
                 return {
                     "status": "accepted",
                     "documents_count": len(documents),
-                    "message": "Documents are being processed in background"
+                    "message": "Documents are being processed in background",
                 }
 
             except Exception as e:
@@ -203,14 +195,13 @@ class AutonomousServer:
                 try:
                     if not self.rag_llm_pipeline:
                         raise HTTPException(
-                            status_code=503,
-                            detail="RAG-LLM pipeline not initialized"
+                            status_code=503, detail="RAG-LLM pipeline not initialized"
                         )
 
                     result = await self.rag_llm_pipeline.answer_question(
                         question=request.question,
                         top_k=request.top_k,
-                        score_threshold=request.score_threshold
+                        score_threshold=request.score_threshold,
                     )
 
                     QUERIES_PROCESSED.inc()
@@ -228,20 +219,13 @@ class AutonomousServer:
 
             try:
                 if not self.rag_llm_pipeline:
-                    raise HTTPException(
-                        status_code=503,
-                        detail="RAG-LLM pipeline not initialized"
-                    )
+                    raise HTTPException(status_code=503, detail="RAG-LLM pipeline not initialized")
 
                 # Konverze Pydantic modelů na slovníky
-                messages = [
-                    {"role": msg.role, "content": msg.content}
-                    for msg in request.messages
-                ]
+                messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
 
                 result = await self.rag_llm_pipeline.chat_conversation(
-                    messages=messages,
-                    use_rag=request.use_rag
+                    messages=messages, use_rag=request.use_rag
                 )
 
                 QUERIES_PROCESSED.inc()
@@ -253,32 +237,26 @@ class AutonomousServer:
                 raise HTTPException(status_code=500, detail=str(e))
 
         @self.app.post("/index")
-        async def index_documents(
-            request: IndexingRequest,
-            background_tasks: BackgroundTasks
-        ):
+        async def index_documents(request: IndexingRequest, background_tasks: BackgroundTasks):
             """Indexuje dokumenty z Parquet souboru do vektorové databáze."""
             REQUEST_COUNT.labels(method="POST", endpoint="/index").inc()
 
             try:
                 if not self.rag_system:
-                    raise HTTPException(
-                        status_code=503,
-                        detail="RAG system not initialized"
-                    )
+                    raise HTTPException(status_code=503, detail="RAG system not initialized")
 
                 # Spuštění indexování na pozadí
                 background_tasks.add_task(
                     self._index_documents_background,
                     request.table_name,
                     request.content_column,
-                    request.chunk_size
+                    request.chunk_size,
                 )
 
                 return {
                     "status": "accepted",
                     "table_name": request.table_name,
-                    "message": "Indexing started in background"
+                    "message": "Indexing started in background",
                 }
 
             except Exception as e:
@@ -294,9 +272,19 @@ class AutonomousServer:
                 uptime = (datetime.now() - self.start_time).total_seconds()
 
                 # Získání statistik z komponent
-                elt_stats = {"status": "active"} if self.elt_pipeline else {"status": "not_initialized"}
-                rag_stats = self.rag_system.get_system_stats() if self.rag_system else {"status": "not_initialized"}
-                pipeline_stats = self.rag_llm_pipeline.get_pipeline_stats() if self.rag_llm_pipeline else {"status": "not_initialized"}
+                elt_stats = (
+                    {"status": "active"} if self.elt_pipeline else {"status": "not_initialized"}
+                )
+                rag_stats = (
+                    self.rag_system.get_system_stats()
+                    if self.rag_system
+                    else {"status": "not_initialized"}
+                )
+                pipeline_stats = (
+                    self.rag_llm_pipeline.get_pipeline_stats()
+                    if self.rag_llm_pipeline
+                    else {"status": "not_initialized"}
+                )
 
                 return SystemStats(
                     elt_pipeline=elt_stats,
@@ -304,7 +292,7 @@ class AutonomousServer:
                     llm_engine=pipeline_stats.get("llm_engine", {}),
                     uptime_seconds=uptime,
                     total_documents=int(DOCUMENTS_INDEXED._value.sum()),
-                    total_queries=int(QUERIES_PROCESSED._value.sum())
+                    total_queries=int(QUERIES_PROCESSED._value.sum()),
                 )
 
             except Exception as e:
@@ -317,7 +305,11 @@ class AutonomousServer:
             return {
                 "available_models": ModelDownloader.list_available_models(),
                 "models_directory": str(self.models_dir),
-                "currently_loaded": self.rag_llm_pipeline.llm_engine.get_model_info() if self.rag_llm_pipeline else None
+                "currently_loaded": (
+                    self.rag_llm_pipeline.llm_engine.get_model_info()
+                    if self.rag_llm_pipeline
+                    else None
+                ),
             }
 
     async def _initialize_components(self):
@@ -329,14 +321,13 @@ class AutonomousServer:
 
             # ELT Pipeline
             self.elt_pipeline = ELTPipeline(
-                data_dir=self.data_dir / "parquet",
-                chunk_size=int(os.getenv("CHUNK_SIZE", "1000"))
+                data_dir=self.data_dir / "parquet", chunk_size=int(os.getenv("CHUNK_SIZE", "1000"))
             )
 
             # RAG System
             self.rag_system = LocalRAGSystem(
                 data_dir=self.data_dir / "parquet",
-                model_name=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+                model_name=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
             )
 
             # LLM konfigurace
@@ -347,13 +338,12 @@ class AutonomousServer:
                     n_ctx=int(os.getenv("LLM_CONTEXT", "4096")),
                     n_threads=int(os.getenv("LLM_THREADS", "8")),
                     temperature=float(os.getenv("LLM_TEMPERATURE", "0.7")),
-                    metal=os.getenv("LLM_METAL", "true").lower() == "true"
+                    metal=os.getenv("LLM_METAL", "true").lower() == "true",
                 )
 
                 # RAG-LLM Pipeline
                 self.rag_llm_pipeline = RAGLLMPipeline(
-                    rag_system=self.rag_system,
-                    llm_config=llm_config
+                    rag_system=self.rag_system, llm_config=llm_config
                 )
 
                 logger.info("All components initialized successfully")
@@ -383,9 +373,7 @@ class AutonomousServer:
         """Background task pro ingest dokumentů."""
         try:
             await self.elt_pipeline.extract_and_load(
-                data_stream=document_stream,
-                table_name=table_name,
-                source="api"
+                data_stream=document_stream, table_name=table_name, source="api"
             )
 
             logger.info(f"Document ingestion completed for table: {table_name}")
@@ -394,17 +382,12 @@ class AutonomousServer:
             logger.error(f"Background ingestion failed: {e}")
 
     async def _index_documents_background(
-        self,
-        table_name: str,
-        content_column: str,
-        chunk_size: int
+        self, table_name: str, content_column: str, chunk_size: int
     ):
         """Background task pro indexování dokumentů."""
         try:
             await self.rag_system.index_documents_from_parquet(
-                table_name=table_name,
-                content_column=content_column,
-                chunk_size=chunk_size
+                table_name=table_name, content_column=content_column, chunk_size=chunk_size
             )
 
             logger.info(f"Document indexing completed for table: {table_name}")
@@ -425,12 +408,7 @@ def run_server():
     port = int(os.getenv("SERVER_PORT", "8000"))
     workers = int(os.getenv("SERVER_WORKERS", "1"))
 
-    logger.info(
-        "Starting autonomous server",
-        host=host,
-        port=port,
-        workers=workers
-    )
+    logger.info("Starting autonomous server", host=host, port=port, workers=workers)
 
     uvicorn.run(
         "src.core.autonomous_server:create_app",
@@ -439,7 +417,7 @@ def run_server():
         port=port,
         workers=workers,
         reload=False,
-        access_log=True
+        access_log=True,
     )
 
 

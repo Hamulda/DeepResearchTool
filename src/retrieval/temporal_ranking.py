@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
-"""
-Temporal-aware Ranking
+"""Temporal-aware Ranking
 Time-sensitive scoring with recency boost and temporal decay
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
 from dataclasses import dataclass
-import numpy as np
+from datetime import datetime
+from enum import Enum
 import logging
 import re
-from enum import Enum
+from typing import Any
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
 class TemporalProfile(Enum):
     """Temporal profiles for different content types"""
+
     NEWS = "news"  # High decay, prefer very recent
     RESEARCH = "research"  # Medium decay, quality over recency
     REFERENCE = "reference"  # Low decay, timeless content
@@ -29,6 +30,7 @@ class TemporalProfile(Enum):
 @dataclass
 class TemporalConfig:
     """Configuration for temporal ranking"""
+
     base_decay_days: float = 365.0  # Days for 1/e decay
     recency_boost_days: int = 30  # Days for recency boost
     recency_boost_factor: float = 1.5  # Multiplier for recent content
@@ -38,11 +40,11 @@ class TemporalConfig:
     def get_decay_constant(self) -> float:
         """Get decay constant based on profile"""
         decay_multipliers = {
-            TemporalProfile.NEWS: 0.1,      # Very fast decay (36 days)
-            TemporalProfile.FINANCIAL: 0.05, # Extreme decay (18 days)
-            TemporalProfile.POLICY: 0.5,     # Fast decay (183 days)
-            TemporalProfile.RESEARCH: 1.0,   # Normal decay (365 days)
-            TemporalProfile.REFERENCE: 3.0   # Slow decay (1095 days)
+            TemporalProfile.NEWS: 0.1,  # Very fast decay (36 days)
+            TemporalProfile.FINANCIAL: 0.05,  # Extreme decay (18 days)
+            TemporalProfile.POLICY: 0.5,  # Fast decay (183 days)
+            TemporalProfile.RESEARCH: 1.0,  # Normal decay (365 days)
+            TemporalProfile.REFERENCE: 3.0,  # Slow decay (1095 days)
         }
         return self.base_decay_days * decay_multipliers.get(self.profile, 1.0)
 
@@ -50,7 +52,7 @@ class TemporalConfig:
 class TemporalRanking:
     """Temporal-aware ranking with recency boost and domain-specific decay"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.temporal_config = self._load_temporal_config(config)
 
@@ -58,7 +60,7 @@ class TemporalRanking:
         self.temporal_keywords = {
             "high_temporal": ["latest", "recent", "current", "new", "updated", "breaking"],
             "date_specific": ["2024", "2023", "today", "yesterday", "this week", "this month"],
-            "trend_keywords": ["trend", "emerging", "developing", "ongoing", "evolving"]
+            "trend_keywords": ["trend", "emerging", "developing", "ongoing", "evolving"],
         }
 
         # Domain-specific temporal profiles
@@ -73,12 +75,12 @@ class TemporalRanking:
             "bloomberg.com": TemporalProfile.FINANCIAL,
             "europa.eu": TemporalProfile.POLICY,
             "whitehouse.gov": TemporalProfile.POLICY,
-            "wikipedia.org": TemporalProfile.REFERENCE
+            "wikipedia.org": TemporalProfile.REFERENCE,
         }
 
         logger.info("Temporal ranking initialized")
 
-    def _load_temporal_config(self, config: Dict[str, Any]) -> TemporalConfig:
+    def _load_temporal_config(self, config: dict[str, Any]) -> TemporalConfig:
         """Load temporal configuration from config"""
         temporal_cfg = config.get("retrieval", {}).get("temporal", {})
 
@@ -87,34 +89,36 @@ class TemporalRanking:
             recency_boost_days=temporal_cfg.get("recency_boost_days", 30),
             recency_boost_factor=temporal_cfg.get("recency_boost_factor", 1.5),
             temporal_weight=temporal_cfg.get("temporal_weight", 0.3),
-            profile=TemporalProfile(temporal_cfg.get("profile", "research"))
+            profile=TemporalProfile(temporal_cfg.get("profile", "research")),
         )
 
-    def detect_temporal_intent(self, query: str, context: Optional[Dict[str, Any]] = None) -> float:
+    def detect_temporal_intent(self, query: str, context: dict[str, Any] | None = None) -> float:
         """Detect temporal intent in query (0.0 = no temporal intent, 1.0 = high temporal intent)"""
-
         query_lower = query.lower()
 
         # Check for explicit temporal keywords
         temporal_score = 0.0
 
         # High temporal keywords
-        high_temporal_matches = sum(1 for kw in self.temporal_keywords["high_temporal"]
-                                  if kw in query_lower)
+        high_temporal_matches = sum(
+            1 for kw in self.temporal_keywords["high_temporal"] if kw in query_lower
+        )
         temporal_score += high_temporal_matches * 0.3
 
         # Date-specific keywords
-        date_specific_matches = sum(1 for kw in self.temporal_keywords["date_specific"]
-                                  if kw in query_lower)
+        date_specific_matches = sum(
+            1 for kw in self.temporal_keywords["date_specific"] if kw in query_lower
+        )
         temporal_score += date_specific_matches * 0.4
 
         # Trend keywords
-        trend_matches = sum(1 for kw in self.temporal_keywords["trend_keywords"]
-                          if kw in query_lower)
+        trend_matches = sum(
+            1 for kw in self.temporal_keywords["trend_keywords"] if kw in query_lower
+        )
         temporal_score += trend_matches * 0.2
 
         # Year patterns (2020-2024)
-        year_pattern = r'\b(202[0-4])\b'
+        year_pattern = r"\b(202[0-4])\b"
         if re.search(year_pattern, query_lower):
             temporal_score += 0.5
 
@@ -127,9 +131,8 @@ class TemporalRanking:
 
         return min(temporal_score, 1.0)
 
-    def get_temporal_profile(self, document: Dict[str, Any]) -> TemporalProfile:
+    def get_temporal_profile(self, document: dict[str, Any]) -> TemporalProfile:
         """Determine temporal profile for a document based on source"""
-
         source_url = document.get("source_url", "")
         domain = self._extract_domain(source_url)
 
@@ -143,31 +146,31 @@ class TemporalRanking:
 
         if source_type in ["news", "newspaper"]:
             return TemporalProfile.NEWS
-        elif source_type in ["academic", "journal"]:
+        if source_type in ["academic", "journal"]:
             return TemporalProfile.RESEARCH
-        elif source_type in ["government", "policy"]:
+        if source_type in ["government", "policy"]:
             return TemporalProfile.POLICY
-        elif source_type in ["financial", "market"]:
+        if source_type in ["financial", "market"]:
             return TemporalProfile.FINANCIAL
-        else:
-            return TemporalProfile.REFERENCE
+        return TemporalProfile.REFERENCE
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL"""
         try:
             from urllib.parse import urlparse
+
             return urlparse(url).netloc.lower()
-        except:
+        except Exception as e:
+            logger.error(f"Error extracting domain from URL '{url}': {e}")
             return ""
 
     def calculate_temporal_score(
         self,
-        document: Dict[str, Any],
+        document: dict[str, Any],
         query_temporal_intent: float,
-        reference_date: Optional[datetime] = None
+        reference_date: datetime | None = None,
     ) -> float:
         """Calculate temporal relevance score for a document"""
-
         if reference_date is None:
             reference_date = datetime.now()
 
@@ -185,7 +188,7 @@ class TemporalRanking:
             recency_boost_days=self.temporal_config.recency_boost_days,
             recency_boost_factor=self.temporal_config.recency_boost_factor,
             temporal_weight=self.temporal_config.temporal_weight,
-            profile=profile
+            profile=profile,
         )
 
         # Calculate age in days
@@ -229,15 +232,19 @@ class TemporalRanking:
 
         return min(final_score, 1.0)
 
-    def _extract_publication_date(self, document: Dict[str, Any]) -> Optional[datetime]:
+    def _extract_publication_date(self, document: dict[str, Any]) -> datetime | None:
         """Extract publication date from document metadata"""
-
         metadata = document.get("metadata", {})
 
         # Try different date fields
         date_fields = [
-            "publication_date", "pub_date", "date", "created_date",
-            "published", "timestamp", "article_date"
+            "publication_date",
+            "pub_date",
+            "date",
+            "created_date",
+            "published",
+            "timestamp",
+            "article_date",
         ]
 
         for field in date_fields:
@@ -263,9 +270,8 @@ class TemporalRanking:
 
         return None
 
-    def _parse_date(self, date_str: str) -> Optional[datetime]:
+    def _parse_date(self, date_str: str) -> datetime | None:
         """Parse date string with multiple format attempts"""
-
         if not date_str:
             return None
 
@@ -285,7 +291,7 @@ class TemporalRanking:
             "%B %d, %Y",
             "%b %d, %Y",
             "%d %B %Y",
-            "%d %b %Y"
+            "%d %b %Y",
         ]
 
         for fmt in formats:
@@ -296,14 +302,13 @@ class TemporalRanking:
 
         return None
 
-    def _extract_date_from_text(self, text: str) -> Optional[datetime]:
+    def _extract_date_from_text(self, text: str) -> datetime | None:
         """Extract date from text using regex patterns"""
-
         # Year-month-day patterns
         patterns = [
-            r'\b(20\d{2})[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])\b',
-            r'\b(0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])[-/](20\d{2})\b',
-            r'\b(0[1-9]|[12]\d|3[01])[-/](0[1-9]|1[0-2])[-/](20\d{2})\b'
+            r"\b(20\d{2})[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])\b",
+            r"\b(0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])[-/](20\d{2})\b",
+            r"\b(0[1-9]|[12]\d|3[01])[-/](0[1-9]|1[0-2])[-/](20\d{2})\b",
         ]
 
         for pattern in patterns:
@@ -311,21 +316,26 @@ class TemporalRanking:
             if match:
                 try:
                     if pattern == patterns[0]:  # YYYY-MM-DD
-                        return datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)))
-                    elif pattern == patterns[1]:  # MM-DD-YYYY
-                        return datetime(int(match.group(3)), int(match.group(1)), int(match.group(2)))
-                    else:  # DD-MM-YYYY
-                        return datetime(int(match.group(3)), int(match.group(2)), int(match.group(1)))
+                        return datetime(
+                            int(match.group(1)), int(match.group(2)), int(match.group(3))
+                        )
+                    if pattern == patterns[1]:  # MM-DD-YYYY
+                        return datetime(
+                            int(match.group(3)), int(match.group(1)), int(match.group(2))
+                        )
+                    # DD-MM-YYYY
+                    return datetime(
+                        int(match.group(3)), int(match.group(2)), int(match.group(1))
+                    )
                 except ValueError:
                     continue
 
         return None
 
-    def _extract_date_from_url(self, url: str) -> Optional[datetime]:
+    def _extract_date_from_url(self, url: str) -> datetime | None:
         """Extract date from URL path"""
-
         # Pattern: /2024/03/15/ or /2024-03-15
-        date_pattern = r'/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/?'
+        date_pattern = r"/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/?"
         match = re.search(date_pattern, url)
 
         if match:
@@ -339,13 +349,12 @@ class TemporalRanking:
 
     def apply_temporal_ranking(
         self,
-        documents: List[Dict[str, Any]],
+        documents: list[dict[str, Any]],
         query: str,
-        base_scores: Optional[List[float]] = None,
-        context: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+        base_scores: list[float] | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """Apply temporal ranking to document list"""
-
         if not documents:
             return documents
 
@@ -369,8 +378,8 @@ class TemporalRanking:
 
             # Weighted combination
             final_score = (
-                base_score * (1 - self.temporal_config.temporal_weight) +
-                temporal_score * self.temporal_config.temporal_weight
+                base_score * (1 - self.temporal_config.temporal_weight)
+                + temporal_score * self.temporal_config.temporal_weight
             )
 
             doc_copy = doc.copy()
@@ -386,9 +395,8 @@ class TemporalRanking:
         logger.info(f"Temporal ranking completed: reordered {len(ranked_docs)} documents")
         return ranked_docs
 
-    def get_temporal_stats(self, documents: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def get_temporal_stats(self, documents: list[dict[str, Any]]) -> dict[str, Any]:
         """Get temporal statistics for document set"""
-
         if not documents:
             return {}
 
@@ -406,26 +414,29 @@ class TemporalRanking:
         stats = {
             "total_documents": len(documents),
             "documents_with_dates": len(dates),
-            "date_coverage_ratio": len(dates) / len(documents) if documents else 0
+            "date_coverage_ratio": len(dates) / len(documents) if documents else 0,
         }
 
         if dates:
-            stats.update({
-                "oldest_date": min(dates).isoformat(),
-                "newest_date": max(dates).isoformat(),
-                "date_span_days": (max(dates) - min(dates)).days,
-                "avg_age_days": sum((datetime.now() - d).days for d in dates) / len(dates)
-            })
+            stats.update(
+                {
+                    "oldest_date": min(dates).isoformat(),
+                    "newest_date": max(dates).isoformat(),
+                    "date_span_days": (max(dates) - min(dates)).days,
+                    "avg_age_days": sum((datetime.now() - d).days for d in dates) / len(dates),
+                }
+            )
 
         # Profile distribution
         from collections import Counter
+
         profile_counts = Counter(profiles)
         stats["profile_distribution"] = dict(profile_counts)
 
         return stats
 
 
-def create_temporal_ranking(config: Dict[str, Any]) -> TemporalRanking:
+def create_temporal_ranking(config: dict[str, Any]) -> TemporalRanking:
     """Factory function for temporal ranking"""
     return TemporalRanking(config)
 
@@ -434,11 +445,7 @@ def create_temporal_ranking(config: Dict[str, Any]) -> TemporalRanking:
 if __name__ == "__main__":
     config = {
         "retrieval": {
-            "temporal": {
-                "base_decay_days": 365.0,
-                "recency_boost_days": 30,
-                "temporal_weight": 0.4
-            }
+            "temporal": {"base_decay_days": 365.0, "recency_boost_days": 30, "temporal_weight": 0.4}
         }
     }
 
@@ -448,8 +455,8 @@ if __name__ == "__main__":
     queries = [
         "COVID-19 vaccine effectiveness",  # Low temporal
         "Latest COVID-19 research 2024",  # High temporal
-        "Recent developments in AI",      # Medium temporal
-        "Historical data on pandemics"    # Low temporal
+        "Recent developments in AI",  # Medium temporal
+        "Historical data on pandemics",  # Low temporal
     ]
 
     for query in queries:

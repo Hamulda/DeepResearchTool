@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
-"""
-Deep Web Crawler with Tor Integration
+"""Deep Web Crawler with Tor Integration
 Safe and ethical crawling of .onion domains and deep web content
 
 Author: Advanced IT Specialist
 """
 
 import asyncio
-import aiohttp
-import aiohttp_socks
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+from datetime import datetime
 import logging
 import re
-import hashlib
-from typing import List, Dict, Any, Optional, AsyncGenerator, Set
-from datetime import datetime
-from dataclasses import dataclass
-import json
-import time
-from urllib.parse import urljoin, urlparse
 import socket
+import time
+from typing import Any
+
+import aiohttp
+import aiohttp_socks
 
 from .base_scraper import BaseScraper
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class OnionSite:
     """Represents an onion site"""
+
     onion_url: str
     title: str
     content: str
@@ -35,47 +35,50 @@ class OnionSite:
     content_type: str
     safety_score: float
     content_hash: str
-    links: List[str]
-    metadata: Dict[str, Any]
+    links: list[str]
+    metadata: dict[str, Any]
+
 
 @dataclass
 class DeepWebResult:
     """Deep web search result"""
+
     url: str
     title: str
     content: str
     source_type: str  # onion, i2p, hidden_service
     discovery_method: str
     safety_validated: bool
-    content_categories: List[str]
-    risk_indicators: List[str]
+    content_categories: list[str]
+    risk_indicators: list[str]
+
 
 class DeepWebCrawler(BaseScraper):
     """Safe deep web crawler with Tor integration"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self.name = "deep_web_crawler"
 
         # Tor configuration
-        self.tor_enabled = config.get('tor_integration', {}).get('enabled', False)
-        self.socks_port = config.get('tor', {}).get('socks_port', 9050)
-        self.control_port = config.get('tor', {}).get('control_port', 9051)
-        self.proxy_rotation = config.get('deep_web', {}).get('proxy_rotation', True)
-        self.safety_checks = config.get('deep_web', {}).get('safety_checks', True)
-        self.max_depth = config.get('deep_web', {}).get('max_depth', 3)
+        self.tor_enabled = config.get("tor_integration", {}).get("enabled", False)
+        self.socks_port = config.get("tor", {}).get("socks_port", 9050)
+        self.control_port = config.get("tor", {}).get("control_port", 9051)
+        self.proxy_rotation = config.get("deep_web", {}).get("proxy_rotation", True)
+        self.safety_checks = config.get("deep_web", {}).get("safety_checks", True)
+        self.max_depth = config.get("deep_web", {}).get("max_depth", 3)
 
         # Safety configuration
-        self.content_filters = config.get('deep_web', {}).get('content_filters', [
-            'malware', 'illegal', 'harmful', 'explicit'
-        ])
-        self.max_onion_domains = config.get('deep_web', {}).get('max_onion_domains', 100)
+        self.content_filters = config.get("deep_web", {}).get(
+            "content_filters", ["malware", "illegal", "harmful", "explicit"]
+        )
+        self.max_onion_domains = config.get("deep_web", {}).get("max_onion_domains", 100)
 
         # Known safe onion directories
         self.safe_directories = [
-            'http://3g2upl4pq6kufc4m.onion',  # DuckDuckGo
-            'https://facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion',  # Facebook
-            'https://www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion',
+            "http://3g2upl4pq6kufc4m.onion",  # DuckDuckGo
+            "https://facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion",  # Facebook
+            "https://www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion",
         ]
 
         # Ahmia.fi integration for onion indexing
@@ -87,12 +90,12 @@ class DeepWebCrawler(BaseScraper):
         self.min_delay = 2.0  # Minimum 2 seconds between requests for safety
 
         # Visited URLs tracking
-        self.visited_urls: Set[str] = set()
+        self.visited_urls: set[str] = set()
         self.session_stats = {
-            'total_requests': 0,
-            'successful_requests': 0,
-            'blocked_unsafe': 0,
-            'onion_sites_found': 0
+            "total_requests": 0,
+            "successful_requests": 0,
+            "blocked_unsafe": 0,
+            "onion_sites_found": 0,
         }
 
     async def search(self, query: str, **kwargs) -> AsyncGenerator[DeepWebResult, None]:
@@ -124,14 +127,13 @@ class DeepWebCrawler(BaseScraper):
         """Search using Ahmia.fi - ethical onion search engine"""
         try:
             # Create Tor-enabled session
-            connector = aiohttp_socks.ProxyConnector.from_url(f'socks5://127.0.0.1:{self.socks_port}')
+            connector = aiohttp_socks.ProxyConnector.from_url(
+                f"socks5://127.0.0.1:{self.socks_port}"
+            )
 
             async with aiohttp.ClientSession(connector=connector) as session:
                 # Search Ahmia.fi
-                params = {
-                    'q': query,
-                    'redirect': 'true'
-                }
+                params = {"q": query, "redirect": "true"}
 
                 await self._respect_rate_limit()
                 async with session.get(self.ahmia_api, params=params) as response:
@@ -150,10 +152,14 @@ class DeepWebCrawler(BaseScraper):
         except Exception as e:
             logger.error(f"Error searching Ahmia: {e}")
 
-    async def _search_safe_directories(self, query: str, **kwargs) -> AsyncGenerator[DeepWebResult, None]:
+    async def _search_safe_directories(
+        self, query: str, **kwargs
+    ) -> AsyncGenerator[DeepWebResult, None]:
         """Search through known safe onion directories"""
         try:
-            connector = aiohttp_socks.ProxyConnector.from_url(f'socks5://127.0.0.1:{self.socks_port}')
+            connector = aiohttp_socks.ProxyConnector.from_url(
+                f"socks5://127.0.0.1:{self.socks_port}"
+            )
 
             async with aiohttp.ClientSession(connector=connector) as session:
                 for directory_url in self.safe_directories:
@@ -168,13 +174,17 @@ class DeepWebCrawler(BaseScraper):
         except Exception as e:
             logger.error(f"Error in safe directories search: {e}")
 
-    async def _crawl_discovered_onions(self, query: str, **kwargs) -> AsyncGenerator[DeepWebResult, None]:
+    async def _crawl_discovered_onions(
+        self, query: str, **kwargs
+    ) -> AsyncGenerator[DeepWebResult, None]:
         """Crawl discovered onion sites with safety validation"""
-        max_sites = kwargs.get('max_sites', 10)  # Limit for safety
+        max_sites = kwargs.get("max_sites", 10)  # Limit for safety
         crawled_count = 0
 
         try:
-            connector = aiohttp_socks.ProxyConnector.from_url(f'socks5://127.0.0.1:{self.socks_port}')
+            connector = aiohttp_socks.ProxyConnector.from_url(
+                f"socks5://127.0.0.1:{self.socks_port}"
+            )
 
             async with aiohttp.ClientSession(connector=connector) as session:
                 # Get list of known onions from Ahmia
@@ -193,7 +203,9 @@ class DeepWebCrawler(BaseScraper):
         except Exception as e:
             logger.error(f"Error crawling discovered onions: {e}")
 
-    async def _fetch_onion_content(self, onion_url: str, session: aiohttp.ClientSession, query: str) -> Optional[DeepWebResult]:
+    async def _fetch_onion_content(
+        self, onion_url: str, session: aiohttp.ClientSession, query: str
+    ) -> DeepWebResult | None:
         """Safely fetch content from onion site"""
         try:
             if onion_url in self.visited_urls:
@@ -211,7 +223,7 @@ class DeepWebCrawler(BaseScraper):
 
                     # Safety validation
                     if not await self._validate_content_safety(content):
-                        self.session_stats['blocked_unsafe'] += 1
+                        self.session_stats["blocked_unsafe"] += 1
                         logger.warning(f"Blocked unsafe content from {onion_url}")
                         return None
 
@@ -220,8 +232,8 @@ class DeepWebCrawler(BaseScraper):
                     content_categories = self._categorize_content(content)
                     risk_indicators = self._detect_risk_indicators(content)
 
-                    self.session_stats['successful_requests'] += 1
-                    self.session_stats['onion_sites_found'] += 1
+                    self.session_stats["successful_requests"] += 1
+                    self.session_stats["onion_sites_found"] += 1
 
                     return DeepWebResult(
                         url=onion_url,
@@ -231,20 +243,19 @@ class DeepWebCrawler(BaseScraper):
                         discovery_method="tor_crawl",
                         safety_validated=True,
                         content_categories=content_categories,
-                        risk_indicators=risk_indicators
+                        risk_indicators=risk_indicators,
                     )
-                else:
-                    logger.warning(f"Failed to fetch {onion_url}: {response.status}")
+                logger.warning(f"Failed to fetch {onion_url}: {response.status}")
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Timeout fetching {onion_url}")
         except Exception as e:
             logger.warning(f"Error fetching {onion_url}: {e}")
 
-        self.session_stats['total_requests'] += 1
+        self.session_stats["total_requests"] += 1
         return None
 
-    async def _get_ahmia_onion_list(self, session: aiohttp.ClientSession) -> List[str]:
+    async def _get_ahmia_onion_list(self, session: aiohttp.ClientSession) -> list[str]:
         """Get list of onion sites from Ahmia.fi"""
         try:
             await self._respect_rate_limit()
@@ -253,18 +264,18 @@ class DeepWebCrawler(BaseScraper):
                     data = await response.json()
                     # Extract onion URLs from Ahmia's API response
                     onions = []
-                    for item in data.get('results', []):
-                        onion_url = item.get('address')
-                        if onion_url and onion_url.endswith('.onion'):
+                    for item in data.get("results", []):
+                        onion_url = item.get("address")
+                        if onion_url and onion_url.endswith(".onion"):
                             onions.append(f"http://{onion_url}")
-                    return onions[:self.max_onion_domains]
+                    return onions[: self.max_onion_domains]
 
         except Exception as e:
             logger.error(f"Error getting Ahmia onion list: {e}")
 
         return []
 
-    def _parse_ahmia_results(self, html_content: str) -> List[str]:
+    def _parse_ahmia_results(self, html_content: str) -> list[str]:
         """Parse Ahmia search results to extract onion URLs"""
         onion_urls = []
 
@@ -273,13 +284,15 @@ class DeepWebCrawler(BaseScraper):
         matches = re.findall(onion_pattern, html_content, re.IGNORECASE)
 
         for match in matches:
-            if not match.startswith('http'):
+            if not match.startswith("http"):
                 match = f"http://{match}"
             onion_urls.append(match)
 
         return list(set(onion_urls))  # Remove duplicates
 
-    async def _search_directory(self, directory_url: str, query: str, session: aiohttp.ClientSession) -> Optional[DeepWebResult]:
+    async def _search_directory(
+        self, directory_url: str, query: str, session: aiohttp.ClientSession
+    ) -> DeepWebResult | None:
         """Search within a safe onion directory"""
         try:
             await self._respect_rate_limit()
@@ -299,7 +312,7 @@ class DeepWebCrawler(BaseScraper):
                             discovery_method="safe_directory",
                             safety_validated=True,
                             content_categories=self._categorize_content(content),
-                            risk_indicators=[]
+                            risk_indicators=[],
                         )
 
         except Exception as e:
@@ -309,19 +322,19 @@ class DeepWebCrawler(BaseScraper):
 
     async def _is_safe_to_visit(self, url: str) -> bool:
         """Determine if URL is safe to visit"""
-        if not url or not url.endswith('.onion'):
+        if not url or not url.endswith(".onion"):
             return False
 
         # Check against known unsafe patterns
         unsafe_patterns = [
-            r'market',
-            r'drugs?',
-            r'weapon',
-            r'hack',
-            r'fraud',
-            r'illegal',
-            r'cp\d*',
-            r'exploit'
+            r"market",
+            r"drugs?",
+            r"weapon",
+            r"hack",
+            r"fraud",
+            r"illegal",
+            r"cp\d*",
+            r"exploit",
         ]
 
         url_lower = url.lower()
@@ -341,10 +354,19 @@ class DeepWebCrawler(BaseScraper):
 
         # Check for harmful content indicators
         harmful_indicators = [
-            'malware', 'virus', 'trojan', 'exploit',
-            'illegal', 'drugs', 'weapons', 'fraud',
-            'child', 'explicit', 'adult content',
-            'marketplace', 'darknet market'
+            "malware",
+            "virus",
+            "trojan",
+            "exploit",
+            "illegal",
+            "drugs",
+            "weapons",
+            "fraud",
+            "child",
+            "explicit",
+            "adult content",
+            "marketplace",
+            "darknet market",
         ]
 
         for indicator in harmful_indicators:
@@ -371,24 +393,24 @@ class DeepWebCrawler(BaseScraper):
 
     def _extract_title(self, content: str) -> str:
         """Extract title from HTML content"""
-        title_match = re.search(r'<title[^>]*>([^<]+)</title>', content, re.IGNORECASE)
+        title_match = re.search(r"<title[^>]*>([^<]+)</title>", content, re.IGNORECASE)
         if title_match:
             return title_match.group(1).strip()
         return "Untitled"
 
-    def _categorize_content(self, content: str) -> List[str]:
+    def _categorize_content(self, content: str) -> list[str]:
         """Categorize content based on keywords"""
         categories = []
         content_lower = content.lower()
 
         category_keywords = {
-            'news': ['news', 'article', 'report', 'journalist'],
-            'forum': ['forum', 'discussion', 'post', 'thread'],
-            'blog': ['blog', 'diary', 'personal', 'thoughts'],
-            'academic': ['research', 'paper', 'study', 'academic'],
-            'technology': ['tech', 'software', 'computer', 'programming'],
-            'privacy': ['privacy', 'anonymous', 'secure', 'encryption'],
-            'activism': ['activist', 'freedom', 'rights', 'protest']
+            "news": ["news", "article", "report", "journalist"],
+            "forum": ["forum", "discussion", "post", "thread"],
+            "blog": ["blog", "diary", "personal", "thoughts"],
+            "academic": ["research", "paper", "study", "academic"],
+            "technology": ["tech", "software", "computer", "programming"],
+            "privacy": ["privacy", "anonymous", "secure", "encryption"],
+            "activism": ["activist", "freedom", "rights", "protest"],
         }
 
         for category, keywords in category_keywords.items():
@@ -397,16 +419,16 @@ class DeepWebCrawler(BaseScraper):
 
         return categories
 
-    def _detect_risk_indicators(self, content: str) -> List[str]:
+    def _detect_risk_indicators(self, content: str) -> list[str]:
         """Detect potential risk indicators in content"""
         risk_indicators = []
         content_lower = content.lower()
 
         risk_patterns = {
-            'phishing': ['phishing', 'fake login', 'steal password'],
-            'malware': ['download exe', 'run this file', 'install software'],
-            'scam': ['send money', 'wire transfer', 'bitcoin payment'],
-            'illegal_services': ['illegal service', 'dark market', 'underground']
+            "phishing": ["phishing", "fake login", "steal password"],
+            "malware": ["download exe", "run this file", "install software"],
+            "scam": ["send money", "wire transfer", "bitcoin payment"],
+            "illegal_services": ["illegal service", "dark market", "underground"],
         }
 
         for risk_type, patterns in risk_patterns.items():
@@ -418,15 +440,15 @@ class DeepWebCrawler(BaseScraper):
     def _clean_content(self, content: str) -> str:
         """Clean and sanitize content"""
         # Remove HTML tags
-        content = re.sub(r'<[^>]+>', '', content)
+        content = re.sub(r"<[^>]+>", "", content)
 
         # Remove scripts and styles
-        content = re.sub(r'<script.*?</script>', '', content, flags=re.DOTALL | re.IGNORECASE)
-        content = re.sub(r'<style.*?</style>', '', content, flags=re.DOTALL | re.IGNORECASE)
+        content = re.sub(r"<script.*?</script>", "", content, flags=re.DOTALL | re.IGNORECASE)
+        content = re.sub(r"<style.*?</style>", "", content, flags=re.DOTALL | re.IGNORECASE)
 
         # Normalize whitespace
-        content = re.sub(r'\s+', ' ', content)
-        content = re.sub(r'\n\s*\n', '\n\n', content)
+        content = re.sub(r"\s+", " ", content)
+        content = re.sub(r"\n\s*\n", "\n\n", content)
 
         # Limit content length for safety
         max_length = 10000
@@ -441,7 +463,7 @@ class DeepWebCrawler(BaseScraper):
             # Test SOCKS proxy
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5)
-            result = sock.connect_ex(('127.0.0.1', self.socks_port))
+            result = sock.connect_ex(("127.0.0.1", self.socks_port))
             sock.close()
 
             if result != 0:
@@ -449,14 +471,18 @@ class DeepWebCrawler(BaseScraper):
                 return False
 
             # Test with a simple Tor request
-            connector = aiohttp_socks.ProxyConnector.from_url(f'socks5://127.0.0.1:{self.socks_port}')
+            connector = aiohttp_socks.ProxyConnector.from_url(
+                f"socks5://127.0.0.1:{self.socks_port}"
+            )
 
             async with aiohttp.ClientSession(connector=connector) as session:
                 # Test with Tor check service
-                async with session.get('https://check.torproject.org/', timeout=aiohttp.ClientTimeout(total=15)) as response:
+                async with session.get(
+                    "https://check.torproject.org/", timeout=aiohttp.ClientTimeout(total=15)
+                ) as response:
                     if response.status == 200:
                         content = await response.text()
-                        if 'Congratulations. This browser is configured to use Tor.' in content:
+                        if "Congratulations. This browser is configured to use Tor." in content:
                             logger.info("Tor connectivity verified")
                             return True
 
@@ -477,7 +503,7 @@ class DeepWebCrawler(BaseScraper):
             await asyncio.sleep(sleep_time)
 
         self.last_request_time = time.time()
-        self.session_stats['total_requests'] += 1
+        self.session_stats["total_requests"] += 1
 
     async def health_check(self) -> bool:
         """Check if deep web crawler is ready"""
@@ -486,11 +512,11 @@ class DeepWebCrawler(BaseScraper):
 
         return await self._check_tor_connectivity()
 
-    def get_session_stats(self) -> Dict[str, Any]:
+    def get_session_stats(self) -> dict[str, Any]:
         """Get current session statistics"""
         return {
             **self.session_stats,
-            'visited_urls_count': len(self.visited_urls),
-            'safety_checks_enabled': self.safety_checks,
-            'tor_enabled': self.tor_enabled
+            "visited_urls_count": len(self.visited_urls),
+            "safety_checks_enabled": self.safety_checks,
+            "tor_enabled": self.tor_enabled,
         }

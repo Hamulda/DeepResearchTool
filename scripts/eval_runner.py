@@ -48,12 +48,12 @@ class EvaluationRunner:
             evaluation_report["meta"] = {
                 "total_evaluation_time": total_time,
                 "timestamp": time.time(),
-                "config_hash": hash(str(self.config))
+                "config_hash": hash(str(self.config)),
             }
 
             # Save results if output file specified
             if output_file:
-                with open(output_file, 'w') as f:
+                with open(output_file, "w") as f:
                     json.dump(evaluation_report, f, indent=2, default=str)
                 print(f"💾 Evaluation results saved to {output_file}")
 
@@ -65,8 +65,8 @@ class EvaluationRunner:
                 "error": str(e),
                 "meta": {
                     "total_evaluation_time": time.time() - start_time,
-                    "timestamp": time.time()
-                }
+                    "timestamp": time.time(),
+                },
             }
 
     def print_evaluation_summary(self, report: Dict[str, Any]):
@@ -85,15 +85,17 @@ class EvaluationRunner:
         print(f"\n📊 Basic Statistics:")
         print(f"  Test cases: {summary.get('total_test_cases', 0)}")
         print(f"  Success rate: {summary.get('success_rate', 0)*100:.1f}%")
-        print(f"  Average time per case: {summary.get('performance_stats', {}).get('average_case_time', 0):.1f}s")
+        print(
+            f"  Average time per case: {summary.get('performance_stats', {}).get('average_case_time', 0):.1f}s"
+        )
 
         # Quality metrics
         overall_metrics = summary.get("overall_metrics", {})
         if overall_metrics:
             print(f"\n📈 Quality Metrics:")
             for metric_name, metric_data in overall_metrics.items():
-                mean_val = metric_data.get('overall_mean', 0)
-                threshold_pass = metric_data.get('threshold_pass_rate', 0) * 100
+                mean_val = metric_data.get("overall_mean", 0)
+                threshold_pass = metric_data.get("threshold_pass_rate", 0) * 100
 
                 # Color coding based on performance
                 if mean_val >= 0.8:
@@ -103,7 +105,9 @@ class EvaluationRunner:
                 else:
                     status = "🔴"
 
-                print(f"  {status} {metric_name}: {mean_val:.3f} (pass rate: {threshold_pass:.1f}%)")
+                print(
+                    f"  {status} {metric_name}: {mean_val:.3f} (pass rate: {threshold_pass:.1f}%)"
+                )
 
         # Recommendations
         recommendations = report.get("recommendations", [])
@@ -142,7 +146,7 @@ class EvaluationRunner:
         # Check each threshold
         for metric_name, threshold in thresholds.items():
             if metric_name in overall_metrics:
-                actual_value = overall_metrics[metric_name].get('overall_mean', 0)
+                actual_value = overall_metrics[metric_name].get("overall_mean", 0)
 
                 if metric_name == "hallucination_rate":
                     # Lower is better for hallucination rate
@@ -153,10 +157,7 @@ class EvaluationRunner:
                     if actual_value < threshold:
                         failures.append(f"{metric_name}: {actual_value:.3f} < {threshold}")
 
-        return {
-            "passed": len(failures) == 0,
-            "failures": failures
-        }
+        return {"passed": len(failures) == 0, "failures": failures}
 
 
 async def main():
@@ -164,15 +165,19 @@ async def main():
     parser = argparse.ArgumentParser(description="Evaluation Runner")
     parser.add_argument("--config", "-c", default="config_m1_local.yaml", help="Configuration file")
     parser.add_argument("--output", "-o", help="Output JSON file")
-    parser.add_argument("--profile", choices=["quick", "thorough"], default="thorough", help="Evaluation profile")
-    parser.add_argument("--ci-mode", action="store_true", help="CI mode - exit with error code if gates fail")
+    parser.add_argument(
+        "--profile", choices=["quick", "thorough"], default="thorough", help="Evaluation profile"
+    )
+    parser.add_argument(
+        "--ci-mode", action="store_true", help="CI mode - exit with error code if gates fail"
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     args = parser.parse_args()
 
     # Load configuration
     try:
-        with open(args.config, 'r') as f:
+        with open(args.config, "r") as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
         print(f"❌ Configuration file {args.config} not found")

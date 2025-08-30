@@ -37,14 +37,11 @@ class TestPhase4Integration:
         self.logger = get_logger("phase4_test", phase=4)
         self.perf_logger = get_performance_logger("phase4_test")
 
-        self.test_results = {
-            "phase": 4,
-            "start_time": datetime.now().isoformat(),
-            "tests": []
-        }
+        self.test_results = {"phase": 4, "start_time": datetime.now().isoformat(), "tests": []}
 
-        self.logger.info("Starting Phase 4 integration tests",
-                        test_session=self.test_results["start_time"])
+        self.logger.info(
+            "Starting Phase 4 integration tests", test_session=self.test_results["start_time"]
+        )
 
     def _get_test_config(self):
         """Test konfigurace pro FÁZI 4"""
@@ -54,30 +51,27 @@ class TestPhase4Integration:
                     "recall_at_10": -0.05,
                     "ndcg_at_10": -0.02,
                     "citation_precision": -0.03,
-                    "groundedness_score": -0.05
+                    "groundedness_score": -0.05,
                 }
             },
             "performance": {
                 "fp16_enabled": True,
                 "metal_enabled": True,
                 "adaptive_batching": True,
-                "streaming_enabled": True
+                "streaming_enabled": True,
             },
             "security": {
                 "allow_domains": ["example.com", "test.com"],
                 "deny_domains": ["malicious.com"],
-                "default_rate_limits": {
-                    "requests_per_minute": 10,
-                    "requests_per_hour": 100
-                },
-                "user_agent": "DeepResearchTool/1.0 (+test@example.com)"
+                "default_rate_limits": {"requests_per_minute": 10, "requests_per_hour": 100},
+                "user_agent": "DeepResearchTool/1.0 (+test@example.com)",
             },
             "ci_gates": {
                 "max_smoke_test_time": 60,  # seconds
                 "min_claims_required": 1,
                 "min_citations_per_claim": 2,
-                "max_regression_tolerance": 0.05
-            }
+                "max_regression_tolerance": 0.05,
+            },
         }
 
     @pytest.mark.asyncio
@@ -97,7 +91,7 @@ class TestPhase4Integration:
                         "claims": [f"Test claim about {query}"],
                         "claim_citations": {"Test claim": ["doc_1", "doc_2"]},
                         "context_tokens_used": 2048,
-                        "context_tokens_budget": 4096
+                        "context_tokens_budget": 4096,
                     }
 
             mock_system = MockResearchSystem()
@@ -105,15 +99,13 @@ class TestPhase4Integration:
             # Spusť evaluaci na subset domén
             start_time = time.time()
             metrics = await evaluator.run_comprehensive_evaluation(
-                mock_system,
-                evaluation_domains=["climate_science"]
+                mock_system, evaluation_domains=["climate_science"]
             )
             evaluation_time = time.time() - start_time
 
             # Performance logging
             self.perf_logger.timing(
-                operation="comprehensive_evaluation",
-                duration_ms=evaluation_time * 1000
+                operation="comprehensive_evaluation", duration_ms=evaluation_time * 1000
             )
 
             # Kontrola výsledků
@@ -121,10 +113,12 @@ class TestPhase4Integration:
             assert metrics.mean_ndcg_10 > 0, "NDCG@10 musí být větší než 0"
             assert evaluation_time < 300, "Evaluace nesmí trvat více než 5 minut"
 
-            self.logger.info("Comprehensive evaluator test passed",
-                           total_queries=metrics.total_queries,
-                           mean_ndcg=metrics.mean_ndcg_10,
-                           duration_s=evaluation_time)
+            self.logger.info(
+                "Comprehensive evaluator test passed",
+                total_queries=metrics.total_queries,
+                mean_ndcg=metrics.mean_ndcg_10,
+                duration_s=evaluation_time,
+            )
 
             return {
                 "test": "comprehensive_evaluator",
@@ -132,8 +126,8 @@ class TestPhase4Integration:
                 "metrics": {
                     "total_queries": metrics.total_queries,
                     "mean_ndcg_10": metrics.mean_ndcg_10,
-                    "evaluation_time": evaluation_time
-                }
+                    "evaluation_time": evaluation_time,
+                },
             }
 
         except Exception as e:
@@ -149,7 +143,7 @@ class TestPhase4Integration:
             config = self._get_test_config()
             m1_manager = M1DeviceManager(
                 fp16_enabled=config["performance"]["fp16_enabled"],
-                metal_enabled=config["performance"]["metal_enabled"]
+                metal_enabled=config["performance"]["metal_enabled"],
             )
 
             # Test základní funkcionality
@@ -159,30 +153,27 @@ class TestPhase4Integration:
             # Test optimalizace
             start_time = time.time()
             optimized_result = await m1_manager.optimize_inference(
-                model_name="test_model",
-                batch_size=4
+                model_name="test_model", batch_size=4
             )
             optimization_time = time.time() - start_time
 
             self.perf_logger.timing(
-                operation="m1_optimization",
-                duration_ms=optimization_time * 1000
+                operation="m1_optimization", duration_ms=optimization_time * 1000
             )
 
             assert optimized_result is not None, "Optimalizace musí vrátit výsledek"
             assert optimization_time < 10, "Optimalizace nesmí trvat více než 10 sekund"
 
-            self.logger.info("M1 performance optimization test passed",
-                           device_info=device_info,
-                           optimization_time=optimization_time)
+            self.logger.info(
+                "M1 performance optimization test passed",
+                device_info=device_info,
+                optimization_time=optimization_time,
+            )
 
             return {
                 "test": "m1_performance_optimization",
                 "status": "passed",
-                "metrics": {
-                    "device_info": device_info,
-                    "optimization_time": optimization_time
-                }
+                "metrics": {"device_info": device_info, "optimization_time": optimization_time},
             }
 
         except Exception as e:
@@ -200,8 +191,7 @@ class TestPhase4Integration:
 
             # Test rate limiting
             rate_limit_result = await security_manager.check_rate_limit(
-                user_id="test_user",
-                endpoint="/api/search"
+                user_id="test_user", endpoint="/api/search"
             )
             assert rate_limit_result["allowed"], "Rate limit musí povolit request"
 
@@ -218,10 +208,12 @@ class TestPhase4Integration:
             )
             assert not pii_result["contains_pii"], "Text nesmí obsahovat PII"
 
-            self.logger.info("Security compliance test passed",
-                           rate_limit_ok=rate_limit_result["allowed"],
-                           domain_validation_ok=True,
-                           pii_detection_ok=True)
+            self.logger.info(
+                "Security compliance test passed",
+                rate_limit_ok=rate_limit_result["allowed"],
+                domain_validation_ok=True,
+                pii_detection_ok=True,
+            )
 
             return {
                 "test": "security_compliance",
@@ -229,8 +221,8 @@ class TestPhase4Integration:
                 "metrics": {
                     "rate_limit_check": rate_limit_result,
                     "domain_validation": {"allowed": allowed_domain, "denied": denied_domain},
-                    "pii_detection": pii_result
-                }
+                    "pii_detection": pii_result,
+                },
             }
 
         except Exception as e:
@@ -258,7 +250,7 @@ class TestPhase4Integration:
                     return {
                         "claims_count": len(claims),
                         "citations_per_claim": len(citations) / max(len(claims), 1),
-                        "quality_passed": len(claims) >= 1 and len(citations) >= 2
+                        "quality_passed": len(claims) >= 1 and len(citations) >= 2,
                     }
 
             ci_system = MockCISystem()
@@ -269,37 +261,43 @@ class TestPhase4Integration:
             smoke_duration = time.time() - start_time
 
             assert smoke_result["passed"], "Smoke testy musí projít"
-            assert smoke_duration < config["ci_gates"]["max_smoke_test_time"], \
-                f"Smoke testy nesmí trvat více než {config['ci_gates']['max_smoke_test_time']} sekund"
+            assert (
+                smoke_duration < config["ci_gates"]["max_smoke_test_time"]
+            ), f"Smoke testy nesmí trvat více než {config['ci_gates']['max_smoke_test_time']} sekund"
 
             # Test výstupní kvality
             mock_output = {
                 "claims": ["Test claim 1", "Test claim 2"],
-                "claim_citations": {"Test claim 1": ["doc1", "doc2"], "Test claim 2": ["doc3", "doc4"]}
+                "claim_citations": {
+                    "Test claim 1": ["doc1", "doc2"],
+                    "Test claim 2": ["doc3", "doc4"],
+                },
             }
 
             quality_result = await ci_system.validate_output_quality(mock_output)
 
             assert quality_result["quality_passed"], "Kvalita výstupu musí projít validací"
-            assert quality_result["claims_count"] >= config["ci_gates"]["min_claims_required"], \
-                "Počet claimů musí splňovat minimum"
+            assert (
+                quality_result["claims_count"] >= config["ci_gates"]["min_claims_required"]
+            ), "Počet claimů musí splňovat minimum"
 
             self.perf_logger.timing(
-                operation="ci_gates_validation",
-                duration_ms=smoke_duration * 1000
+                operation="ci_gates_validation", duration_ms=smoke_duration * 1000
             )
 
-            self.logger.info("CI gates validation test passed",
-                           smoke_duration=smoke_duration,
-                           quality_metrics=quality_result)
+            self.logger.info(
+                "CI gates validation test passed",
+                smoke_duration=smoke_duration,
+                quality_metrics=quality_result,
+            )
 
             return {
                 "test": "ci_gates_validation",
                 "status": "passed",
                 "metrics": {
                     "smoke_test_duration": smoke_duration,
-                    "quality_validation": quality_result
-                }
+                    "quality_validation": quality_result,
+                },
             }
 
         except Exception as e:
@@ -327,8 +325,7 @@ class TestPhase4Integration:
             all_passed = all(result["status"] == "passed" for result in all_results)
 
             self.perf_logger.timing(
-                operation="phase4_end_to_end",
-                duration_ms=total_duration * 1000
+                operation="phase4_end_to_end", duration_ms=total_duration * 1000
             )
 
             self.test_results["tests"] = all_results
@@ -343,10 +340,12 @@ class TestPhase4Integration:
             with open(results_path, "w") as f:
                 json.dump(self.test_results, f, indent=2)
 
-            self.logger.info("Phase 4 end-to-end test completed",
-                           all_passed=all_passed,
-                           total_duration=total_duration,
-                           results_saved=str(results_path))
+            self.logger.info(
+                "Phase 4 end-to-end test completed",
+                all_passed=all_passed,
+                total_duration=total_duration,
+                results_saved=str(results_path),
+            )
 
             assert all_passed, "Všechny FÁZE 4 testy musí projít"
 

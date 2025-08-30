@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""
-Ollama Verification Gating System
+"""Ollama Verification Gating System
 Quality-based model switching and context budget optimization
 
 Author: Senior IT Specialist
 """
 
 import asyncio
-import logging
-import time
-from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-import json
+import logging
 import re
+import time
+from typing import Any
 
 try:
     import ollama
@@ -24,6 +22,7 @@ except ImportError:
 @dataclass
 class VerificationResult:
     """Result of verification process"""
+
     confidence: float
     reasoning: str
     model_used: str
@@ -36,6 +35,7 @@ class VerificationResult:
 @dataclass
 class ContextBudget:
     """Context window management"""
+
     max_tokens: int
     used_tokens: int = 0
     chunk_overlap: int = 100
@@ -50,12 +50,13 @@ class ModelPerformanceTracker:
         self.quality_thresholds = {
             "qwen2.5:3b-q4_K_M": {"min_confidence": 0.5, "max_latency": 5.0},
             "qwen2.5:7b-q4_K_M": {"min_confidence": 0.7, "max_latency": 10.0},
-            "llama3.2:8b-q4_K_M": {"min_confidence": 0.8, "max_latency": 15.0}
+            "llama3.2:8b-q4_K_M": {"min_confidence": 0.8, "max_latency": 15.0},
         }
         self.logger = logging.getLogger(__name__)
 
-    def record_performance(self, model: str, confidence: float,
-                          latency: float, context_tokens: int):
+    def record_performance(
+        self, model: str, confidence: float, latency: float, context_tokens: int
+    ):
         """Record model performance metrics"""
         if model not in self.performance_history:
             self.performance_history[model] = {
@@ -63,7 +64,7 @@ class ModelPerformanceTracker:
                 "total_latency": 0.0,
                 "confidence_scores": [],
                 "context_usage": [],
-                "last_updated": datetime.now().isoformat()
+                "last_updated": datetime.now().isoformat(),
             }
 
         history = self.performance_history[model]
@@ -78,7 +79,7 @@ class ModelPerformanceTracker:
             history["confidence_scores"] = history["confidence_scores"][-100:]
             history["context_usage"] = history["context_usage"][-100:]
 
-    def get_model_stats(self, model: str) -> Dict[str, Any]:
+    def get_model_stats(self, model: str) -> dict[str, Any]:
         """Get performance statistics for model"""
         if model not in self.performance_history:
             return {"avg_confidence": 0.0, "avg_latency": 0.0, "calls": 0}
@@ -87,10 +88,20 @@ class ModelPerformanceTracker:
 
         return {
             "calls": history["calls"],
-            "avg_confidence": sum(history["confidence_scores"]) / len(history["confidence_scores"]) if history["confidence_scores"] else 0.0,
-            "avg_latency": history["total_latency"] / history["calls"] if history["calls"] > 0 else 0.0,
-            "avg_context_tokens": sum(history["context_usage"]) / len(history["context_usage"]) if history["context_usage"] else 0,
-            "last_updated": history["last_updated"]
+            "avg_confidence": (
+                sum(history["confidence_scores"]) / len(history["confidence_scores"])
+                if history["confidence_scores"]
+                else 0.0
+            ),
+            "avg_latency": (
+                history["total_latency"] / history["calls"] if history["calls"] > 0 else 0.0
+            ),
+            "avg_context_tokens": (
+                sum(history["context_usage"]) / len(history["context_usage"])
+                if history["context_usage"]
+                else 0
+            ),
+            "last_updated": history["last_updated"],
         }
 
     def should_fallback(self, model: str, confidence: float, latency: float) -> bool:
@@ -102,12 +113,16 @@ class ModelPerformanceTracker:
 
         # Check confidence threshold
         if confidence < thresholds["min_confidence"]:
-            self.logger.info(f"Fallback triggered: confidence {confidence:.3f} < {thresholds['min_confidence']}")
+            self.logger.info(
+                f"Fallback triggered: confidence {confidence:.3f} < {thresholds['min_confidence']}"
+            )
             return True
 
         # Check latency (optional - might indicate model issues)
         if latency > thresholds["max_latency"] * 2:  # 2x normal latency
-            self.logger.warning(f"High latency detected: {latency:.1f}s > {thresholds['max_latency'] * 2:.1f}s")
+            self.logger.warning(
+                f"High latency detected: {latency:.1f}s > {thresholds['max_latency'] * 2:.1f}s"
+            )
 
         return False
 
@@ -123,8 +138,7 @@ class ContextOptimizer:
         """Rough token estimation (4 chars per token average)"""
         return len(text) // 4
 
-    def optimize_chunks(self, passages: List[str], query: str,
-                       budget: ContextBudget) -> List[str]:
+    def optimize_chunks(self, passages: list[str], query: str, budget: ContextBudget) -> list[str]:
         """Optimize passage chunks for context window"""
         query_tokens = self.estimate_tokens(query)
         available_tokens = budget.max_tokens - query_tokens - 200  # Reserve for response
@@ -175,8 +189,8 @@ class ContextOptimizer:
 
                         # Find good break point (sentence end)
                         for i in range(len(chunk) - 1, max(len(chunk) - 200, 0), -1):
-                            if chunk[i] in '.!?':
-                                chunk = chunk[:i + 1]
+                            if chunk[i] in ".!?":
+                                chunk = chunk[: i + 1]
                                 break
 
                         optimized_passages.append(chunk)
@@ -186,22 +200,24 @@ class ContextOptimizer:
 
         budget.used_tokens = current_tokens + query_tokens
 
-        self.logger.info(f"Context optimization: {len(passages)} → {len(optimized_passages)} passages, "
-                        f"{budget.used_tokens}/{budget.max_tokens} tokens")
+        self.logger.info(
+            f"Context optimization: {len(passages)} → {len(optimized_passages)} passages, "
+            f"{budget.used_tokens}/{budget.max_tokens} tokens"
+        )
 
         return optimized_passages
 
-    def tune_overlap(self, domain: str, performance_history: Dict[str, Any]) -> int:
+    def tune_overlap(self, domain: str, performance_history: dict[str, Any]) -> int:
         """Auto-tune chunk overlap based on domain and performance"""
         base_overlap = 100
 
         # Domain-specific adjustments
         domain_multipliers = {
-            "legal": 1.5,      # Legal documents need more context
-            "medical": 1.3,    # Medical texts are dense
+            "legal": 1.5,  # Legal documents need more context
+            "medical": 1.3,  # Medical texts are dense
             "technical": 1.2,  # Technical docs have dependencies
-            "news": 0.8,       # News articles are more independent
-            "general": 1.0
+            "news": 0.8,  # News articles are more independent
+            "general": 1.0,
         }
 
         multiplier = domain_multipliers.get(domain, 1.0)
@@ -219,7 +235,7 @@ class ContextOptimizer:
 class OllamaVerificationGate:
     """Main verification gate with model fallback"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
 
@@ -240,10 +256,10 @@ class OllamaVerificationGate:
         # Ollama client
         self.client = ollama.Client()
 
-    async def verify_claim_with_evidence(self, claim: str, evidence_passages: List[str],
-                                       domain: str = "general") -> VerificationResult:
-        """
-        Verify claim against evidence with quality gating
+    async def verify_claim_with_evidence(
+        self, claim: str, evidence_passages: list[str], domain: str = "general"
+    ) -> VerificationResult:
+        """Verify claim against evidence with quality gating
 
         Args:
             claim: Claim to verify
@@ -252,6 +268,7 @@ class OllamaVerificationGate:
 
         Returns:
             VerificationResult with confidence and reasoning
+
         """
         self.logger.info(f"Verifying claim with {len(evidence_passages)} evidence passages")
 
@@ -259,14 +276,12 @@ class OllamaVerificationGate:
         budget = ContextBudget(
             max_tokens=self.max_context,
             chunk_overlap=self.context_optimizer.tune_overlap(domain, {}),
-            adaptive_chunking=self.enable_adaptive_chunking
+            adaptive_chunking=self.enable_adaptive_chunking,
         )
 
         # Select and optimize top passages
-        top_passages = evidence_passages[:self.top_k_passages]
-        optimized_passages = self.context_optimizer.optimize_chunks(
-            top_passages, claim, budget
-        )
+        top_passages = evidence_passages[: self.top_k_passages]
+        optimized_passages = self.context_optimizer.optimize_chunks(top_passages, claim, budget)
 
         # First attempt with primary model
         start_time = time.time()
@@ -279,17 +294,12 @@ class OllamaVerificationGate:
 
         # Record performance
         self.performance_tracker.record_performance(
-            self.primary_model,
-            primary_result.confidence,
-            primary_latency,
-            budget.used_tokens
+            self.primary_model, primary_result.confidence, primary_latency, budget.used_tokens
         )
 
         # Check if fallback is needed
         should_fallback = self.performance_tracker.should_fallback(
-            self.primary_model,
-            primary_result.confidence,
-            primary_latency
+            self.primary_model, primary_result.confidence, primary_latency
         )
 
         if should_fallback and self.fallback_model != self.primary_model:
@@ -309,29 +319,32 @@ class OllamaVerificationGate:
                 self.fallback_model,
                 fallback_result.confidence,
                 fallback_latency,
-                budget.used_tokens
+                budget.used_tokens,
             )
 
             # Use fallback result
             fallback_result.fallback_triggered = True
             fallback_result.processing_time = primary_latency + fallback_latency
 
-            self.logger.info(f"Fallback verification complete: confidence {fallback_result.confidence:.3f}")
+            self.logger.info(
+                f"Fallback verification complete: confidence {fallback_result.confidence:.3f}"
+            )
             return fallback_result
 
-        else:
-            primary_result.processing_time = primary_latency
-            self.logger.info(f"Primary verification complete: confidence {primary_result.confidence:.3f}")
-            return primary_result
+        primary_result.processing_time = primary_latency
+        self.logger.info(
+            f"Primary verification complete: confidence {primary_result.confidence:.3f}"
+        )
+        return primary_result
 
-    async def _verify_with_model(self, claim: str, evidence_passages: List[str],
-                               model: str) -> VerificationResult:
+    async def _verify_with_model(
+        self, claim: str, evidence_passages: list[str], model: str
+    ) -> VerificationResult:
         """Verify claim using specific model"""
         # Construct verification prompt
-        evidence_text = "\n\n".join([
-            f"Evidence {i+1}: {passage}"
-            for i, passage in enumerate(evidence_passages)
-        ])
+        evidence_text = "\n\n".join(
+            [f"Evidence {i+1}: {passage}" for i, passage in enumerate(evidence_passages)]
+        )
 
         prompt = f"""You are a fact-checking expert. Analyze the claim against the provided evidence and determine how well it is supported.
 
@@ -358,11 +371,7 @@ Be concise but thorough in your reasoning."""
                 self.client.generate,
                 model=model,
                 prompt=prompt,
-                options={
-                    "temperature": 0.1,
-                    "top_p": 0.9,
-                    "num_predict": 300
-                }
+                options={"temperature": 0.1, "top_p": 0.9, "num_predict": 300},
             )
 
             response_text = response.get("response", "")
@@ -381,7 +390,7 @@ Be concise but thorough in your reasoning."""
                 model_used=model,
                 processing_time=0.0,  # Set by caller
                 context_tokens=context_tokens,
-                quality_score=quality_score
+                quality_score=quality_score,
             )
 
         except Exception as e:
@@ -390,11 +399,11 @@ Be concise but thorough in your reasoning."""
             # Return low-confidence result on error
             return VerificationResult(
                 confidence=0.1,
-                reasoning=f"Verification failed: {str(e)}",
+                reasoning=f"Verification failed: {e!s}",
                 model_used=model,
                 processing_time=0.0,
                 context_tokens=0,
-                quality_score=0.0
+                quality_score=0.0,
             )
 
     def _extract_confidence(self, response: str) -> float:
@@ -411,7 +420,7 @@ Be concise but thorough in your reasoning."""
         confidence_patterns = [
             r"confidence.*?(\d+\.?\d*)(?:%|\s|$)",
             r"(\d+\.?\d*).*?confidence",
-            r"score.*?(\d+\.?\d*)"
+            r"score.*?(\d+\.?\d*)",
         ]
 
         for pattern in confidence_patterns:
@@ -430,15 +439,18 @@ Be concise but thorough in your reasoning."""
 
     def _extract_reasoning(self, response: str) -> str:
         """Extract reasoning from response"""
-        reasoning_match = re.search(r"REASONING:\s*(.+?)(?:\n(?:QUALITY|$))", response, re.IGNORECASE | re.DOTALL)
+        reasoning_match = re.search(
+            r"REASONING:\s*(.+?)(?:\n(?:QUALITY|$))", response, re.IGNORECASE | re.DOTALL
+        )
         if reasoning_match:
             return reasoning_match.group(1).strip()
 
         # Fallback: return first paragraph that's not confidence/quality
-        lines = response.split('\n')
+        lines = response.split("\n")
         for line in lines:
-            if (len(line.strip()) > 20 and
-                not re.match(r"(CONFIDENCE|QUALITY|SCORE):", line, re.IGNORECASE)):
+            if len(line.strip()) > 20 and not re.match(
+                r"(CONFIDENCE|QUALITY|SCORE):", line, re.IGNORECASE
+            ):
                 return line.strip()
 
         return "Unable to extract reasoning from response"
@@ -456,8 +468,9 @@ Be concise but thorough in your reasoning."""
         # Default quality score
         return 0.7
 
-    async def batch_verify_claims(self, claims_with_evidence: List[Dict[str, Any]],
-                                domain: str = "general") -> List[VerificationResult]:
+    async def batch_verify_claims(
+        self, claims_with_evidence: list[dict[str, Any]], domain: str = "general"
+    ) -> list[VerificationResult]:
         """Verify multiple claims in batch"""
         self.logger.info(f"Batch verifying {len(claims_with_evidence)} claims")
 
@@ -469,24 +482,23 @@ Be concise but thorough in your reasoning."""
 
             claim_text = claim_data.get("text", "")
             evidence_passages = [
-                ev.get("snippet", ev.get("content", ""))
-                for ev in claim_data.get("evidence", [])
+                ev.get("snippet", ev.get("content", "")) for ev in claim_data.get("evidence", [])
             ]
 
             if not claim_text or not evidence_passages:
                 # Skip claims without text or evidence
-                results.append(VerificationResult(
-                    confidence=0.0,
-                    reasoning="No claim text or evidence provided",
-                    model_used="none",
-                    processing_time=0.0,
-                    context_tokens=0
-                ))
+                results.append(
+                    VerificationResult(
+                        confidence=0.0,
+                        reasoning="No claim text or evidence provided",
+                        model_used="none",
+                        processing_time=0.0,
+                        context_tokens=0,
+                    )
+                )
                 continue
 
-            result = await self.verify_claim_with_evidence(
-                claim_text, evidence_passages, domain
-            )
+            result = await self.verify_claim_with_evidence(claim_text, evidence_passages, domain)
             results.append(result)
 
         total_time = time.time() - total_start
@@ -495,19 +507,16 @@ Be concise but thorough in your reasoning."""
         avg_confidence = sum(r.confidence for r in results) / len(results) if results else 0
         fallback_count = sum(1 for r in results if r.fallback_triggered)
 
-        self.logger.info(f"Batch verification complete:")
+        self.logger.info("Batch verification complete:")
         self.logger.info(f"  Average confidence: {avg_confidence:.3f}")
         self.logger.info(f"  Fallback triggered: {fallback_count}/{len(results)} times")
         self.logger.info(f"  Total time: {total_time:.1f}s")
 
         return results
 
-    def get_performance_summary(self) -> Dict[str, Any]:
+    def get_performance_summary(self) -> dict[str, Any]:
         """Get performance summary for all models"""
-        summary = {
-            "timestamp": datetime.now().isoformat(),
-            "models": {}
-        }
+        summary = {"timestamp": datetime.now().isoformat(), "models": {}}
 
         for model in [self.primary_model, self.fallback_model]:
             stats = self.performance_tracker.get_model_stats(model)
@@ -516,6 +525,6 @@ Be concise but thorough in your reasoning."""
         return summary
 
 
-def create_verification_gate(config: Dict[str, Any]) -> OllamaVerificationGate:
+def create_verification_gate(config: dict[str, Any]) -> OllamaVerificationGate:
     """Factory function for verification gate"""
     return OllamaVerificationGate(config)

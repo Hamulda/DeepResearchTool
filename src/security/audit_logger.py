@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
-"""
-Audit Logger
+"""Audit Logger
 Comprehensive audit logging for security events and compliance
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, List, Any, Optional, Union
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from collections import deque
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import Enum
+import gzip
+import hashlib
 import json
 import logging
-import hashlib
-import threading
 from pathlib import Path
-from enum import Enum
-from collections import deque
-import gzip
+import threading
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class AuditEventType(Enum):
     """Types of audit events"""
+
     ACCESS_ATTEMPT = "access_attempt"
     CONTENT_PROCESSING = "content_processing"
     PII_DETECTION = "pii_detection"
@@ -37,6 +37,7 @@ class AuditEventType(Enum):
 
 class AuditSeverity(Enum):
     """Severity levels for audit events"""
+
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
@@ -46,18 +47,19 @@ class AuditSeverity(Enum):
 @dataclass
 class AuditEvent:
     """Individual audit event"""
+
     event_id: str
     event_type: AuditEventType
     severity: AuditSeverity
     timestamp: datetime
     source_component: str
-    event_data: Dict[str, Any]
-    user_id: Optional[str] = None
-    session_id: Optional[str] = None
-    ip_address: Optional[str] = None
-    user_agent: Optional[str] = None
+    event_data: dict[str, Any]
+    user_id: str | None = None
+    session_id: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "event_id": self.event_id,
             "event_type": self.event_type.value,
@@ -68,7 +70,7 @@ class AuditEvent:
             "user_id": self.user_id,
             "session_id": self.session_id,
             "ip_address": self.ip_address,
-            "user_agent": self.user_agent
+            "user_agent": self.user_agent,
         }
 
     def get_hash(self) -> str:
@@ -80,7 +82,7 @@ class AuditEvent:
 class AuditLogger:
     """Main audit logging system with integrity protection"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.audit_config = config.get("audit_logging", {})
 
@@ -100,7 +102,7 @@ class AuditLogger:
 
         # Integrity protection
         self.integrity_enabled = self.audit_config.get("integrity_protection", True)
-        self.integrity_chain: List[str] = []
+        self.integrity_chain: list[str] = []
 
         # Background flush thread
         self.flush_interval = self.audit_config.get("flush_interval_seconds", 30)
@@ -113,7 +115,7 @@ class AuditLogger:
             "events_by_type": {},
             "events_by_severity": {},
             "files_created": 0,
-            "integrity_violations": 0
+            "integrity_violations": 0,
         }
 
         self._initialize_logging()
@@ -122,7 +124,6 @@ class AuditLogger:
 
     def _initialize_logging(self):
         """Initialize audit logging system"""
-
         # Create initial log file
         self._rotate_log_file()
 
@@ -136,14 +137,13 @@ class AuditLogger:
         event_type: AuditEventType,
         severity: AuditSeverity,
         source_component: str,
-        event_data: Dict[str, Any],
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None
+        event_data: dict[str, Any],
+        user_id: str | None = None,
+        session_id: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> str:
         """Log an audit event"""
-
         # Generate unique event ID
         event_id = self._generate_event_id()
 
@@ -152,13 +152,13 @@ class AuditLogger:
             event_id=event_id,
             event_type=event_type,
             severity=severity,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             source_component=source_component,
             event_data=event_data,
             user_id=user_id,
             session_id=session_id,
             ip_address=ip_address,
-            user_agent=user_agent
+            user_agent=user_agent,
         )
 
         # Add to buffer
@@ -167,8 +167,12 @@ class AuditLogger:
 
         # Update statistics
         self.stats["total_events"] += 1
-        self.stats["events_by_type"][event_type.value] = self.stats["events_by_type"].get(event_type.value, 0) + 1
-        self.stats["events_by_severity"][severity.value] = self.stats["events_by_severity"].get(severity.value, 0) + 1
+        self.stats["events_by_type"][event_type.value] = (
+            self.stats["events_by_type"].get(event_type.value, 0) + 1
+        )
+        self.stats["events_by_severity"][severity.value] = (
+            self.stats["events_by_severity"].get(severity.value, 0) + 1
+        )
 
         # Immediate flush for critical events
         if severity == AuditSeverity.CRITICAL:
@@ -181,19 +185,18 @@ class AuditLogger:
         self,
         url: str,
         result: str,
-        rule_matched: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None
+        rule_matched: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ):
         """Log access attempt"""
-
         severity = AuditSeverity.WARNING if result == "blocked" else AuditSeverity.INFO
 
         event_data = {
             "url": url,
             "access_result": result,
             "rule_matched": rule_matched,
-            "access_timestamp": datetime.now(timezone.utc).isoformat()
+            "access_timestamp": datetime.now(UTC).isoformat(),
         }
 
         self.log_event(
@@ -202,19 +205,18 @@ class AuditLogger:
             "osint_sandbox",
             event_data,
             ip_address=ip_address,
-            user_agent=user_agent
+            user_agent=user_agent,
         )
 
     def log_pii_detection(
         self,
         pii_count: int,
-        pii_types: List[str],
+        pii_types: list[str],
         redacted: bool,
         processing_id: str,
-        content_hash: str
+        content_hash: str,
     ):
         """Log PII detection event"""
-
         severity = AuditSeverity.WARNING if pii_count > 0 else AuditSeverity.INFO
 
         event_data = {
@@ -222,29 +224,23 @@ class AuditLogger:
             "pii_types": pii_types,
             "redacted": redacted,
             "processing_id": processing_id,
-            "content_hash": content_hash
+            "content_hash": content_hash,
         }
 
-        self.log_event(
-            AuditEventType.PII_DETECTION,
-            severity,
-            "pii_redactor",
-            event_data
-        )
+        self.log_event(AuditEventType.PII_DETECTION, severity, "pii_redactor", event_data)
 
     def log_security_violation(
         self,
         violation_type: str,
         description: str,
-        source_ip: Optional[str] = None,
-        user_id: Optional[str] = None
+        source_ip: str | None = None,
+        user_id: str | None = None,
     ):
         """Log security violation"""
-
         event_data = {
             "violation_type": violation_type,
             "description": description,
-            "detected_timestamp": datetime.now(timezone.utc).isoformat()
+            "detected_timestamp": datetime.now(UTC).isoformat(),
         }
 
         self.log_event(
@@ -253,25 +249,24 @@ class AuditLogger:
             "security_monitor",
             event_data,
             user_id=user_id,
-            ip_address=source_ip
+            ip_address=source_ip,
         )
 
     def log_data_export(
         self,
         export_type: str,
-        data_types: List[str],
+        data_types: list[str],
         record_count: int,
         destination: str,
-        user_id: Optional[str] = None
+        user_id: str | None = None,
     ):
         """Log data export event"""
-
         event_data = {
             "export_type": export_type,
             "data_types": data_types,
             "record_count": record_count,
             "destination": destination,
-            "export_timestamp": datetime.now(timezone.utc).isoformat()
+            "export_timestamp": datetime.now(UTC).isoformat(),
         }
 
         self.log_event(
@@ -279,21 +274,17 @@ class AuditLogger:
             AuditSeverity.WARNING,
             "data_exporter",
             event_data,
-            user_id=user_id
+            user_id=user_id,
         )
 
     def log_configuration_change(
-        self,
-        component: str,
-        changes: Dict[str, Any],
-        user_id: Optional[str] = None
+        self, component: str, changes: dict[str, Any], user_id: str | None = None
     ):
         """Log configuration change"""
-
         event_data = {
             "component": component,
             "changes": changes,
-            "change_timestamp": datetime.now(timezone.utc).isoformat()
+            "change_timestamp": datetime.now(UTC).isoformat(),
         }
 
         self.log_event(
@@ -301,12 +292,11 @@ class AuditLogger:
             AuditSeverity.WARNING,
             "configuration_manager",
             event_data,
-            user_id=user_id
+            user_id=user_id,
         )
 
     def _flush_buffer(self):
         """Flush event buffer to disk"""
-
         events_to_flush = []
 
         with self.buffer_lock:
@@ -322,7 +312,7 @@ class AuditLogger:
 
         # Write events to file
         try:
-            with open(self.current_log_file, 'a', encoding='utf-8') as f:
+            with open(self.current_log_file, "a", encoding="utf-8") as f:
                 for event in events_to_flush:
                     event_dict = event.to_dict()
 
@@ -330,10 +320,12 @@ class AuditLogger:
                     if self.integrity_enabled:
                         event_hash = event.get_hash()
                         event_dict["integrity_hash"] = event_hash
-                        event_dict["previous_hash"] = self.integrity_chain[-1] if self.integrity_chain else None
+                        event_dict["previous_hash"] = (
+                            self.integrity_chain[-1] if self.integrity_chain else None
+                        )
                         self.integrity_chain.append(event_hash)
 
-                    f.write(json.dumps(event_dict) + '\n')
+                    f.write(json.dumps(event_dict) + "\n")
 
             logger.debug(f"Flushed {len(events_to_flush)} audit events to disk")
 
@@ -346,7 +338,6 @@ class AuditLogger:
 
     def _should_rotate_log(self) -> bool:
         """Check if log file should be rotated"""
-
         if not self.current_log_file or not self.current_log_file.exists():
             return True
 
@@ -354,7 +345,6 @@ class AuditLogger:
 
     def _rotate_log_file(self):
         """Rotate to a new log file"""
-
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         new_log_file = self.storage_dir / f"audit_log_{timestamp}.jsonl"
 
@@ -369,12 +359,11 @@ class AuditLogger:
 
     def _compress_log_file(self, log_file: Path):
         """Compress a log file"""
-
-        compressed_file = log_file.with_suffix(log_file.suffix + '.gz')
+        compressed_file = log_file.with_suffix(log_file.suffix + ".gz")
 
         try:
-            with open(log_file, 'rb') as f_in:
-                with gzip.open(compressed_file, 'wb') as f_out:
+            with open(log_file, "rb") as f_in:
+                with gzip.open(compressed_file, "wb") as f_out:
                     f_out.writelines(f_in)
 
             # Remove original file after successful compression
@@ -386,27 +375,26 @@ class AuditLogger:
 
     def _flush_loop(self):
         """Background thread for periodic buffer flushing"""
-
         while not self.stop_flush.wait(self.flush_interval):
             self._flush_buffer()
 
     def _generate_event_id(self) -> str:
         """Generate unique event ID"""
-
-        timestamp = datetime.now(timezone.utc).timestamp()
-        random_part = hashlib.md5(f"{timestamp}_{self.stats['total_events']}".encode()).hexdigest()[:8]
+        timestamp = datetime.now(UTC).timestamp()
+        random_part = hashlib.md5(f"{timestamp}_{self.stats['total_events']}".encode()).hexdigest()[
+            :8
+        ]
         return f"audit_{int(timestamp)}_{random_part}"
 
     def query_events(
         self,
-        event_type: Optional[AuditEventType] = None,
-        severity: Optional[AuditSeverity] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        limit: int = 1000
-    ) -> List[Dict[str, Any]]:
+        event_type: AuditEventType | None = None,
+        severity: AuditSeverity | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
         """Query audit events with filters"""
-
         events = []
 
         # Search in current buffer
@@ -417,7 +405,9 @@ class AuditLogger:
 
         # Search in log files if needed
         if len(events) < limit:
-            file_events = self._search_log_files(event_type, severity, start_time, end_time, limit - len(events))
+            file_events = self._search_log_files(
+                event_type, severity, start_time, end_time, limit - len(events)
+            )
             events.extend(file_events)
 
         return events[:limit]
@@ -425,13 +415,12 @@ class AuditLogger:
     def _event_matches_filter(
         self,
         event: AuditEvent,
-        event_type: Optional[AuditEventType],
-        severity: Optional[AuditSeverity],
-        start_time: Optional[datetime],
-        end_time: Optional[datetime]
+        event_type: AuditEventType | None,
+        severity: AuditSeverity | None,
+        start_time: datetime | None,
+        end_time: datetime | None,
     ) -> bool:
         """Check if event matches query filters"""
-
         if event_type and event.event_type != event_type:
             return False
 
@@ -448,14 +437,13 @@ class AuditLogger:
 
     def _search_log_files(
         self,
-        event_type: Optional[AuditEventType],
-        severity: Optional[AuditSeverity],
-        start_time: Optional[datetime],
-        end_time: Optional[datetime],
-        limit: int
-    ) -> List[Dict[str, Any]]:
+        event_type: AuditEventType | None,
+        severity: AuditSeverity | None,
+        start_time: datetime | None,
+        end_time: datetime | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
         """Search audit events in log files"""
-
         events = []
 
         # Get all log files (including compressed)
@@ -468,10 +456,10 @@ class AuditLogger:
 
             try:
                 # Handle compressed files
-                if log_file.suffix == '.gz':
-                    file_opener = lambda f: gzip.open(f, 'rt', encoding='utf-8')
+                if log_file.suffix == ".gz":
+                    file_opener = lambda f: gzip.open(f, "rt", encoding="utf-8")
                 else:
-                    file_opener = lambda f: open(f, 'r', encoding='utf-8')
+                    file_opener = lambda f: open(f, encoding="utf-8")
 
                 with file_opener(log_file) as f:
                     for line in f:
@@ -486,10 +474,12 @@ class AuditLogger:
                                 severity=AuditSeverity(event_dict["severity"]),
                                 timestamp=event_timestamp,
                                 source_component=event_dict["source_component"],
-                                event_data=event_dict["event_data"]
+                                event_data=event_dict["event_data"],
                             )
 
-                            if self._event_matches_filter(temp_event, event_type, severity, start_time, end_time):
+                            if self._event_matches_filter(
+                                temp_event, event_type, severity, start_time, end_time
+                            ):
                                 events.append(event_dict)
 
                                 if len(events) >= limit:
@@ -503,9 +493,8 @@ class AuditLogger:
 
         return events
 
-    def verify_integrity(self) -> Dict[str, Any]:
+    def verify_integrity(self) -> dict[str, Any]:
         """Verify audit log integrity"""
-
         if not self.integrity_enabled:
             return {"status": "disabled", "message": "Integrity protection not enabled"}
 
@@ -514,7 +503,7 @@ class AuditLogger:
             "total_events_checked": 0,
             "integrity_violations": 0,
             "missing_hashes": 0,
-            "broken_chains": 0
+            "broken_chains": 0,
         }
 
         # Check integrity chain
@@ -525,10 +514,10 @@ class AuditLogger:
 
         for log_file in log_files:
             try:
-                if log_file.suffix == '.gz':
-                    file_opener = lambda f: gzip.open(f, 'rt', encoding='utf-8')
+                if log_file.suffix == ".gz":
+                    file_opener = lambda f: gzip.open(f, "rt", encoding="utf-8")
                 else:
-                    file_opener = lambda f: open(f, 'r', encoding='utf-8')
+                    file_opener = lambda f: open(f, encoding="utf-8")
 
                 with file_opener(log_file) as f:
                     for line in f:
@@ -563,15 +552,16 @@ class AuditLogger:
                 logger.error(f"Failed to verify integrity of {log_file}: {e}")
 
         # Update status
-        if (verification_results["integrity_violations"] > 0 or
-            verification_results["broken_chains"] > 0):
+        if (
+            verification_results["integrity_violations"] > 0
+            or verification_results["broken_chains"] > 0
+        ):
             verification_results["status"] = "violations_detected"
 
         return verification_results
 
-    def get_audit_statistics(self) -> Dict[str, Any]:
+    def get_audit_statistics(self) -> dict[str, Any]:
         """Get audit logging statistics"""
-
         return {
             "total_events": self.stats["total_events"],
             "events_by_type": self.stats["events_by_type"],
@@ -583,12 +573,11 @@ class AuditLogger:
             "storage_location": str(self.storage_dir),
             "current_log_file": str(self.current_log_file) if self.current_log_file else None,
             "integrity_protection": self.integrity_enabled,
-            "compression_enabled": self.compression_enabled
+            "compression_enabled": self.compression_enabled,
         }
 
     def shutdown(self):
         """Gracefully shutdown audit logger"""
-
         logger.info("Shutting down audit logger...")
 
         # Stop flush thread
@@ -602,7 +591,7 @@ class AuditLogger:
         logger.info("Audit logger shutdown complete")
 
 
-def create_audit_logger(config: Dict[str, Any]) -> AuditLogger:
+def create_audit_logger(config: dict[str, Any]) -> AuditLogger:
     """Factory function for audit logger"""
     return AuditLogger(config)
 
@@ -615,39 +604,32 @@ if __name__ == "__main__":
             "flush_interval_seconds": 10,
             "rotation_size_mb": 1,  # Small for testing
             "compression": True,
-            "integrity_protection": True
+            "integrity_protection": True,
         },
-        "audit_storage": "test_audit_logs"
+        "audit_storage": "test_audit_logs",
     }
 
     audit_logger = AuditLogger(config)
 
     # Log various events
-    audit_logger.log_access_attempt(
-        "https://example.com/test",
-        "allowed",
-        ip_address="192.168.1.1"
-    )
+    audit_logger.log_access_attempt("https://example.com/test", "allowed", ip_address="192.168.1.1")
 
     audit_logger.log_pii_detection(
         pii_count=2,
         pii_types=["email", "phone"],
         redacted=True,
         processing_id="proc_123",
-        content_hash="abc123"
+        content_hash="abc123",
     )
 
     audit_logger.log_security_violation(
         violation_type="rate_limit_exceeded",
         description="Too many requests from IP",
-        source_ip="192.168.1.100"
+        source_ip="192.168.1.100",
     )
 
     # Query events
-    events = audit_logger.query_events(
-        event_type=AuditEventType.ACCESS_ATTEMPT,
-        limit=10
-    )
+    events = audit_logger.query_events(event_type=AuditEventType.ACCESS_ATTEMPT, limit=10)
 
     print(f"Found {len(events)} access attempt events")
 

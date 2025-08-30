@@ -19,7 +19,7 @@ from src.core.enhanced_tools import (
     semantic_scholar_search,
     data_gov_search,
     wayback_machine_search,
-    cross_reference_sources
+    cross_reference_sources,
 )
 
 
@@ -30,25 +30,14 @@ class TestLangGraphAgent:
     def config(self):
         """Test konfigurace"""
         return {
-            "llm": {
-                "model": "gpt-4o-mini",
-                "temperature": 0.1
-            },
+            "llm": {"model": "gpt-4o-mini", "temperature": 0.1},
             "memory_store": {
                 "type": "chroma",
                 "collection_name": "test_collection",
-                "persist_directory": "./test_chroma_db"
+                "persist_directory": "./test_chroma_db",
             },
-            "rag": {
-                "chunking": {
-                    "chunk_size": 500,
-                    "chunk_overlap": 50
-                }
-            },
-            "validation": {
-                "threshold": 0.7,
-                "max_retries": 2
-            }
+            "rag": {"chunking": {"chunk_size": 500, "chunk_overlap": 50}},
+            "validation": {"threshold": 0.7, "max_retries": 2},
         }
 
     @pytest.fixture
@@ -82,10 +71,10 @@ class TestLangGraphAgent:
             human_approval_required=False,
             human_decision=None,
             pending_action=None,
-            sources_used=[]
+            sources_used=[],
         )
 
-        with patch('langchain_openai.ChatOpenAI') as mock_llm:
+        with patch("langchain_openai.ChatOpenAI") as mock_llm:
             mock_response = Mock()
             mock_response.content = "1. Definice AI\n2. Historie AI\n3. Aplikace AI"
             mock_llm.return_value.ainvoke = AsyncMock(return_value=mock_response)
@@ -104,7 +93,7 @@ class TestLangGraphAgent:
             plan=["step1"],
             retrieved_docs=[
                 {"content": "Test content 1", "source": "test1.com", "metadata": {}},
-                {"content": "Test content 2", "source": "test2.com", "metadata": {}}
+                {"content": "Test content 2", "source": "test2.com", "metadata": {}},
             ],
             validation_scores={},
             synthesis="",
@@ -117,10 +106,10 @@ class TestLangGraphAgent:
             human_approval_required=False,
             human_decision=None,
             pending_action=None,
-            sources_used=[]
+            sources_used=[],
         )
 
-        with patch('langchain_openai.ChatOpenAI') as mock_llm:
+        with patch("langchain_openai.ChatOpenAI") as mock_llm:
             mock_response = Mock()
             mock_response.content = "0.8"
             mock_llm.return_value.ainvoke = AsyncMock(return_value=mock_response)
@@ -135,11 +124,8 @@ class TestLangGraphAgent:
     async def test_routing_after_validation_high_score(self, agent):
         """Test routingu po validaci s vysokým skóre"""
         test_state = {
-            "source_validation_results": [
-                {"score": 0.8},
-                {"score": 0.9}
-            ],
-            "validation_threshold": 0.7
+            "source_validation_results": [{"score": 0.8}, {"score": 0.9}],
+            "validation_threshold": 0.7,
         }
 
         route = agent._route_after_validation(test_state)
@@ -149,12 +135,9 @@ class TestLangGraphAgent:
     async def test_routing_after_validation_low_score_retry(self, agent):
         """Test routingu po validaci s nízkým skóre - retry"""
         test_state = {
-            "source_validation_results": [
-                {"score": 0.3},
-                {"score": 0.4}
-            ],
+            "source_validation_results": [{"score": 0.3}, {"score": 0.4}],
             "validation_threshold": 0.7,
-            "retry_count": 0
+            "retry_count": 0,
         }
 
         route = agent._route_after_validation(test_state)
@@ -165,12 +148,9 @@ class TestLangGraphAgent:
     async def test_routing_after_validation_need_approval(self, agent):
         """Test routingu po validaci - potřeba schválení"""
         test_state = {
-            "source_validation_results": [
-                {"score": 0.3},
-                {"score": 0.4}
-            ],
+            "source_validation_results": [{"score": 0.3}, {"score": 0.4}],
             "validation_threshold": 0.7,
-            "retry_count": 2
+            "retry_count": 2,
         }
 
         route = agent._route_after_validation(test_state)
@@ -196,7 +176,7 @@ class TestLangGraphAgent:
             human_approval_required=True,
             human_decision=None,
             pending_action=None,
-            sources_used=[]
+            sources_used=[],
         )
 
         result = await agent.human_approval_step(test_state)
@@ -211,25 +191,27 @@ class TestEnhancedTools:
     @pytest.mark.asyncio
     async def test_semantic_scholar_search(self):
         """Test Semantic Scholar vyhledávání"""
-        with patch('aiohttp.ClientSession.get') as mock_get:
+        with patch("aiohttp.ClientSession.get") as mock_get:
             mock_response = Mock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(return_value={
-                "data": [
-                    {
-                        "title": "Test Paper",
-                        "abstract": "Test abstract",
-                        "authors": [{"name": "Test Author"}],
-                        "year": 2023,
-                        "citationCount": 10,
-                        "url": "https://test.com",
-                        "venue": "Test Venue",
-                        "publicationTypes": ["JournalArticle"],
-                        "paperId": "123"
-                    }
-                ],
-                "total": 1
-            })
+            mock_response.json = AsyncMock(
+                return_value={
+                    "data": [
+                        {
+                            "title": "Test Paper",
+                            "abstract": "Test abstract",
+                            "authors": [{"name": "Test Author"}],
+                            "year": 2023,
+                            "citationCount": 10,
+                            "url": "https://test.com",
+                            "venue": "Test Venue",
+                            "publicationTypes": ["JournalArticle"],
+                            "paperId": "123",
+                        }
+                    ],
+                    "total": 1,
+                }
+            )
             mock_get.return_value.__aenter__.return_value = mock_response
 
             result = await semantic_scholar_search("AI in healthcare", limit=5)
@@ -242,27 +224,29 @@ class TestEnhancedTools:
     @pytest.mark.asyncio
     async def test_data_gov_search(self):
         """Test Data.gov vyhledávání"""
-        with patch('aiohttp.ClientSession.get') as mock_get:
+        with patch("aiohttp.ClientSession.get") as mock_get:
             mock_response = Mock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(return_value={
-                "success": True,
-                "result": {
-                    "results": [
-                        {
-                            "title": "Test Dataset",
-                            "notes": "Test description",
-                            "organization": {"title": "Test Org"},
-                            "tags": [{"name": "health"}],
-                            "name": "test-dataset",
-                            "metadata_modified": "2023-01-01",
-                            "resources": [{}],
-                            "id": "test-id"
-                        }
-                    ],
-                    "count": 1
+            mock_response.json = AsyncMock(
+                return_value={
+                    "success": True,
+                    "result": {
+                        "results": [
+                            {
+                                "title": "Test Dataset",
+                                "notes": "Test description",
+                                "organization": {"title": "Test Org"},
+                                "tags": [{"name": "health"}],
+                                "name": "test-dataset",
+                                "metadata_modified": "2023-01-01",
+                                "resources": [{}],
+                                "id": "test-id",
+                            }
+                        ],
+                        "count": 1,
+                    },
                 }
-            })
+            )
             mock_get.return_value.__aenter__.return_value = mock_response
 
             result = await data_gov_search("healthcare data", limit=5)
@@ -274,19 +258,21 @@ class TestEnhancedTools:
     @pytest.mark.asyncio
     async def test_wayback_machine_search(self):
         """Test Wayback Machine vyhledávání"""
-        with patch('aiohttp.ClientSession.get') as mock_get:
+        with patch("aiohttp.ClientSession.get") as mock_get:
             # Mock pro availability API
             mock_availability_response = Mock()
             mock_availability_response.status = 200
-            mock_availability_response.json = AsyncMock(return_value={
-                "archived_snapshots": {
-                    "closest": {
-                        "available": True,
-                        "url": "https://web.archive.org/web/20230101/https://example.com",
-                        "timestamp": "20230101120000"
+            mock_availability_response.json = AsyncMock(
+                return_value={
+                    "archived_snapshots": {
+                        "closest": {
+                            "available": True,
+                            "url": "https://web.archive.org/web/20230101/https://example.com",
+                            "timestamp": "20230101120000",
+                        }
                     }
                 }
-            })
+            )
 
             # Mock pro content response
             mock_content_response = Mock()
@@ -295,7 +281,7 @@ class TestEnhancedTools:
 
             mock_get.return_value.__aenter__.side_effect = [
                 mock_availability_response,
-                mock_content_response
+                mock_content_response,
             ]
 
             result = await wayback_machine_search("https://example.com")
@@ -308,15 +294,12 @@ class TestEnhancedTools:
     async def test_cross_reference_sources(self):
         """Test křížové reference zdrojů"""
         # Mock všechny jednotlivé funkce
-        with patch('src.core.enhanced_tools.semantic_scholar_search') as mock_scholar:
-            with patch('src.core.enhanced_tools.data_gov_search') as mock_datagov:
-                mock_scholar.return_value = {
-                    "success": True,
-                    "papers": [{"title": "Test paper"}]
-                }
+        with patch("src.core.enhanced_tools.semantic_scholar_search") as mock_scholar:
+            with patch("src.core.enhanced_tools.data_gov_search") as mock_datagov:
+                mock_scholar.return_value = {"success": True, "papers": [{"title": "Test paper"}]}
                 mock_datagov.return_value = {
                     "success": True,
-                    "datasets": [{"title": "Test dataset"}]
+                    "datasets": [{"title": "Test dataset"}],
                 }
 
                 result = await cross_reference_sources("test query")
@@ -332,6 +315,7 @@ class TestStreamlitIntegration:
     def test_streamlit_app_exists(self):
         """Test existence Streamlit aplikace"""
         import os
+
         assert os.path.exists("streamlit_app.py")
 
     @pytest.mark.asyncio
@@ -342,12 +326,9 @@ class TestStreamlitIntegration:
                 "model": "gpt-4o-mini",
                 "temperature": 0.1,
                 "synthesis_model": "gpt-4o",
-                "synthesis_temperature": 0.2
+                "synthesis_temperature": 0.2,
             },
-            "validation": {
-                "threshold": 0.8,
-                "max_retries": 3
-            }
+            "validation": {"threshold": 0.8, "max_retries": 3},
         }
 
         agent = ResearchAgentGraph(streamlit_config)
@@ -365,9 +346,9 @@ class TestCompleteWorkflow:
             "memory_store": {
                 "type": "chroma",
                 "collection_name": "test_workflow",
-                "persist_directory": "./test_workflow_db"
+                "persist_directory": "./test_workflow_db",
             },
-            "validation": {"threshold": 0.7, "max_retries": 1}
+            "validation": {"threshold": 0.7, "max_retries": 1},
         }
 
     @pytest.mark.asyncio
@@ -376,21 +357,21 @@ class TestCompleteWorkflow:
         agent = ResearchAgentGraph(config)
 
         # Mock všechny LLM volání
-        with patch('langchain_openai.ChatOpenAI') as mock_llm:
+        with patch("langchain_openai.ChatOpenAI") as mock_llm:
             mock_responses = [
                 Mock(content="1. Definice AI\n2. Historie AI"),  # planning
                 Mock(content="0.8"),  # source validation
                 Mock(content="0.8"),  # relevance validation
-                Mock(content="## Souhrn\nAI je...\n## Závěr\nAI má potenciál...")  # synthesis
+                Mock(content="## Souhrn\nAI je...\n## Závěr\nAI má potenciál..."),  # synthesis
             ]
             mock_llm.return_value.ainvoke = AsyncMock(side_effect=mock_responses)
 
             # Mock RAG pipeline
-            with patch('src.core.rag_pipeline.RAGPipeline') as mock_rag:
+            with patch("src.core.rag_pipeline.RAGPipeline") as mock_rag:
                 mock_rag.return_value.initialize = AsyncMock()
-                mock_rag.return_value.search = AsyncMock(return_value=[
-                    Mock(content="Test AI content", metadata={"source": "test"})
-                ])
+                mock_rag.return_value.search = AsyncMock(
+                    return_value=[Mock(content="Test AI content", metadata={"source": "test"})]
+                )
 
                 result = await agent.research("Co je umělá inteligence?")
 

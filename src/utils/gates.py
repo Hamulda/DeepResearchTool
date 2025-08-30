@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""
-Centrální gatekeeper pro automatické validační brány
+"""Centrální gatekeeper pro automatické validační brány
 Nahrazuje všechny HITL checkpointy fail-hard pravidly
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import List, Dict, Any, Optional
-import logging
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,41 +16,42 @@ logger = logging.getLogger(__name__)
 class GateError(Exception):
     """Základní třída pro gate errors"""
 
-    def __init__(self, message: str, suggestions: List[str] = None):
+    def __init__(self, message: str, suggestions: list[str] = None):
         super().__init__(message)
         self.suggestions = suggestions or []
 
 
 class EvidenceGateError(GateError):
     """Chyba při validaci evidence - nedostatek citací, nekvalitní zdroje"""
-    pass
+
 
 
 class ComplianceGateError(GateError):
     """Chyba při dodržování compliance pravidel - robots.txt, rate limiting"""
-    pass
+
 
 
 class MetricsGateError(GateError):
     """Chyba při nesplnění metrik kvality - recall, precision, groundedness"""
-    pass
+
 
 
 class QualityGateError(GateError):
     """Chyba při kontrole kvality výstupu - formát, struktura, konzistence"""
-    pass
+
 
 
 @dataclass
 class GateResult:
     """Výsledek validační brány"""
+
     passed: bool
     gate_name: str
     score: float
     threshold: float
     message: str
-    suggestions: List[str]
-    metadata: Dict[str, Any]
+    suggestions: list[str]
+    metadata: dict[str, Any]
 
 
 class ValidationGate(ABC):
@@ -64,7 +64,6 @@ class ValidationGate(ABC):
     @abstractmethod
     async def validate(self, data: Any) -> GateResult:
         """Validace dat"""
-        pass
 
 
 class EvidenceGate(ValidationGate):
@@ -77,8 +76,7 @@ class EvidenceGate(ValidationGate):
 
     async def validate(self, synthesis_result: Any) -> GateResult:
         """Validace evidence binding pro každý claim"""
-
-        if not hasattr(synthesis_result, 'claims'):
+        if not hasattr(synthesis_result, "claims"):
             return GateResult(
                 passed=False,
                 gate_name=self.name,
@@ -86,7 +84,7 @@ class EvidenceGate(ValidationGate):
                 threshold=self.threshold,
                 message="No claims found in synthesis result",
                 suggestions=["Check synthesis pipeline", "Verify input documents"],
-                metadata={}
+                metadata={},
             )
 
         claims = synthesis_result.claims
@@ -100,26 +98,28 @@ class EvidenceGate(ValidationGate):
                 suggestions=[
                     "Check input document quality",
                     "Verify synthesis template",
-                    "Review claim extraction logic"
+                    "Review claim extraction logic",
                 ],
-                metadata={"claim_count": 0}
+                metadata={"claim_count": 0},
             )
 
         failed_claims = []
         total_citations = 0
 
         for i, claim in enumerate(claims):
-            citations = getattr(claim, 'citations', [])
+            citations = getattr(claim, "citations", [])
             citation_count = len(citations)
             total_citations += citation_count
 
             if citation_count < self.min_citations_per_claim:
-                failed_claims.append({
-                    "claim_id": i,
-                    "claim_text": str(claim)[:100] + "...",
-                    "citation_count": citation_count,
-                    "required": self.min_citations_per_claim
-                })
+                failed_claims.append(
+                    {
+                        "claim_id": i,
+                        "claim_text": str(claim)[:100] + "...",
+                        "citation_count": citation_count,
+                        "required": self.min_citations_per_claim,
+                    }
+                )
 
         avg_citations = total_citations / len(claims) if claims else 0
         passed = len(failed_claims) == 0
@@ -129,7 +129,7 @@ class EvidenceGate(ValidationGate):
                 "Increase retrieval recall parameters",
                 "Expand source diversity",
                 "Review claim granularity",
-                f"Target {self.min_citations_per_claim} citations per claim minimum"
+                f"Target {self.min_citations_per_claim} citations per claim minimum",
             ]
             message = f"Evidence gate failed: {len(failed_claims)}/{len(claims)} claims lack sufficient citations"
         else:
@@ -147,8 +147,8 @@ class EvidenceGate(ValidationGate):
                 "total_claims": len(claims),
                 "failed_claims": failed_claims,
                 "avg_citations_per_claim": avg_citations,
-                "total_citations": total_citations
-            }
+                "total_citations": total_citations,
+            },
         )
 
 
@@ -160,16 +160,17 @@ class ComplianceGate(ValidationGate):
         self.max_rate_violations = max_rate_violations
         self.max_robots_violations = max_robots_violations
 
-    async def validate(self, retrieval_log: Dict[str, Any]) -> GateResult:
+    async def validate(self, retrieval_log: dict[str, Any]) -> GateResult:
         """Validace compliance během retrieval procesu"""
-
-        rate_violations = retrieval_log.get('rate_limit_violations', [])
-        robots_violations = retrieval_log.get('robots_txt_violations', [])
-        blocked_domains = retrieval_log.get('blocked_domains', [])
+        rate_violations = retrieval_log.get("rate_limit_violations", [])
+        robots_violations = retrieval_log.get("robots_txt_violations", [])
+        blocked_domains = retrieval_log.get("blocked_domains", [])
 
         total_violations = len(rate_violations) + len(robots_violations)
-        passed = (len(rate_violations) <= self.max_rate_violations and
-                 len(robots_violations) <= self.max_robots_violations)
+        passed = (
+            len(rate_violations) <= self.max_rate_violations
+            and len(robots_violations) <= self.max_robots_violations
+        )
 
         if not passed:
             suggestions = [
@@ -177,7 +178,7 @@ class ComplianceGate(ValidationGate):
                 "Check robots.txt compliance logic",
                 "Add more domains to whitelist",
                 "Implement exponential backoff",
-                "Review user-agent configuration"
+                "Review user-agent configuration",
             ]
             message = f"Compliance violations detected: {len(rate_violations)} rate limit, {len(robots_violations)} robots.txt"
         else:
@@ -187,7 +188,7 @@ class ComplianceGate(ValidationGate):
         return GateResult(
             passed=passed,
             gate_name=self.name,
-            score=1.0 - (total_violations / max(1, len(retrieval_log.get('requests', [])))),
+            score=1.0 - (total_violations / max(1, len(retrieval_log.get("requests", [])))),
             threshold=self.threshold,
             message=message,
             suggestions=suggestions,
@@ -195,26 +196,27 @@ class ComplianceGate(ValidationGate):
                 "rate_violations": rate_violations,
                 "robots_violations": robots_violations,
                 "blocked_domains": blocked_domains,
-                "total_requests": len(retrieval_log.get('requests', []))
-            }
+                "total_requests": len(retrieval_log.get("requests", [])),
+            },
         )
 
 
 class MetricsGate(ValidationGate):
     """Validace metrik kvality - recall, precision, groundedness"""
 
-    def __init__(self, min_recall: float = 0.7, min_precision: float = 0.8, min_groundedness: float = 0.85):
+    def __init__(
+        self, min_recall: float = 0.7, min_precision: float = 0.8, min_groundedness: float = 0.85
+    ):
         super().__init__("metrics_gate", min_recall)
         self.min_recall = min_recall
         self.min_precision = min_precision
         self.min_groundedness = min_groundedness
 
-    async def validate(self, evaluation_result: Dict[str, float]) -> GateResult:
+    async def validate(self, evaluation_result: dict[str, float]) -> GateResult:
         """Validace evaluation metrik"""
-
-        recall = evaluation_result.get('recall_at_10', 0.0)
-        precision = evaluation_result.get('citation_precision', 0.0)
-        groundedness = evaluation_result.get('groundedness', 0.0)
+        recall = evaluation_result.get("recall_at_10", 0.0)
+        precision = evaluation_result.get("citation_precision", 0.0)
+        groundedness = evaluation_result.get("groundedness", 0.0)
 
         failed_metrics = []
 
@@ -236,7 +238,7 @@ class MetricsGate(ValidationGate):
                 "Improve re-ranking model quality",
                 "Review synthesis template accuracy",
                 "Add more diverse training data",
-                "Tune RRF parameters"
+                "Tune RRF parameters",
             ]
             message = f"Metrics gate failed: {', '.join(failed_metrics)}"
         else:
@@ -254,8 +256,8 @@ class MetricsGate(ValidationGate):
                 "recall_at_10": recall,
                 "citation_precision": precision,
                 "groundedness": groundedness,
-                "failed_metrics": failed_metrics
-            }
+                "failed_metrics": failed_metrics,
+            },
         )
 
 
@@ -267,12 +269,11 @@ class QualityGate(ValidationGate):
         self.max_token_budget = max_token_budget
         self.min_claim_quality = min_claim_quality
 
-    async def validate(self, output_data: Dict[str, Any]) -> GateResult:
+    async def validate(self, output_data: dict[str, Any]) -> GateResult:
         """Validace kvality finálního výstupu"""
-
-        token_count = output_data.get('token_count', 0)
-        claims = output_data.get('claims', [])
-        citations = output_data.get('citations', [])
+        token_count = output_data.get("token_count", 0)
+        claims = output_data.get("claims", [])
+        citations = output_data.get("citations", [])
 
         issues = []
 
@@ -289,7 +290,7 @@ class QualityGate(ValidationGate):
 
         # Structure validation
         for i, claim in enumerate(claims):
-            if not hasattr(claim, 'text') or not hasattr(claim, 'citations'):
+            if not hasattr(claim, "text") or not hasattr(claim, "citations"):
                 issues.append(f"Claim {i} missing required fields")
 
         passed = len(issues) == 0
@@ -300,7 +301,7 @@ class QualityGate(ValidationGate):
                 "Review output format validation",
                 "Check synthesis template structure",
                 "Implement token budget compression",
-                "Validate claim extraction logic"
+                "Validate claim extraction logic",
             ]
             message = f"Quality issues detected: {'; '.join(issues)}"
         else:
@@ -319,66 +320,72 @@ class QualityGate(ValidationGate):
                 "token_budget": self.max_token_budget,
                 "claim_count": len(claims),
                 "citation_count": len(citations),
-                "issues": issues
-            }
+                "issues": issues,
+            },
         )
 
 
 class GateKeeper:
     """Centrální gatekeeper pro všechny validační brány"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.gates = []
         self._initialize_gates()
 
     def _initialize_gates(self):
         """Inicializace všech bran podle konfigurace"""
-
         # Evidence gate
-        evidence_config = self.config.get('gates', {}).get('evidence', {})
-        self.gates.append(EvidenceGate(
-            min_citations_per_claim=evidence_config.get('min_citations_per_claim', 2),
-            min_source_diversity=evidence_config.get('min_source_diversity', 0.7)
-        ))
+        evidence_config = self.config.get("gates", {}).get("evidence", {})
+        self.gates.append(
+            EvidenceGate(
+                min_citations_per_claim=evidence_config.get("min_citations_per_claim", 2),
+                min_source_diversity=evidence_config.get("min_source_diversity", 0.7),
+            )
+        )
 
         # Compliance gate
-        compliance_config = self.config.get('gates', {}).get('compliance', {})
-        self.gates.append(ComplianceGate(
-            max_rate_violations=compliance_config.get('max_rate_violations', 0),
-            max_robots_violations=compliance_config.get('max_robots_violations', 0)
-        ))
+        compliance_config = self.config.get("gates", {}).get("compliance", {})
+        self.gates.append(
+            ComplianceGate(
+                max_rate_violations=compliance_config.get("max_rate_violations", 0),
+                max_robots_violations=compliance_config.get("max_robots_violations", 0),
+            )
+        )
 
         # Metrics gate
-        metrics_config = self.config.get('gates', {}).get('metrics', {})
-        self.gates.append(MetricsGate(
-            min_recall=metrics_config.get('min_recall', 0.7),
-            min_precision=metrics_config.get('min_precision', 0.8),
-            min_groundedness=metrics_config.get('min_groundedness', 0.85)
-        ))
+        metrics_config = self.config.get("gates", {}).get("metrics", {})
+        self.gates.append(
+            MetricsGate(
+                min_recall=metrics_config.get("min_recall", 0.7),
+                min_precision=metrics_config.get("min_precision", 0.8),
+                min_groundedness=metrics_config.get("min_groundedness", 0.85),
+            )
+        )
 
         # Quality gate
-        quality_config = self.config.get('gates', {}).get('quality', {})
-        self.gates.append(QualityGate(
-            max_token_budget=quality_config.get('max_token_budget', 8000),
-            min_claim_quality=quality_config.get('min_claim_quality', 0.7)
-        ))
+        quality_config = self.config.get("gates", {}).get("quality", {})
+        self.gates.append(
+            QualityGate(
+                max_token_budget=quality_config.get("max_token_budget", 8000),
+                min_claim_quality=quality_config.get("min_claim_quality", 0.7),
+            )
+        )
 
-    async def validate_all(self, data: Dict[str, Any]) -> List[GateResult]:
+    async def validate_all(self, data: dict[str, Any]) -> list[GateResult]:
         """Spuštění všech validačních bran"""
-
         results = []
 
         for gate in self.gates:
             try:
-                if gate.name == 'evidence_gate':
-                    result = await gate.validate(data.get('synthesis_result'))
-                elif gate.name == 'compliance_gate':
-                    result = await gate.validate(data.get('retrieval_log', {}))
-                elif gate.name == 'metrics_gate':
-                    result = await gate.validate(data.get('evaluation_result', {}))
-                elif gate.name == 'quality_gate':
-                    result = await gate.validate(data.get('output_data', {}))
+                if gate.name == "evidence_gate":
+                    result = await gate.validate(data.get("synthesis_result"))
+                elif gate.name == "compliance_gate":
+                    result = await gate.validate(data.get("retrieval_log", {}))
+                elif gate.name == "metrics_gate":
+                    result = await gate.validate(data.get("evaluation_result", {}))
+                elif gate.name == "quality_gate":
+                    result = await gate.validate(data.get("output_data", {}))
                 else:
                     result = await gate.validate(data)
 
@@ -391,15 +398,17 @@ class GateKeeper:
 
             except Exception as e:
                 logger.error(f"Gate {gate.name} failed with error: {e}")
-                results.append(GateResult(
-                    passed=False,
-                    gate_name=gate.name,
-                    score=0.0,
-                    threshold=gate.threshold,
-                    message=f"Gate execution failed: {str(e)}",
-                    suggestions=["Check gate implementation", "Review input data format"],
-                    metadata={"error": str(e)}
-                ))
+                results.append(
+                    GateResult(
+                        passed=False,
+                        gate_name=gate.name,
+                        score=0.0,
+                        threshold=gate.threshold,
+                        message=f"Gate execution failed: {e!s}",
+                        suggestions=["Check gate implementation", "Review input data format"],
+                        metadata={"error": str(e)},
+                    )
+                )
                 raise
 
         return results
@@ -407,16 +416,15 @@ class GateKeeper:
     def _get_error_class(self, gate_name: str) -> type:
         """Vrací odpovídající error třídu pro bránu"""
         error_mapping = {
-            'evidence_gate': EvidenceGateError,
-            'compliance_gate': ComplianceGateError,
-            'metrics_gate': MetricsGateError,
-            'quality_gate': QualityGateError
+            "evidence_gate": EvidenceGateError,
+            "compliance_gate": ComplianceGateError,
+            "metrics_gate": MetricsGateError,
+            "quality_gate": QualityGateError,
         }
         return error_mapping.get(gate_name, GateError)
 
-    def get_gate_summary(self, results: List[GateResult]) -> Dict[str, Any]:
+    def get_gate_summary(self, results: list[GateResult]) -> dict[str, Any]:
         """Vytvoří souhrn všech bran"""
-
         passed_gates = [r for r in results if r.passed]
         failed_gates = [r for r in results if not r.passed]
 
@@ -431,13 +439,9 @@ class GateKeeper:
                     "passed": r.passed,
                     "score": r.score,
                     "threshold": r.threshold,
-                    "message": r.message
+                    "message": r.message,
                 }
                 for r in results
             ],
-            "suggestions": [
-                suggestion
-                for r in failed_gates
-                for suggestion in r.suggestions
-            ]
+            "suggestions": [suggestion for r in failed_gates for suggestion in r.suggestions],
         }

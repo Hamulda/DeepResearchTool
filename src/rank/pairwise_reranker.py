@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-"""
-Pairwise Re-ranking Engine
+"""Pairwise Re-ranking Engine
 Cross-encoder a LLM-based pairwise ranking s kalibrační křivkou a margin-of-victory
 
 Author: Senior Python/MLOps Agent
 """
 
-import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
+import logging
 import time
+from typing import Any
+
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
-from sklearn.calibration import CalibratedClassifierCV
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PairwiseComparison:
     """Výsledek pairwise porovnání"""
+
     doc_a_id: str
     doc_b_id: str
     preference_score: float  # -1.0 (B preferred) to +1.0 (A preferred)
@@ -34,6 +32,7 @@ class PairwiseComparison:
 @dataclass
 class RerankingResult:
     """Výsledek re-rankingu"""
+
     document_id: str
     original_rank: int
     reranked_position: int
@@ -48,7 +47,7 @@ class RerankingResult:
 class PairwiseReranker:
     """Pairwise re-ranking engine s kalibrací"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.reranking_config = config.get("workflow", {}).get("reranking", {})
 
@@ -79,7 +78,6 @@ class PairwiseReranker:
 
     async def initialize(self, llm_client=None):
         """Inicializace re-ranking modelů"""
-
         logger.info("Initializing Pairwise Re-ranker...")
         start_time = time.time()
 
@@ -120,7 +118,7 @@ class PairwiseReranker:
     def _initialize_calibrator(self):
         """Inicializace kalibračního modelu"""
         if self.calibration_method == "isotonic":
-            self.calibrator = IsotonicRegression(out_of_bounds='clip')
+            self.calibrator = IsotonicRegression(out_of_bounds="clip")
         elif self.calibration_method == "platt":
             # Placeholder pro Platt scaling
             self.calibrator = MockPlattScaling()
@@ -128,12 +126,10 @@ class PairwiseReranker:
             logger.warning(f"Unknown calibration method: {self.calibration_method}")
             self.calibrator = None
 
-    async def rerank_documents(self,
-                              query: str,
-                              documents: List[Dict[str, Any]],
-                              top_k: int = 20) -> List[RerankingResult]:
-        """
-        Pairwise re-ranking dokumentů
+    async def rerank_documents(
+        self, query: str, documents: list[dict[str, Any]], top_k: int = 20
+    ) -> list[RerankingResult]:
+        """Pairwise re-ranking dokumentů
 
         Args:
             query: Původní dotaz
@@ -142,24 +138,27 @@ class PairwiseReranker:
 
         Returns:
             List RerankingResult s re-ranked pořadím
-        """
 
+        """
         logger.info(f"Starting pairwise re-ranking for {len(documents)} documents")
         start_time = time.time()
 
         if len(documents) <= 1:
             # Single or no document - no re-ranking needed
-            return [RerankingResult(
-                document_id=doc.get("id", "single_doc"),
-                original_rank=0,
-                reranked_position=0,
-                reranking_score=doc.get("score", 0.5),
-                calibrated_score=doc.get("score", 0.5),
-                confidence=1.0,
-                ranking_rationale="Single document - no comparison needed",
-                pairwise_wins=0,
-                pairwise_losses=0
-            ) for doc in documents]
+            return [
+                RerankingResult(
+                    document_id=doc.get("id", "single_doc"),
+                    original_rank=0,
+                    reranked_position=0,
+                    reranking_score=doc.get("score", 0.5),
+                    calibrated_score=doc.get("score", 0.5),
+                    confidence=1.0,
+                    ranking_rationale="Single document - no comparison needed",
+                    pairwise_wins=0,
+                    pairwise_losses=0,
+                )
+                for doc in documents
+            ]
 
         # STEP 1: Perform pairwise comparisons
         logger.debug("Performing pairwise comparisons...")
@@ -178,9 +177,11 @@ class PairwiseReranker:
         results = []
 
         # Sort by calibrated score
-        sorted_docs = sorted(enumerate(documents),
-                           key=lambda x: ranking_scores[x[0]]["calibrated_score"],
-                           reverse=True)
+        sorted_docs = sorted(
+            enumerate(documents),
+            key=lambda x: ranking_scores[x[0]]["calibrated_score"],
+            reverse=True,
+        )
 
         for new_rank, (original_rank, doc) in enumerate(sorted_docs[:top_k]):
             score_data = ranking_scores[original_rank]
@@ -194,22 +195,23 @@ class PairwiseReranker:
                 confidence=score_data["confidence"],
                 ranking_rationale=score_data["rationale"],
                 pairwise_wins=score_data["wins"],
-                pairwise_losses=score_data["losses"]
+                pairwise_losses=score_data["losses"],
             )
 
             results.append(result)
 
         processing_time = time.time() - start_time
-        logger.info(f"Pairwise re-ranking completed in {processing_time:.2f}s, "
-                   f"processed {len(comparisons)} comparisons")
+        logger.info(
+            f"Pairwise re-ranking completed in {processing_time:.2f}s, "
+            f"processed {len(comparisons)} comparisons"
+        )
 
         return results
 
-    async def _perform_pairwise_comparisons(self,
-                                          query: str,
-                                          documents: List[Dict[str, Any]]) -> List[PairwiseComparison]:
+    async def _perform_pairwise_comparisons(
+        self, query: str, documents: list[dict[str, Any]]
+    ) -> list[PairwiseComparison]:
         """Provedení pairwise porovnání"""
-
         comparisons = []
         total_possible = len(documents) * (len(documents) - 1) // 2
 
@@ -232,10 +234,10 @@ class PairwiseReranker:
 
         return comparisons
 
-    def _select_comparison_pairs(self, documents: List[Dict[str, Any]],
-                               max_comparisons: int) -> List[Tuple[int, int]]:
+    def _select_comparison_pairs(
+        self, documents: list[dict[str, Any]], max_comparisons: int
+    ) -> list[tuple[int, int]]:
         """Výběr nejdůležitějších páru pro porovnání"""
-
         n_docs = len(documents)
         pairs = []
 
@@ -261,6 +263,7 @@ class PairwiseReranker:
         # 3. Random additional pairs if needed
         if len(pairs) < max_comparisons:
             import random
+
             remaining = max_comparisons - len(pairs)
 
             all_possible = [(i, j) for i in range(n_docs) for j in range(i + 1, n_docs)]
@@ -273,12 +276,10 @@ class PairwiseReranker:
 
         return pairs[:max_comparisons]
 
-    async def _compare_document_pair(self,
-                                   query: str,
-                                   doc_a: Dict[str, Any],
-                                   doc_b: Dict[str, Any]) -> PairwiseComparison:
+    async def _compare_document_pair(
+        self, query: str, doc_a: dict[str, Any], doc_b: dict[str, Any]
+    ) -> PairwiseComparison:
         """Porovnání jednoho páru dokumentů"""
-
         start_time = time.time()
 
         # Try cross-encoder first
@@ -294,7 +295,7 @@ class PairwiseReranker:
                     confidence=ce_result["confidence"],
                     margin_of_victory=abs(ce_result["preference"]),
                     rationale=f"Cross-encoder comparison: {ce_result['rationale']}",
-                    comparison_time=comparison_time
+                    comparison_time=comparison_time,
                 )
 
             except Exception as e:
@@ -313,7 +314,7 @@ class PairwiseReranker:
                     confidence=llm_result["confidence"],
                     margin_of_victory=abs(llm_result["preference"]),
                     rationale=f"LLM rater: {llm_result['rationale']}",
-                    comparison_time=comparison_time
+                    comparison_time=comparison_time,
                 )
 
             except Exception as e:
@@ -335,13 +336,13 @@ class PairwiseReranker:
             confidence=min(0.8, margin * 2),  # Lower confidence for fallback
             margin_of_victory=margin,
             rationale=f"Score-based fallback: {score_a:.3f} vs {score_b:.3f}",
-            comparison_time=comparison_time
+            comparison_time=comparison_time,
         )
 
-    async def _cross_encoder_compare(self, query: str, doc_a: Dict[str, Any],
-                                   doc_b: Dict[str, Any]) -> Dict[str, Any]:
+    async def _cross_encoder_compare(
+        self, query: str, doc_a: dict[str, Any], doc_b: dict[str, Any]
+    ) -> dict[str, Any]:
         """Cross-encoder porovnání"""
-
         text_a = f"{doc_a.get('title', '')} {doc_a.get('content', '')}"[:500]
         text_b = f"{doc_b.get('title', '')} {doc_b.get('content', '')}"[:500]
 
@@ -355,13 +356,13 @@ class PairwiseReranker:
         return {
             "preference": preference,
             "confidence": confidence,
-            "rationale": f"CE scores: {score_a:.3f} vs {score_b:.3f}"
+            "rationale": f"CE scores: {score_a:.3f} vs {score_b:.3f}",
         }
 
-    async def _llm_rater_compare(self, query: str, doc_a: Dict[str, Any],
-                               doc_b: Dict[str, Any]) -> Dict[str, Any]:
+    async def _llm_rater_compare(
+        self, query: str, doc_a: dict[str, Any], doc_b: dict[str, Any]
+    ) -> dict[str, Any]:
         """LLM-as-rater porovnání"""
-
         prompt = f"""Compare these two documents for relevance to the query: "{query}"
 
 Document A: {doc_a.get('title', '')}
@@ -381,9 +382,7 @@ Format: PREFERENCE|CONFIDENCE|RATIONALE"""
 
         try:
             response = await self.llm_client.generate(
-                prompt=prompt,
-                max_tokens=150,
-                temperature=0.1
+                prompt=prompt, max_tokens=150, temperature=0.1
             )
 
             response_text = response.get("text", "").strip()
@@ -405,7 +404,7 @@ Format: PREFERENCE|CONFIDENCE|RATIONALE"""
                 return {
                     "preference": preference_score,
                     "confidence": min(0.95, confidence),
-                    "rationale": rationale
+                    "rationale": rationale,
                 }
 
         except Exception as e:
@@ -415,13 +414,13 @@ Format: PREFERENCE|CONFIDENCE|RATIONALE"""
         return {
             "preference": 0.0,
             "confidence": 0.3,
-            "rationale": "LLM rater failed - defaulting to equal"
+            "rationale": "LLM rater failed - defaulting to equal",
         }
 
-    def _aggregate_pairwise_scores(self, documents: List[Dict[str, Any]],
-                                 comparisons: List[PairwiseComparison]) -> List[Dict[str, Any]]:
+    def _aggregate_pairwise_scores(
+        self, documents: list[dict[str, Any]], comparisons: list[PairwiseComparison]
+    ) -> list[dict[str, Any]]:
         """Agregace pairwise porovnání do ranking scores"""
-
         n_docs = len(documents)
         scores = []
 
@@ -472,20 +471,21 @@ Format: PREFERENCE|CONFIDENCE|RATIONALE"""
                 avg_confidence = 0.5
                 rationales = ["No pairwise comparisons"]
 
-            scores.append({
-                "raw_score": raw_score,
-                "calibrated_score": raw_score,  # Will be updated if calibration enabled
-                "confidence": avg_confidence,
-                "wins": wins,
-                "losses": losses,
-                "rationale": "; ".join(rationales[:3])  # Top 3 rationales
-            })
+            scores.append(
+                {
+                    "raw_score": raw_score,
+                    "calibrated_score": raw_score,  # Will be updated if calibration enabled
+                    "confidence": avg_confidence,
+                    "wins": wins,
+                    "losses": losses,
+                    "rationale": "; ".join(rationales[:3]),  # Top 3 rationales
+                }
+            )
 
         return scores
 
-    def _apply_calibration(self, ranking_scores: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _apply_calibration(self, ranking_scores: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Aplikace kalibrace na ranking scores"""
-
         if not self.calibrator:
             return ranking_scores
 
@@ -494,7 +494,7 @@ Format: PREFERENCE|CONFIDENCE|RATIONALE"""
             raw_scores = [score["raw_score"] for score in ranking_scores]
 
             # Apply calibration (mock implementation)
-            if hasattr(self.calibrator, 'predict'):
+            if hasattr(self.calibrator, "predict"):
                 calibrated = self.calibrator.predict(np.array(raw_scores).reshape(-1, 1))
             else:
                 # Simple isotonic-style calibration
@@ -513,19 +513,20 @@ Format: PREFERENCE|CONFIDENCE|RATIONALE"""
 
         return ranking_scores
 
-    def get_reranking_analysis(self) -> Dict[str, Any]:
+    def get_reranking_analysis(self) -> dict[str, Any]:
         """Analýza re-ranking performance"""
-
         if not self.comparison_history:
             return {"message": "No re-ranking history available"}
 
         # Aggregate comparison metrics
         total_comparisons = sum(len(hist["comparisons"]) for hist in self.comparison_history)
-        avg_comparison_time = np.mean([
-            comp.comparison_time
-            for hist in self.comparison_history
-            for comp in hist["comparisons"]
-        ])
+        avg_comparison_time = np.mean(
+            [
+                comp.comparison_time
+                for hist in self.comparison_history
+                for comp in hist["comparisons"]
+            ]
+        )
 
         # Margin analysis
         margins = [
@@ -536,9 +537,7 @@ Format: PREFERENCE|CONFIDENCE|RATIONALE"""
 
         # Confidence analysis
         confidences = [
-            comp.confidence
-            for hist in self.comparison_history
-            for comp in hist["comparisons"]
+            comp.confidence for hist in self.comparison_history for comp in hist["comparisons"]
         ]
 
         return {
@@ -549,14 +548,14 @@ Format: PREFERENCE|CONFIDENCE|RATIONALE"""
                 "mean": np.mean(margins) if margins else 0,
                 "std": np.std(margins) if margins else 0,
                 "min": min(margins) if margins else 0,
-                "max": max(margins) if margins else 0
+                "max": max(margins) if margins else 0,
             },
             "confidence_stats": {
                 "mean": np.mean(confidences) if confidences else 0,
-                "std": np.std(confidences) if confidences else 0
+                "std": np.std(confidences) if confidences else 0,
             },
             "calibration_enabled": self.calibration_enabled,
-            "model_type": self.model_type
+            "model_type": self.model_type,
         }
 
 
@@ -580,6 +579,6 @@ class MockPlattScaling:
 
 
 # Factory function
-def create_pairwise_reranker(config: Dict[str, Any]) -> PairwiseReranker:
+def create_pairwise_reranker(config: dict[str, Any]) -> PairwiseReranker:
     """Factory function pro Pairwise Re-ranker"""
     return PairwiseReranker(config)

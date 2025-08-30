@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""
-HyDE (Hypothetical Document Embeddings) Query Expansion
+"""HyDE (Hypothetical Document Embeddings) Query Expansion
 Generuje hypotetickou odpověď na dotaz a používá ji pro lepší embedding retrieval
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import logging
-from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
+import logging
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class HyDEResult:
     """Výsledek HyDE expanze"""
+
     original_query: str
     hypothetical_document: str
     expanded_query: str
@@ -30,7 +30,7 @@ class HyDEResult:
 class HyDEQueryExpander:
     """HyDE Query Expansion engine"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.hyde_config = config.get("retrieval", {}).get("hyde", {})
         self.enabled = self.hyde_config.get("enabled", False)
@@ -45,7 +45,7 @@ class HyDEQueryExpander:
             "academic": "Write a comprehensive academic paragraph that would answer this research question: {query}",
             "factual": "Provide a detailed factual response to this question: {query}",
             "technical": "Explain the technical aspects and details related to: {query}",
-            "general": "Write an informative passage that addresses: {query}"
+            "general": "Write an informative passage that addresses: {query}",
         }
 
         # LLM client (will be injected)
@@ -57,8 +57,7 @@ class HyDEQueryExpander:
         logger.info("HyDE Query Expander initialized")
 
     async def expand_query(self, query: str, domain: str = "general") -> HyDEResult:
-        """
-        Expanze dotazu pomocí HyDE
+        """Expanze dotazu pomocí HyDE
 
         Args:
             query: Původní dotaz
@@ -66,6 +65,7 @@ class HyDEQueryExpander:
 
         Returns:
             HyDEResult s expandovaným dotazem
+
         """
         start_time = time.time()
 
@@ -77,7 +77,7 @@ class HyDEQueryExpander:
                 expansion_method="disabled",
                 generation_time=0.0,
                 confidence_score=1.0,
-                fallback_used=True
+                fallback_used=True,
             )
 
         try:
@@ -96,7 +96,7 @@ class HyDEQueryExpander:
                 expansion_method=f"hyde_{domain}",
                 generation_time=generation_time,
                 confidence_score=confidence,
-                fallback_used=False
+                fallback_used=False,
             )
 
         except Exception as e:
@@ -111,14 +111,12 @@ class HyDEQueryExpander:
                     expansion_method="fallback_original",
                     generation_time=time.time() - start_time,
                     confidence_score=0.5,
-                    fallback_used=True
+                    fallback_used=True,
                 )
-            else:
-                raise
+            raise
 
-    async def _generate_hypothetical_document(self, query: str, domain: str) -> Tuple[str, float]:
+    async def _generate_hypothetical_document(self, query: str, domain: str) -> tuple[str, float]:
         """Generování hypotetického dokumentu"""
-
         if not self.llm_client:
             raise RuntimeError("LLM client not initialized")
 
@@ -132,7 +130,7 @@ class HyDEQueryExpander:
                 prompt=prompt,
                 max_tokens=self.max_length,
                 temperature=self.temperature,
-                stop_sequences=["\n\n", "Question:", "Q:"]
+                stop_sequences=["\n\n", "Question:", "Q:"],
             )
 
             hypothetical_doc = response.get("text", "").strip()
@@ -152,7 +150,6 @@ class HyDEQueryExpander:
 
     def _assess_generation_quality(self, query: str, generated_doc: str) -> float:
         """Hodnocení kvality generovaného dokumentu"""
-
         # Základní heuristiky pro hodnocení kvality
         confidence = 0.5  # Baseline
 
@@ -182,7 +179,6 @@ class HyDEQueryExpander:
 
     def _combine_query_and_document(self, query: str, hypothetical_doc: str) -> str:
         """Kombinace původního dotazu s hypotetickým dokumentem"""
-
         if not hypothetical_doc:
             return query
 
@@ -191,10 +187,10 @@ class HyDEQueryExpander:
 
         if combination_strategy == "append":
             return f"{query} {hypothetical_doc}"
-        elif combination_strategy == "weighted":
+        if combination_strategy == "weighted":
             # Váženě preferuje původní dotaz
             return f"{query} {query} {hypothetical_doc}"
-        elif combination_strategy == "interleave":
+        if combination_strategy == "interleave":
             # Prokládá klíčová slova
             query_words = query.split()
             doc_words = hypothetical_doc.split()[:20]  # Limit pro performance
@@ -206,12 +202,12 @@ class HyDEQueryExpander:
             combined.extend(doc_words)
 
             return " ".join(combined)
-        else:
-            return f"{query} {hypothetical_doc}"
+        return f"{query} {hypothetical_doc}"
 
-    async def batch_expand_queries(self, queries: List[str], domain: str = "general") -> List[HyDEResult]:
+    async def batch_expand_queries(
+        self, queries: list[str], domain: str = "general"
+    ) -> list[HyDEResult]:
         """Batch expanze více dotazů"""
-
         tasks = [self.expand_query(query, domain) for query in queries]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -221,23 +217,24 @@ class HyDEQueryExpander:
             if isinstance(result, Exception):
                 logger.error(f"HyDE expansion failed for query {i}: {result}")
                 # Fallback výsledek
-                processed_results.append(HyDEResult(
-                    original_query=queries[i],
-                    hypothetical_document="",
-                    expanded_query=queries[i],
-                    expansion_method="error_fallback",
-                    generation_time=0.0,
-                    confidence_score=0.0,
-                    fallback_used=True
-                ))
+                processed_results.append(
+                    HyDEResult(
+                        original_query=queries[i],
+                        hypothetical_document="",
+                        expanded_query=queries[i],
+                        expansion_method="error_fallback",
+                        generation_time=0.0,
+                        confidence_score=0.0,
+                        fallback_used=True,
+                    )
+                )
             else:
                 processed_results.append(result)
 
         return processed_results
 
-    def get_expansion_stats(self, results: List[HyDEResult]) -> Dict[str, Any]:
+    def get_expansion_stats(self, results: list[HyDEResult]) -> dict[str, Any]:
         """Statistiky HyDE expanze"""
-
         if not results:
             return {}
 
@@ -251,20 +248,26 @@ class HyDEQueryExpander:
             "successful_expansions": len(successful_results),
             "fallback_rate": fallback_count / total_results,
             "avg_generation_time": sum(r.generation_time for r in results) / total_results,
-            "avg_confidence": sum(r.confidence_score for r in results) / total_results
+            "avg_confidence": sum(r.confidence_score for r in results) / total_results,
         }
 
         if successful_results:
-            stats.update({
-                "avg_doc_length": sum(len(r.hypothetical_document) for r in successful_results) / len(successful_results),
-                "avg_expansion_ratio": sum(len(r.expanded_query) / len(r.original_query) for r in successful_results) / len(successful_results)
-            })
+            stats.update(
+                {
+                    "avg_doc_length": sum(len(r.hypothetical_document) for r in successful_results)
+                    / len(successful_results),
+                    "avg_expansion_ratio": sum(
+                        len(r.expanded_query) / len(r.original_query) for r in successful_results
+                    )
+                    / len(successful_results),
+                }
+            )
 
         return stats
 
 
 # Factory funkce pro snadnou integraci
-async def create_hyde_expander(config: Dict[str, Any], llm_client=None) -> HyDEQueryExpander:
+async def create_hyde_expander(config: dict[str, Any], llm_client=None) -> HyDEQueryExpander:
     """Factory funkce pro vytvoření HyDE expanderu"""
     expander = HyDEQueryExpander(config)
     if llm_client:

@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""
-Ahmia Tor Connector s Legal Filtrem
+"""Ahmia Tor Connector s Legal Filtrem
 Bezpečný přístup k .onion zdrojům s explicitním legal-only režimem
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import logging
-import aiohttp
-import aiosocks
-from typing import Dict, Any, List, Optional, Set, Tuple
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlparse
 import json
+import logging
+from pathlib import Path
 import re
 import time
-from pathlib import Path
+from typing import Any
+
+import aiohttp
+import aiosocks
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OnionSource:
     """Onion source s legal verification"""
+
     onion_url: str
     title: str
     description: str
@@ -33,39 +33,56 @@ class OnionSource:
     content_preview: str
     ahmia_rating: float
     language: str
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 @dataclass
 class AhmiaSearchResult:
     """Výsledek Ahmia search"""
+
     query: str
     total_results: int
-    legal_sources: List[OnionSource]
+    legal_sources: list[OnionSource]
     filtered_count: int
     processing_time: float
-    tor_status: Dict[str, Any]
-    quality_metrics: Dict[str, float]
+    tor_status: dict[str, Any]
+    quality_metrics: dict[str, float]
 
 
 class AhmiaTorConnector:
     """Ahmia connector s legal whitelist a safety checks"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.ahmia_config = config.get("ahmia", {})
 
         # Ahmia API settings
         self.ahmia_api_base = self.ahmia_config.get("api_base", "https://ahmia.fi/search")
-        self.ahmia_onion_base = self.ahmia_config.get("onion_base", "http://juhanurmihxlp77nkq76byazjpd3faxuotxdf3rss4sfqnk4nfyaad.onion")
+        self.ahmia_onion_base = self.ahmia_config.get(
+            "onion_base", "http://juhanurmihxlp77nkq76byazjpd3faxuotxdf3rss4sfqnk4nfyaad.onion"
+        )
 
         # Legal and safety settings
         self.legal_only_mode = self.ahmia_config.get("legal_only", True)
-        self.legal_whitelist_file = Path(self.ahmia_config.get("legal_whitelist", "./configs/tor_legal_whitelist.json"))
-        self.blocked_categories = set(self.ahmia_config.get("blocked_categories", [
-            "drugs", "weapons", "illegal_services", "fraud", "hacking",
-            "child_exploitation", "violence", "terrorism", "illegal_content"
-        ]))
+        self.legal_whitelist_file = Path(
+            self.ahmia_config.get("legal_whitelist", "./configs/tor_legal_whitelist.json")
+        )
+        self.blocked_categories = set(
+            self.ahmia_config.get(
+                "blocked_categories",
+                [
+                    "drugs",
+                    "weapons",
+                    "illegal_services",
+                    "fraud",
+                    "hacking",
+                    "child_exploitation",
+                    "violence",
+                    "terrorism",
+                    "illegal_content",
+                ],
+            )
+        )
 
         # Tor connection settings
         self.tor_proxy = self.ahmia_config.get("tor_proxy", "socks5://127.0.0.1:9050")
@@ -78,11 +95,14 @@ class AhmiaTorConnector:
         self.rate_limit_delay = self.ahmia_config.get("rate_limit_delay", 2.0)
 
         # Content filtering
-        self.content_filters = self.ahmia_config.get("content_filters", {
-            "min_description_length": 20,
-            "require_english": False,
-            "block_suspicious_keywords": True
-        })
+        self.content_filters = self.ahmia_config.get(
+            "content_filters",
+            {
+                "min_description_length": 20,
+                "require_english": False,
+                "block_suspicious_keywords": True,
+            },
+        )
 
         # Load legal whitelist
         self.legal_whitelist = self._load_legal_whitelist()
@@ -91,14 +111,13 @@ class AhmiaTorConnector:
         self.session = None
         self.tor_session = None
 
-    def _load_legal_whitelist(self) -> Set[str]:
+    def _load_legal_whitelist(self) -> set[str]:
         """Načtení legal whitelist"""
-
         whitelist = set()
 
         try:
             if self.legal_whitelist_file.exists():
-                with open(self.legal_whitelist_file, 'r') as f:
+                with open(self.legal_whitelist_file) as f:
                     whitelist_data = json.load(f)
                     whitelist = set(whitelist_data.get("verified_legal_onions", []))
                     logger.info(f"Loaded {len(whitelist)} verified legal onion sources")
@@ -113,33 +132,38 @@ class AhmiaTorConnector:
 
     def _create_default_whitelist(self):
         """Vytvoření default legal whitelist"""
-
         default_whitelist = {
             "verified_legal_onions": [
                 # Známé legální .onion služby
                 "3g2upl4pq6kufc4m.onion",  # DuckDuckGo
-                "facebookcorewwwi.onion",   # Facebook
-                "nytimes3xbfgragh.onion",   # New York Times
-                "propub3r6espa33w.onion",   # ProPublica
-                "secrdrop5wyphb5x.onion",   # SecureDrop
-                "zbdltiaekumm56d.onion"     # Tor Project Blog
+                "facebookcorewwwi.onion",  # Facebook
+                "nytimes3xbfgragh.onion",  # New York Times
+                "propub3r6espa33w.onion",  # ProPublica
+                "secrdrop5wyphb5x.onion",  # SecureDrop
+                "zbdltiaekumm56d.onion",  # Tor Project Blog
             ],
             "verified_categories": [
-                "news", "journalism", "privacy_tools", "education",
-                "libraries", "research", "wikis", "forums_legal"
+                "news",
+                "journalism",
+                "privacy_tools",
+                "education",
+                "libraries",
+                "research",
+                "wikis",
+                "forums_legal",
             ],
             "last_updated": time.strftime("%Y-%m-%d"),
             "verification_criteria": [
                 "Publicly known legal service",
                 "Operated by legitimate organization",
                 "No illegal content",
-                "Educational or informational purpose"
-            ]
+                "Educational or informational purpose",
+            ],
         }
 
         try:
             self.legal_whitelist_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.legal_whitelist_file, 'w') as f:
+            with open(self.legal_whitelist_file, "w") as f:
                 json.dump(default_whitelist, f, indent=2)
 
         except Exception as e:
@@ -147,19 +171,13 @@ class AhmiaTorConnector:
 
     async def initialize(self):
         """Inicializace konektoru"""
-
         logger.info("Initializing Ahmia Tor Connector...")
 
         # Standard HTTP session for clearnet Ahmia
         timeout = aiohttp.ClientTimeout(total=self.timeout)
-        headers = {
-            "User-Agent": "DeepResearchTool/1.0 Legal-Research-Only"
-        }
+        headers = {"User-Agent": "DeepResearchTool/1.0 Legal-Research-Only"}
 
-        self.session = aiohttp.ClientSession(
-            timeout=timeout,
-            headers=headers
-        )
+        self.session = aiohttp.ClientSession(timeout=timeout, headers=headers)
 
         # Tor session for .onion access
         if self.tor_enabled:
@@ -175,29 +193,21 @@ class AhmiaTorConnector:
 
     async def _initialize_tor_session(self):
         """Inicializace Tor session"""
-
         try:
             # Parse Tor proxy URL
             if self.tor_proxy.startswith("socks5://"):
                 proxy_url = self.tor_proxy[9:]  # Remove socks5:// prefix
-                host, port = proxy_url.split(':')
+                host, port = proxy_url.split(":")
                 port = int(port)
 
                 # Create Tor connector
-                tor_connector = aiosocks.SocksConnector(
-                    aiosocks.SocksVer.SOCKS5,
-                    host, port
-                )
+                tor_connector = aiosocks.SocksConnector(aiosocks.SocksVer.SOCKS5, host, port)
 
                 timeout = aiohttp.ClientTimeout(total=self.circuit_timeout)
-                headers = {
-                    "User-Agent": "DeepResearchTool/1.0 Tor-Research"
-                }
+                headers = {"User-Agent": "DeepResearchTool/1.0 Tor-Research"}
 
                 self.tor_session = aiohttp.ClientSession(
-                    connector=tor_connector,
-                    timeout=timeout,
-                    headers=headers
+                    connector=tor_connector, timeout=timeout, headers=headers
                 )
 
                 # Test Tor connection
@@ -211,7 +221,6 @@ class AhmiaTorConnector:
 
     async def _test_tor_connection(self):
         """Test Tor connection"""
-
         try:
             # Test with Tor check service
             test_url = "http://check.torproject.org"
@@ -234,16 +243,15 @@ class AhmiaTorConnector:
             await self.tor_session.close()
 
     async def search_legal_onions(self, query: str) -> AhmiaSearchResult:
-        """
-        Hlavní search funkce s legal filtering
+        """Hlavní search funkce s legal filtering
 
         Args:
             query: Search query
 
         Returns:
             AhmiaSearchResult s pouze legal sources
-        """
 
+        """
         start_time = time.time()
 
         logger.info(f"Starting Ahmia search for: {query}")
@@ -276,10 +284,12 @@ class AhmiaTorConnector:
                 filtered_count=filtered_count,
                 processing_time=processing_time,
                 tor_status=tor_status,
-                quality_metrics=quality_metrics
+                quality_metrics=quality_metrics,
             )
 
-            logger.info(f"Ahmia search completed: {len(verified_sources)}/{len(raw_results)} legal sources")
+            logger.info(
+                f"Ahmia search completed: {len(verified_sources)}/{len(raw_results)} legal sources"
+            )
 
             return result
 
@@ -287,14 +297,10 @@ class AhmiaTorConnector:
             logger.error(f"Ahmia search failed: {e}")
             raise
 
-    async def _search_ahmia_api(self, query: str) -> List[Dict[str, Any]]:
+    async def _search_ahmia_api(self, query: str) -> list[dict[str, Any]]:
         """Vyhledání přes Ahmia clearnet API"""
-
         # Build search URL
-        search_params = {
-            "q": query,
-            "page": 1
-        }
+        search_params = {"q": query, "page": 1}
 
         results = []
 
@@ -317,9 +323,8 @@ class AhmiaTorConnector:
 
         return results
 
-    def _parse_ahmia_html(self, html_content: str) -> List[Dict[str, Any]]:
+    def _parse_ahmia_html(self, html_content: str) -> list[dict[str, Any]]:
         """Parse Ahmia HTML response"""
-
         results = []
 
         try:
@@ -327,40 +332,43 @@ class AhmiaTorConnector:
             # In production, would use proper HTML parser like BeautifulSoup
 
             # Extract onion URLs
-            onion_pattern = r'([a-z2-7]{16,56}\.onion)'
+            onion_pattern = r"([a-z2-7]{16,56}\.onion)"
             onion_urls = re.findall(onion_pattern, html_content)
 
             # Extract titles and descriptions (simplified)
-            title_pattern = r'<h4[^>]*>(.*?)</h4>'
+            title_pattern = r"<h4[^>]*>(.*?)</h4>"
             titles = re.findall(title_pattern, html_content, re.DOTALL)
 
             desc_pattern = r'<p class="excerpt"[^>]*>(.*?)</p>'
             descriptions = re.findall(desc_pattern, html_content, re.DOTALL)
 
             # Combine results
-            for i, onion_url in enumerate(onion_urls[:self.max_results]):
+            for i, onion_url in enumerate(onion_urls[: self.max_results]):
                 title = titles[i] if i < len(titles) else "Unknown"
                 description = descriptions[i] if i < len(descriptions) else ""
 
                 # Clean HTML tags from title and description
-                title = re.sub(r'<[^>]+>', '', title).strip()
-                description = re.sub(r'<[^>]+>', '', description).strip()
+                title = re.sub(r"<[^>]+>", "", title).strip()
+                description = re.sub(r"<[^>]+>", "", description).strip()
 
-                results.append({
-                    "onion_url": onion_url,
-                    "title": title,
-                    "description": description,
-                    "source": "ahmia"
-                })
+                results.append(
+                    {
+                        "onion_url": onion_url,
+                        "title": title,
+                        "description": description,
+                        "source": "ahmia",
+                    }
+                )
 
         except Exception as e:
             logger.error(f"HTML parsing error: {e}")
 
         return results
 
-    async def _apply_legal_filtering(self, raw_results: List[Dict[str, Any]]) -> Tuple[List[OnionSource], int]:
+    async def _apply_legal_filtering(
+        self, raw_results: list[dict[str, Any]]
+    ) -> tuple[list[OnionSource], int]:
         """Aplikace legal filtering"""
-
         legal_sources = []
         filtered_count = 0
 
@@ -407,10 +415,7 @@ class AhmiaTorConnector:
                 content_preview="",  # Will be filled later if needed
                 ahmia_rating=0.8 if legal_status == "verified_legal" else 0.5,
                 language="en",  # Default, could be detected
-                metadata={
-                    "source": "ahmia",
-                    "filtering_passed": True
-                }
+                metadata={"source": "ahmia", "filtering_passed": True},
             )
 
             legal_sources.append(onion_source)
@@ -419,19 +424,25 @@ class AhmiaTorConnector:
 
     def _classify_content_category(self, title: str, description: str) -> str:
         """Klasifikace content category"""
-
         content = (title + " " + description).lower()
 
         # News and journalism
-        if any(word in content for word in ["news", "journalism", "press", "newspaper", "reporter"]):
+        if any(
+            word in content for word in ["news", "journalism", "press", "newspaper", "reporter"]
+        ):
             return "news"
 
         # Education and research
-        if any(word in content for word in ["education", "research", "university", "academic", "library"]):
+        if any(
+            word in content
+            for word in ["education", "research", "university", "academic", "library"]
+        ):
             return "education"
 
         # Privacy and security tools
-        if any(word in content for word in ["privacy", "security", "encryption", "anonymous", "tor"]):
+        if any(
+            word in content for word in ["privacy", "security", "encryption", "anonymous", "tor"]
+        ):
             return "privacy_tools"
 
         # Forums and discussion
@@ -446,23 +457,34 @@ class AhmiaTorConnector:
 
     def _contains_suspicious_keywords(self, title: str, description: str) -> bool:
         """Detekce suspicious keywords"""
-
         if not self.content_filters["block_suspicious_keywords"]:
             return False
 
         content = (title + " " + description).lower()
 
         suspicious_keywords = [
-            "illegal", "drugs", "weapons", "fraud", "hacking", "stolen",
-            "credit card", "counterfeit", "fake id", "hitman", "assassination",
-            "child", "explicit", "adult content", "darkmarket", "marketplace"
+            "illegal",
+            "drugs",
+            "weapons",
+            "fraud",
+            "hacking",
+            "stolen",
+            "credit card",
+            "counterfeit",
+            "fake id",
+            "hitman",
+            "assassination",
+            "child",
+            "explicit",
+            "adult content",
+            "darkmarket",
+            "marketplace",
         ]
 
         return any(keyword in content for keyword in suspicious_keywords)
 
-    async def _verify_legal_sources(self, legal_sources: List[OnionSource]) -> List[OnionSource]:
+    async def _verify_legal_sources(self, legal_sources: list[OnionSource]) -> list[OnionSource]:
         """Verifikace legal sources"""
-
         verified_sources = []
 
         for source in legal_sources:
@@ -476,21 +498,23 @@ class AhmiaTorConnector:
 
         return verified_sources
 
-    async def _get_tor_status(self) -> Dict[str, Any]:
+    async def _get_tor_status(self) -> dict[str, Any]:
         """Získání Tor status"""
-
         status = {
             "tor_enabled": self.tor_enabled,
             "session_active": self.tor_session is not None,
             "proxy_configured": self.tor_proxy is not None,
-            "legal_only_mode": self.legal_only_mode
+            "legal_only_mode": self.legal_only_mode,
         }
 
         if self.tor_enabled and self.tor_session:
             try:
                 # Quick connectivity test
                 test_start = time.time()
-                async with self.tor_session.get("http://juhanurmihxlp77nkq76byazjpd3faxuotxdf3rss4sfqnk4nfyaad.onion", timeout=aiohttp.ClientTimeout(total=10)) as response:
+                async with self.tor_session.get(
+                    "http://juhanurmihxlp77nkq76byazjpd3faxuotxdf3rss4sfqnk4nfyaad.onion",
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
                     status["connectivity_test"] = response.status == 200
                     status["response_time"] = time.time() - test_start
             except:
@@ -499,11 +523,10 @@ class AhmiaTorConnector:
 
         return status
 
-    def _calculate_quality_metrics(self,
-                                 legal_sources: List[OnionSource],
-                                 raw_results: List[Dict[str, Any]]) -> Dict[str, float]:
+    def _calculate_quality_metrics(
+        self, legal_sources: list[OnionSource], raw_results: list[dict[str, Any]]
+    ) -> dict[str, float]:
         """Výpočet quality metrics"""
-
         if not raw_results:
             return {"legal_ratio": 0.0, "whitelist_ratio": 0.0, "avg_description_length": 0.0}
 
@@ -511,11 +534,17 @@ class AhmiaTorConnector:
         legal_ratio = len(legal_sources) / len(raw_results)
 
         # Whitelist ratio
-        whitelisted_count = sum(1 for source in legal_sources if source.legal_status == "verified_legal")
+        whitelisted_count = sum(
+            1 for source in legal_sources if source.legal_status == "verified_legal"
+        )
         whitelist_ratio = whitelisted_count / len(legal_sources) if legal_sources else 0
 
         # Average description length
-        avg_desc_length = sum(len(source.description) for source in legal_sources) / len(legal_sources) if legal_sources else 0
+        avg_desc_length = (
+            sum(len(source.description) for source in legal_sources) / len(legal_sources)
+            if legal_sources
+            else 0
+        )
 
         # Category distribution
         categories = {}
@@ -529,12 +558,11 @@ class AhmiaTorConnector:
             "whitelist_ratio": whitelist_ratio,
             "avg_description_length": avg_desc_length,
             "category_diversity": category_diversity,
-            "filtering_effectiveness": 1.0 - legal_ratio  # Higher when more is filtered
+            "filtering_effectiveness": 1.0 - legal_ratio,  # Higher when more is filtered
         }
 
-    async def access_onion_content(self, onion_url: str) -> Optional[str]:
+    async def access_onion_content(self, onion_url: str) -> str | None:
         """Bezpečný přístup k .onion content (pouze pro whitelisted)"""
-
         if self.legal_only_mode and onion_url not in self.legal_whitelist:
             logger.warning(f"Access denied - onion not in legal whitelist: {onion_url}")
             return None
@@ -550,17 +578,15 @@ class AhmiaTorConnector:
                     content = await response.text()
                     logger.info(f"Successfully accessed legal onion: {onion_url}")
                     return content
-                else:
-                    logger.warning(f"Onion access failed: {response.status} for {onion_url}")
-                    return None
+                logger.warning(f"Onion access failed: {response.status} for {onion_url}")
+                return None
 
         except Exception as e:
             logger.error(f"Onion access error: {e}")
             return None
 
-    async def get_connector_status(self) -> Dict[str, Any]:
+    async def get_connector_status(self) -> dict[str, Any]:
         """Získání status konektoru"""
-
         # Legal whitelist stats
         whitelist_size = len(self.legal_whitelist)
         blocked_categories_count = len(self.blocked_categories)
@@ -579,6 +605,6 @@ class AhmiaTorConnector:
                 "legal_whitelist": True,
                 "category_filtering": True,
                 "keyword_filtering": self.content_filters["block_suspicious_keywords"],
-                "description_quality_check": True
-            }
+                "description_quality_check": True,
+            },
         }

@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""
-Validation Gates System
+"""Validation Gates System
 Implementuje fail-fast/fail-hard validační brány pro odstranění HITL checkpointů
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, Any, List, Optional, Tuple
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
-import logging
+from dataclasses import dataclass
 from enum import Enum
+import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class ValidationLevel(Enum):
     """Úrovně validace"""
+
     WARNING = "warning"
     ERROR = "error"
     CRITICAL = "critical"
@@ -24,6 +24,7 @@ class ValidationLevel(Enum):
 
 class ValidationResult(Enum):
     """Výsledky validace"""
+
     PASS = "pass"
     FAIL_WARN = "fail_warn"
     FAIL_HARD = "fail_hard"
@@ -32,11 +33,12 @@ class ValidationResult(Enum):
 @dataclass
 class ValidationGateResult:
     """Výsledek validační brány"""
+
     gate_name: str
     result: ValidationResult
     level: ValidationLevel
     message: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
     remediation_suggestion: str
 
 
@@ -48,9 +50,8 @@ class ValidationGate(ABC):
         self.level = level
 
     @abstractmethod
-    async def validate(self, context: Dict[str, Any]) -> ValidationGateResult:
+    async def validate(self, context: dict[str, Any]) -> ValidationGateResult:
         """Provedení validace"""
-        pass
 
 
 class QueryValidationGate(ValidationGate):
@@ -59,7 +60,7 @@ class QueryValidationGate(ValidationGate):
     def __init__(self):
         super().__init__("query_validation", ValidationLevel.ERROR)
 
-    async def validate(self, context: Dict[str, Any]) -> ValidationGateResult:
+    async def validate(self, context: dict[str, Any]) -> ValidationGateResult:
         query = context.get("query", "")
 
         if not query or len(query.strip()) < 10:
@@ -69,7 +70,7 @@ class QueryValidationGate(ValidationGate):
                 level=self.level,
                 message="Dotaz je příliš krátký nebo prázdný",
                 details={"query_length": len(query)},
-                remediation_suggestion="Zadejte dotaz s alespoň 10 znaky popisující výzkumnou otázku"
+                remediation_suggestion="Zadejte dotaz s alespoň 10 znaky popisující výzkumnou otázku",
             )
 
         # Kontrola nebezpečných vzorů
@@ -81,7 +82,7 @@ class QueryValidationGate(ValidationGate):
                 level=ValidationLevel.CRITICAL,
                 message="Dotaz obsahuje potenciálně nebezpečné vzory",
                 details={"query": query[:100]},
-                remediation_suggestion="Odstraňte nebezpečné vzory z dotazu"
+                remediation_suggestion="Odstraňte nebezpečné vzory z dotazu",
             )
 
         return ValidationGateResult(
@@ -90,7 +91,7 @@ class QueryValidationGate(ValidationGate):
             level=self.level,
             message="Dotaz je validní",
             details={"query_length": len(query)},
-            remediation_suggestion=""
+            remediation_suggestion="",
         )
 
 
@@ -101,7 +102,7 @@ class RetrievalValidationGate(ValidationGate):
         super().__init__("retrieval_validation", ValidationLevel.ERROR)
         self.min_documents = min_documents
 
-    async def validate(self, context: Dict[str, Any]) -> ValidationGateResult:
+    async def validate(self, context: dict[str, Any]) -> ValidationGateResult:
         documents = context.get("retrieved_documents", [])
 
         if len(documents) < self.min_documents:
@@ -111,7 +112,7 @@ class RetrievalValidationGate(ValidationGate):
                 level=self.level,
                 message=f"Nedostatek dokumentů pro analýzu (nalezeno {len(documents)}, minimum {self.min_documents})",
                 details={"document_count": len(documents), "minimum_required": self.min_documents},
-                remediation_suggestion="Rozšiřte dotaz nebo snižte filtry pro získání více dokumentů"
+                remediation_suggestion="Rozšiřte dotaz nebo snižte filtry pro získání více dokumentů",
             )
 
         # Kontrola kvality dokumentů
@@ -123,7 +124,7 @@ class RetrievalValidationGate(ValidationGate):
                 level=ValidationLevel.WARNING,
                 message=f"Nízká průměrná kvalita dokumentů (skóre: {quality_score:.2f})",
                 details={"average_quality": quality_score, "document_count": len(documents)},
-                remediation_suggestion="Zvážte reformulaci dotazu pro lepší relevanci"
+                remediation_suggestion="Zvážte reformulaci dotazu pro lepší relevanci",
             )
 
         return ValidationGateResult(
@@ -132,7 +133,7 @@ class RetrievalValidationGate(ValidationGate):
             level=self.level,
             message="Retrieval úspěšný",
             details={"document_count": len(documents), "average_quality": quality_score},
-            remediation_suggestion=""
+            remediation_suggestion="",
         )
 
 
@@ -143,7 +144,7 @@ class EvidenceValidationGate(ValidationGate):
         super().__init__("evidence_validation", ValidationLevel.ERROR)
         self.min_citations_per_claim = min_citations_per_claim
 
-    async def validate(self, context: Dict[str, Any]) -> ValidationGateResult:
+    async def validate(self, context: dict[str, Any]) -> ValidationGateResult:
         claims = context.get("verified_claims", [])
 
         if not claims:
@@ -153,7 +154,7 @@ class EvidenceValidationGate(ValidationGate):
                 level=self.level,
                 message="Nebyla nalezena žádná ověřitelná tvrzení",
                 details={"claims_count": 0},
-                remediation_suggestion="Upravte dotaz nebo snižte kritéria pro generování tvrzení"
+                remediation_suggestion="Upravte dotaz nebo snižte kritéria pro generování tvrzení",
             )
 
         # Kontrola citací pro každé tvrzení
@@ -161,10 +162,9 @@ class EvidenceValidationGate(ValidationGate):
         for claim in claims:
             citation_count = len(claim.get("citations", []))
             if citation_count < self.min_citations_per_claim:
-                undercited_claims.append({
-                    "claim": claim.get("text", "")[:100],
-                    "citation_count": citation_count
-                })
+                undercited_claims.append(
+                    {"claim": claim.get("text", "")[:100], "citation_count": citation_count}
+                )
 
         if undercited_claims:
             return ValidationGateResult(
@@ -173,7 +173,7 @@ class EvidenceValidationGate(ValidationGate):
                 level=self.level,
                 message=f"Některá tvrzení nemají dostatek citací (minimum {self.min_citations_per_claim})",
                 details={"undercited_claims": undercited_claims},
-                remediation_suggestion="Zvyšte hloubku vyhledávání nebo snižte citační požadavky"
+                remediation_suggestion="Zvyšte hloubku vyhledávání nebo snižte citační požadavky",
             )
 
         return ValidationGateResult(
@@ -182,7 +182,7 @@ class EvidenceValidationGate(ValidationGate):
             level=self.level,
             message="Evidence binding úspěšný",
             details={"claims_count": len(claims), "min_citations": self.min_citations_per_claim},
-            remediation_suggestion=""
+            remediation_suggestion="",
         )
 
 
@@ -193,7 +193,7 @@ class QualityValidationGate(ValidationGate):
         super().__init__("quality_validation", ValidationLevel.ERROR)
         self.min_confidence = min_confidence
 
-    async def validate(self, context: Dict[str, Any]) -> ValidationGateResult:
+    async def validate(self, context: dict[str, Any]) -> ValidationGateResult:
         overall_confidence = context.get("overall_confidence", 0.0)
 
         if overall_confidence < self.min_confidence:
@@ -203,7 +203,7 @@ class QualityValidationGate(ValidationGate):
                 level=ValidationLevel.WARNING,
                 message=f"Nízká celková důvěryhodnost ({overall_confidence:.2f} < {self.min_confidence})",
                 details={"confidence": overall_confidence, "threshold": self.min_confidence},
-                remediation_suggestion="Zvyšte hloubku výzkumu nebo zpřesněte dotaz"
+                remediation_suggestion="Zvyšte hloubku výzkumu nebo zpřesněte dotaz",
             )
 
         # Kontrola flag claims
@@ -215,7 +215,7 @@ class QualityValidationGate(ValidationGate):
                 level=ValidationLevel.WARNING,
                 message=f"Vysoký počet problematických tvrzení ({len(flagged_claims)})",
                 details={"flagged_count": len(flagged_claims)},
-                remediation_suggestion="Zvyšte standard evidence nebo zpřesněte dotaz"
+                remediation_suggestion="Zvyšte standard evidence nebo zpřesněte dotaz",
             )
 
         return ValidationGateResult(
@@ -224,16 +224,16 @@ class QualityValidationGate(ValidationGate):
             level=self.level,
             message="Kvalita výstupu je přijatelná",
             details={"confidence": overall_confidence, "flagged_claims": len(flagged_claims)},
-            remediation_suggestion=""
+            remediation_suggestion="",
         )
 
 
 class ValidationGateManager:
     """Správce validačních bran"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
-        self.gates: List[ValidationGate] = []
+        self.gates: list[ValidationGate] = []
         self._setup_default_gates()
 
     def _setup_default_gates(self):
@@ -259,7 +259,9 @@ class ValidationGateManager:
         """Přidání vlastní validační brány"""
         self.gates.append(gate)
 
-    async def validate_all(self, context: Dict[str, Any]) -> Tuple[bool, List[ValidationGateResult]]:
+    async def validate_all(
+        self, context: dict[str, Any]
+    ) -> tuple[bool, list[ValidationGateResult]]:
         """Spuštění všech validačních bran"""
         results = []
         has_critical_failure = False
@@ -279,19 +281,21 @@ class ValidationGateManager:
 
             except Exception as e:
                 logger.error(f"Error in validation gate {gate.name}: {e}")
-                results.append(ValidationGateResult(
-                    gate_name=gate.name,
-                    result=ValidationResult.FAIL_HARD,
-                    level=ValidationLevel.CRITICAL,
-                    message=f"Chyba při validaci: {str(e)}",
-                    details={"error": str(e)},
-                    remediation_suggestion="Opravte konfiguraci nebo kontaktujte podporu"
-                ))
+                results.append(
+                    ValidationGateResult(
+                        gate_name=gate.name,
+                        result=ValidationResult.FAIL_HARD,
+                        level=ValidationLevel.CRITICAL,
+                        message=f"Chyba při validaci: {e!s}",
+                        details={"error": str(e)},
+                        remediation_suggestion="Opravte konfiguraci nebo kontaktujte podporu",
+                    )
+                )
                 has_critical_failure = True
 
         return not has_critical_failure, results
 
-    def get_remediation_plan(self, results: List[ValidationGateResult]) -> List[str]:
+    def get_remediation_plan(self, results: list[ValidationGateResult]) -> list[str]:
         """Vytvoření plánu nápravy na základě výsledků validace"""
         remediation_steps = []
 

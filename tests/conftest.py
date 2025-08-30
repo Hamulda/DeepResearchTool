@@ -36,14 +36,16 @@ def event_loop():
 @pytest.fixture(scope="session")
 def test_settings() -> ApplicationSettings:
     """Test konfigurace - izolovaná od produkčního prostředí"""
-    os.environ.update({
-        "ENVIRONMENT": "testing",
-        "DEBUG": "true",
-        "AI_OPENAI_API_KEY": "test-key",
-        "SECURITY_SECRET_KEY": "test-secret-key",
-        "SECURITY_JWT_SECRET": "test-jwt-secret",
-        "DB_POSTGRES_PASSWORD": "test-password",
-    })
+    os.environ.update(
+        {
+            "ENVIRONMENT": "testing",
+            "DEBUG": "true",
+            "AI_OPENAI_API_KEY": "test-key",
+            "SECURITY_SECRET_KEY": "test-secret-key",
+            "SECURITY_JWT_SECRET": "test-jwt-secret",
+            "DB_POSTGRES_PASSWORD": "test-password",
+        }
+    )
 
     # Vymazání cache pro settings
     get_settings.cache_clear()
@@ -61,11 +63,7 @@ def test_settings() -> ApplicationSettings:
 @pytest.fixture(scope="session")
 def test_logger():
     """Nastavení logování pro testy"""
-    configure_logging(
-        log_level="DEBUG",
-        log_format="text",
-        enable_console=True
-    )
+    configure_logging(log_level="DEBUG", log_format="text", enable_console=True)
     return get_logger("test")
 
 
@@ -80,9 +78,7 @@ def mock_openai_client():
     mock_client.chat.completions.create.return_value = Mock(
         choices=[Mock(message=Mock(content="Test response"))]
     )
-    mock_client.embeddings.create.return_value = Mock(
-        data=[Mock(embedding=[0.1] * 1536)]
-    )
+    mock_client.embeddings.create.return_value = Mock(data=[Mock(embedding=[0.1] * 1536)])
 
     return mock_client
 
@@ -126,11 +122,7 @@ def sample_text_data():
         "long_text": "This is a much longer test text. " * 100,
         "html_content": "<html><body><h1>Test</h1><p>Content</p></body></html>",
         "json_data": '{"key": "value", "number": 42}',
-        "multilingual": {
-            "en": "Hello world",
-            "cs": "Ahoj světe",
-            "de": "Hallo Welt"
-        }
+        "multilingual": {"en": "Hello world", "cs": "Ahoj světe", "de": "Hallo Welt"},
     }
 
 
@@ -142,14 +134,14 @@ def sample_documents():
             "id": "doc1",
             "title": "Test Document 1",
             "content": "This is the content of test document 1. It contains important information.",
-            "metadata": {"source": "test", "timestamp": "2024-01-01T00:00:00Z"}
+            "metadata": {"source": "test", "timestamp": "2024-01-01T00:00:00Z"},
         },
         {
             "id": "doc2",
             "title": "Test Document 2",
             "content": "This is the content of test document 2. It has different information.",
-            "metadata": {"source": "test", "timestamp": "2024-01-02T00:00:00Z"}
-        }
+            "metadata": {"source": "test", "timestamp": "2024-01-02T00:00:00Z"},
+        },
     ]
 
 
@@ -177,21 +169,11 @@ async def async_temp_directory(tmp_path):
 # Markery pro různé typy testů
 def pytest_configure(config):
     """Konfigurace pytest markerů"""
-    config.addinivalue_line(
-        "markers", "unit: označuje unit testy"
-    )
-    config.addinivalue_line(
-        "markers", "integration: označuje integrační testy"
-    )
-    config.addinivalue_line(
-        "markers", "slow: označuje pomalé testy"
-    )
-    config.addinivalue_line(
-        "markers", "external: testy vyžadující externí služby"
-    )
-    config.addinivalue_line(
-        "markers", "ai_dependent: testy vyžadující AI API"
-    )
+    config.addinivalue_line("markers", "unit: označuje unit testy")
+    config.addinivalue_line("markers", "integration: označuje integrační testy")
+    config.addinivalue_line("markers", "slow: označuje pomalé testy")
+    config.addinivalue_line("markers", "external: testy vyžadující externí služby")
+    config.addinivalue_line("markers", "ai_dependent: testy vyžadující AI API")
 
 
 # Skipování testů podle podmínek
@@ -205,10 +187,7 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "external" in item.keywords:
             # Kontrola dostupnosti externích služeb
-            if not all([
-                os.getenv("DB_POSTGRES_PASSWORD"),
-                os.getenv("DB_REDIS_PASSWORD")
-            ]):
+            if not all([os.getenv("DB_POSTGRES_PASSWORD"), os.getenv("DB_REDIS_PASSWORD")]):
                 item.add_marker(skip_external)
 
         if "ai_dependent" in item.keywords:

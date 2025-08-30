@@ -1,30 +1,29 @@
 #!/usr/bin/env python3
-"""
-Configuration module for DeepResearchTool
+"""Configuration module for DeepResearchTool
 
 Provides centralized configuration management using pydantic-settings
 """
 
 from .settings import (
-    ApplicationSettings,
     AIModelSettings,
+    ApplicationSettings,
     DatabaseSettings,
-    SecuritySettings,
-    ScrapingSettings,
-    ProcessingSettings,
     MonitoringSettings,
+    ProcessingSettings,
+    ScrapingSettings,
+    SecuritySettings,
     get_settings,
-    settings
+    settings,
 )
 
 __all__ = [
-    "ApplicationSettings",
     "AIModelSettings",
+    "ApplicationSettings",
     "DatabaseSettings",
-    "SecuritySettings",
-    "ScrapingSettings",
-    "ProcessingSettings",
     "MonitoringSettings",
+    "ProcessingSettings",
+    "ScrapingSettings",
+    "SecuritySettings",
     "get_settings",
-    "settings"
+    "settings",
 ]

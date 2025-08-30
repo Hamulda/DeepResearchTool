@@ -1,30 +1,31 @@
 #!/usr/bin/env python3
-"""
-Sparse Encoder Module with SPLADE + BM25 Fallback
+"""Sparse Encoder Module with SPLADE + BM25 Fallback
 Query intent classification and hybrid retrieval optimization
 
 Author: Senior IT Specialist
 """
 
-import torch
-import numpy as np
-import logging
-from typing import List, Dict, Any, Optional, Tuple
+import asyncio
 from dataclasses import dataclass
-from transformers import AutoTokenizer, AutoModelForMaskedLM
+import logging
+import re
+from typing import Any
+
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import re
-import asyncio
+import torch
+from transformers import AutoModelForMaskedLM, AutoTokenizer
 
 
 @dataclass
 class QueryIntent:
     """Klasifikace záměru dotazu"""
+
     intent_type: str  # "fact_finding", "sota_research", "exploration"
     confidence: float
-    keywords: List[str]
-    suggested_weights: Dict[str, float]  # dense/sparse weights
+    keywords: list[str]
+    suggested_weights: dict[str, float]  # dense/sparse weights
 
 
 class QueryIntentClassifier:
@@ -38,25 +39,25 @@ class QueryIntentClassifier:
             "fact_finding": [
                 r"\b(what is|what are|define|definition|explain|how many|when did|who is)\b",
                 r"\b(statistics|data|numbers|percentage|rate|amount)\b",
-                r"\b(current|latest|recent|today|2024|2025)\b"
+                r"\b(current|latest|recent|today|2024|2025)\b",
             ],
             "sota_research": [
                 r"\b(state of the art|sota|latest research|cutting edge|breakthrough)\b",
                 r"\b(recent advances|new developments|emerging|novel)\b",
-                r"\b(comparison|versus|vs|better than|outperforms)\b"
+                r"\b(comparison|versus|vs|better than|outperforms)\b",
             ],
             "exploration": [
                 r"\b(overview|survey|review|comprehensive|broad)\b",
                 r"\b(trends|future|potential|applications|implications)\b",
-                r"\b(explore|investigate|analyze|study)\b"
-            ]
+                r"\b(explore|investigate|analyze|study)\b",
+            ],
         }
 
         # Intent-specific retrieval weights
         self.weight_profiles = {
             "fact_finding": {"dense": 0.3, "sparse": 0.7},  # Prefer exact matches
             "sota_research": {"dense": 0.7, "sparse": 0.3},  # Prefer semantic similarity
-            "exploration": {"dense": 0.5, "sparse": 0.5}     # Balanced approach
+            "exploration": {"dense": 0.5, "sparse": 0.5},  # Balanced approach
         }
 
     def classify_intent(self, query: str) -> QueryIntent:
@@ -96,7 +97,7 @@ class QueryIntentClassifier:
             intent_type=primary_intent,
             confidence=confidence,
             keywords=matched_keywords[primary_intent],
-            suggested_weights=self.weight_profiles[primary_intent]
+            suggested_weights=self.weight_profiles[primary_intent],
         )
 
 
@@ -159,7 +160,7 @@ class SPLADEEncoder:
         await self._load_model()
         return self._compute_splade_representation(query)
 
-    async def encode_documents(self, documents: List[str]) -> List[np.ndarray]:
+    async def encode_documents(self, documents: list[str]) -> list[np.ndarray]:
         """Encode multiple documents using SPLADE"""
         await self._load_model()
 
@@ -184,16 +185,13 @@ class BM25Fallback:
         self.b = b
         self.logger = logging.getLogger(__name__)
         self.vectorizer = TfidfVectorizer(
-            lowercase=True,
-            stop_words='english',
-            max_features=10000,
-            ngram_range=(1, 2)
+            lowercase=True, stop_words="english", max_features=10000, ngram_range=(1, 2)
         )
         self.doc_vectors = None
         self.documents = []
         self._fitted = False
 
-    def fit(self, documents: List[str]):
+    def fit(self, documents: list[str]):
         """Fit BM25 on document collection"""
         self.logger.info(f"Fitting BM25 on {len(documents)} documents")
         self.documents = documents
@@ -207,7 +205,7 @@ class BM25Fallback:
             self.logger.error(f"BM25 fitting failed: {e}")
             raise
 
-    def search(self, query: str, top_k: int = 20) -> List[Tuple[int, float]]:
+    def search(self, query: str, top_k: int = 20) -> list[tuple[int, float]]:
         """Search documents using BM25"""
         if not self._fitted:
             self.logger.warning("BM25 not fitted, returning empty results")
@@ -235,7 +233,7 @@ class BM25Fallback:
 class SparseRetriever:
     """Unified sparse retriever with SPLADE + BM25 fallback"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
 
@@ -253,7 +251,7 @@ class SparseRetriever:
         self.documents = []
         self.splade_available = False
 
-    async def initialize(self, documents: List[str]):
+    async def initialize(self, documents: list[str]):
         """Initialize retriever with document collection"""
         self.documents = documents
         self.logger.info(f"Initializing sparse retriever with {len(documents)} documents")
@@ -265,8 +263,7 @@ class SparseRetriever:
         if self.engine == "splade" and self.splade_encoder:
             try:
                 await asyncio.wait_for(
-                    self.splade_encoder._load_model(),
-                    timeout=self.splade_timeout
+                    self.splade_encoder._load_model(), timeout=self.splade_timeout
                 )
                 self.splade_available = True
                 self.logger.info("SPLADE encoder ready")
@@ -278,16 +275,16 @@ class SparseRetriever:
                 else:
                     raise
 
-    async def retrieve(self, query: str, top_k: int = 20) -> Tuple[List[Dict[str, Any]], QueryIntent]:
+    async def retrieve(
+        self, query: str, top_k: int = 20
+    ) -> tuple[list[dict[str, Any]], QueryIntent]:
         """Retrieve documents using sparse methods"""
         # Classify query intent
         intent = self.intent_classifier.classify_intent(query)
 
         # Determine which engine to use
         use_splade = (
-            self.engine == "splade" and
-            self.splade_available and
-            self.splade_encoder is not None
+            self.engine == "splade" and self.splade_available and self.splade_encoder is not None
         )
 
         if use_splade:
@@ -313,7 +310,7 @@ class SparseRetriever:
         self.logger.info(f"Sparse retrieval complete: {len(results)} docs using {engine_used}")
         return results, intent
 
-    async def _retrieve_with_splade(self, query: str, top_k: int) -> List[Dict[str, Any]]:
+    async def _retrieve_with_splade(self, query: str, top_k: int) -> list[dict[str, Any]]:
         """Retrieve using SPLADE encoder"""
         self.logger.info("Using SPLADE for sparse retrieval")
 
@@ -325,7 +322,7 @@ class SparseRetriever:
         self.logger.info("SPLADE query encoded, falling back to BM25 for demo")
         return self._retrieve_with_bm25(query, top_k)
 
-    def _retrieve_with_bm25(self, query: str, top_k: int) -> List[Dict[str, Any]]:
+    def _retrieve_with_bm25(self, query: str, top_k: int) -> list[dict[str, Any]]:
         """Retrieve using BM25"""
         self.logger.info("Using BM25 for sparse retrieval")
 
@@ -334,18 +331,20 @@ class SparseRetriever:
         results = []
         for doc_idx, score in bm25_results:
             if doc_idx < len(self.documents):
-                results.append({
-                    "doc_id": f"doc_{doc_idx}",
-                    "content": self.documents[doc_idx],
-                    "score": float(score),
-                    "rank": len(results) + 1,
-                    "source": "sparse_bm25"
-                })
+                results.append(
+                    {
+                        "doc_id": f"doc_{doc_idx}",
+                        "content": self.documents[doc_idx],
+                        "score": float(score),
+                        "rank": len(results) + 1,
+                        "source": "sparse_bm25",
+                    }
+                )
 
         return results
 
 
 # Factory function
-def create_sparse_retriever(config: Dict[str, Any]) -> SparseRetriever:
+def create_sparse_retriever(config: dict[str, Any]) -> SparseRetriever:
     """Factory function pro sparse retriever"""
     return SparseRetriever(config)

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Centralizovaná správa konfigurace pomocí pydantic-settings
+"""Centralizovaná správa konfigurace pomocí pydantic-settings
 Všechny konfigurační parametry a tajemství v jednom místě
 
 Author: Senior Python/MLOps Agent
@@ -8,7 +7,6 @@ Author: Senior Python/MLOps Agent
 
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Union
 
 from pydantic import BaseSettings, Field, SecretStr, validator
 from pydantic_settings import BaseSettings as PydanticBaseSettings
@@ -20,7 +18,7 @@ class DatabaseSettings(BaseSettings):
     # Redis
     redis_host: str = Field(default="localhost", description="Redis host")
     redis_port: int = Field(default=6379, description="Redis port")
-    redis_password: Optional[SecretStr] = Field(default=None, description="Redis password")
+    redis_password: SecretStr | None = Field(default=None, description="Redis password")
     redis_db: int = Field(default=0, description="Redis database number")
 
     # PostgreSQL
@@ -32,12 +30,14 @@ class DatabaseSettings(BaseSettings):
 
     # Elasticsearch
     elasticsearch_url: str = Field(default="http://localhost:9200", description="Elasticsearch URL")
-    elasticsearch_api_key: Optional[SecretStr] = Field(default=None, description="Elasticsearch API key")
+    elasticsearch_api_key: SecretStr | None = Field(
+        default=None, description="Elasticsearch API key"
+    )
 
     # Qdrant Vector DB
     qdrant_host: str = Field(default="localhost", description="Qdrant host")
     qdrant_port: int = Field(default=6333, description="Qdrant port")
-    qdrant_api_key: Optional[SecretStr] = Field(default=None, description="Qdrant API key")
+    qdrant_api_key: SecretStr | None = Field(default=None, description="Qdrant API key")
 
     class Config:
         env_prefix = "DB_"
@@ -49,13 +49,17 @@ class AIModelSettings(BaseSettings):
     # OpenAI
     openai_api_key: SecretStr = Field(description="OpenAI API key")
     openai_model: str = Field(default="gpt-4", description="OpenAI model name")
-    openai_embedding_model: str = Field(default="text-embedding-ada-002", description="OpenAI embedding model")
+    openai_embedding_model: str = Field(
+        default="text-embedding-ada-002", description="OpenAI embedding model"
+    )
     openai_max_tokens: int = Field(default=4000, description="Max tokens per request")
     openai_temperature: float = Field(default=0.7, description="Model temperature")
 
     # Anthropic
-    anthropic_api_key: Optional[SecretStr] = Field(default=None, description="Anthropic API key")
-    anthropic_model: str = Field(default="claude-3-sonnet-20240229", description="Anthropic model name")
+    anthropic_api_key: SecretStr | None = Field(default=None, description="Anthropic API key")
+    anthropic_model: str = Field(
+        default="claude-3-sonnet-20240229", description="Anthropic model name"
+    )
 
     # Ollama (local models)
     ollama_base_url: str = Field(default="http://localhost:11434", description="Ollama base URL")
@@ -87,7 +91,9 @@ class SecuritySettings(BaseSettings):
     tor_proxy_host: str = Field(default="127.0.0.1", description="TOR proxy host")
     tor_proxy_port: int = Field(default=9050, description="TOR proxy port")
     tor_control_port: int = Field(default=9051, description="TOR control port")
-    tor_control_password: Optional[SecretStr] = Field(default=None, description="TOR control password")
+    tor_control_password: SecretStr | None = Field(
+        default=None, description="TOR control password"
+    )
 
     # Security compliance
     enable_data_encryption: bool = Field(default=True, description="Enable data encryption at rest")
@@ -104,7 +110,7 @@ class ScrapingSettings(BaseSettings):
     # User agents
     default_user_agent: str = Field(
         default="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        description="Default user agent"
+        description="Default user agent",
     )
 
     # Request settings
@@ -114,7 +120,7 @@ class ScrapingSettings(BaseSettings):
 
     # Proxy settings
     use_proxies: bool = Field(default=False, description="Enable proxy usage")
-    proxy_list: List[str] = Field(default_factory=list, description="List of proxy URLs")
+    proxy_list: list[str] = Field(default_factory=list, description="List of proxy URLs")
 
     # Rate limiting
     requests_per_second: float = Field(default=1.0, description="Maximum requests per second")
@@ -138,18 +144,22 @@ class ProcessingSettings(BaseSettings):
 
     # Processing limits
     max_file_size: int = Field(default=104857600, description="Max file size in bytes (100MB)")
-    max_documents_per_batch: int = Field(default=100, description="Max documents per processing batch")
+    max_documents_per_batch: int = Field(
+        default=100, description="Max documents per processing batch"
+    )
 
     # Language processing
     default_language: str = Field(default="en", description="Default language for processing")
-    supported_languages: List[str] = Field(
+    supported_languages: list[str] = Field(
         default_factory=lambda: ["en", "cs", "sk", "de", "fr", "es"],
-        description="Supported languages"
+        description="Supported languages",
     )
 
     # Embedding settings
     embedding_dimension: int = Field(default=1536, description="Embedding vector dimension")
-    similarity_threshold: float = Field(default=0.7, description="Similarity threshold for matching")
+    similarity_threshold: float = Field(
+        default=0.7, description="Similarity threshold for matching"
+    )
 
     class Config:
         env_prefix = "PROCESSING_"
@@ -161,7 +171,7 @@ class MonitoringSettings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
     log_format: str = Field(default="json", description="Log format (json/text)")
-    log_file_path: Optional[str] = Field(default=None, description="Log file path")
+    log_file_path: str | None = Field(default=None, description="Log file path")
 
     # Metrics
     enable_metrics: bool = Field(default=True, description="Enable metrics collection")
@@ -169,7 +179,7 @@ class MonitoringSettings(BaseSettings):
 
     # Tracing
     enable_tracing: bool = Field(default=True, description="Enable distributed tracing")
-    jaeger_endpoint: Optional[str] = Field(default=None, description="Jaeger endpoint")
+    jaeger_endpoint: str | None = Field(default=None, description="Jaeger endpoint")
 
     # Performance monitoring
     enable_profiling: bool = Field(default=False, description="Enable performance profiling")
@@ -185,7 +195,9 @@ class ApplicationSettings(PydanticBaseSettings):
     # Application info
     app_name: str = Field(default="DeepResearchTool", description="Application name")
     app_version: str = Field(default="1.0.0", description="Application version")
-    environment: str = Field(default="development", description="Environment (development/staging/production)")
+    environment: str = Field(
+        default="development", description="Environment (development/staging/production)"
+    )
     debug: bool = Field(default=False, description="Debug mode")
 
     # Server settings
@@ -206,15 +218,15 @@ class ApplicationSettings(PydanticBaseSettings):
     processing: ProcessingSettings = Field(default_factory=ProcessingSettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
 
-    @validator('environment')
+    @validator("environment")
     def validate_environment(cls, v):
         """Validace prostředí"""
-        allowed = ['development', 'staging', 'production']
+        allowed = ["development", "staging", "production"]
         if v not in allowed:
-            raise ValueError(f'Environment must be one of: {allowed}')
+            raise ValueError(f"Environment must be one of: {allowed}")
         return v
 
-    @validator('data_dir', 'cache_dir', 'logs_dir')
+    @validator("data_dir", "cache_dir", "logs_dir")
     def create_directories(cls, v):
         """Vytvoření adresářů pokud neexistují"""
         v.mkdir(parents=True, exist_ok=True)
@@ -226,7 +238,7 @@ class ApplicationSettings(PydanticBaseSettings):
         case_sensitive = False
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> ApplicationSettings:
     """Získání singleton instance nastavení"""
     return ApplicationSettings()

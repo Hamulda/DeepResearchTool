@@ -1,27 +1,28 @@
 #!/usr/bin/env python3
-"""
-Enhanced DAG Workflow Orchestrator with Reliability Features
+"""Enhanced DAG Workflow Orchestrator with Reliability Features
 Retriable nodes, exponential backoff, checkpointing and deterministic execution
 
 Author: Senior IT Specialist
 """
 
 import asyncio
-import random
-import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
+import hashlib
 import json
 import logging
-import hashlib
-from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional, Callable, Union
-from dataclasses import dataclass, field
 from pathlib import Path
-from enum import Enum
 import pickle
+import random
+import time
+from typing import Any
 
 
 class NodeStatus(Enum):
     """DAG node execution status"""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -33,17 +34,19 @@ class NodeStatus(Enum):
 @dataclass
 class RetryConfig:
     """Retry configuration for DAG nodes"""
+
     max_retries: int = 3
     base_delay: float = 1.0  # seconds
     max_delay: float = 60.0  # seconds
     exponential_base: float = 2.0
     jitter: bool = True
-    retry_on_exceptions: List[type] = field(default_factory=lambda: [Exception])
+    retry_on_exceptions: list[type] = field(default_factory=lambda: [Exception])
 
 
 @dataclass
 class RateLimitConfig:
     """Rate limiting configuration per connector"""
+
     requests_per_second: float = 1.0
     burst_size: int = 5
     cooldown_period: float = 60.0  # seconds after rate limit hit
@@ -52,26 +55,28 @@ class RateLimitConfig:
 @dataclass
 class NodeExecution:
     """Execution record for a DAG node"""
+
     node_id: str
     status: NodeStatus
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
     duration: float = 0.0
     attempt_count: int = 0
-    last_error: Optional[str] = None
+    last_error: str | None = None
     result: Any = None
-    checkpoint_hash: Optional[str] = None
+    checkpoint_hash: str | None = None
 
 
 @dataclass
 class DAGCheckpoint:
     """DAG execution checkpoint"""
+
     checkpoint_id: str
     timestamp: datetime
     config_version: str
-    completed_nodes: Dict[str, Any]
-    node_executions: Dict[str, NodeExecution]
-    global_state: Dict[str, Any]
+    completed_nodes: dict[str, Any]
+    node_executions: dict[str, NodeExecution]
+    global_state: dict[str, Any]
     deterministic_seed: int
 
 
@@ -103,6 +108,7 @@ class DeterministicSeedManager:
         # Set numpy seed if available
         try:
             import numpy as np
+
             np.random.seed(seed)
         except ImportError:
             pass
@@ -110,6 +116,7 @@ class DeterministicSeedManager:
         # Set torch seed if available
         try:
             import torch
+
             torch.manual_seed(seed)
             if torch.cuda.is_available():
                 torch.cuda.manual_seed(seed)
@@ -149,13 +156,12 @@ class RateLimiter:
         if self.tokens >= 1.0:
             self.tokens -= 1.0
             return True
-        else:
-            # Rate limit hit
-            self.last_rate_limit = now
-            wait_time = (1.0 - self.tokens) / self.config.requests_per_second
-            self.logger.info(f"Rate limit hit for {connector_name}, waiting {wait_time:.1f}s")
-            await asyncio.sleep(wait_time)
-            return False
+        # Rate limit hit
+        self.last_rate_limit = now
+        wait_time = (1.0 - self.tokens) / self.config.requests_per_second
+        self.logger.info(f"Rate limit hit for {connector_name}, waiting {wait_time:.1f}s")
+        await asyncio.sleep(wait_time)
+        return False
 
 
 class RetriableNode:
@@ -171,7 +177,7 @@ class RetriableNode:
     async def execute(self, *args, **kwargs) -> Any:
         """Execute node with retry logic"""
         self.execution.status = NodeStatus.RUNNING
-        self.execution.start_time = datetime.now(timezone.utc)
+        self.execution.start_time = datetime.now(UTC)
 
         for attempt in range(self.retry_config.max_retries + 1):
             self.execution.attempt_count = attempt + 1
@@ -180,7 +186,9 @@ class RetriableNode:
                 if attempt > 0:
                     self.execution.status = NodeStatus.RETRYING
                     delay = self._calculate_delay(attempt)
-                    self.logger.info(f"Retrying node {self.node_id}, attempt {attempt + 1}, delay {delay:.1f}s")
+                    self.logger.info(
+                        f"Retrying node {self.node_id}, attempt {attempt + 1}, delay {delay:.1f}s"
+                    )
                     await asyncio.sleep(delay)
 
                 # Execute the function
@@ -192,29 +200,38 @@ class RetriableNode:
                 # Success
                 self.execution.status = NodeStatus.COMPLETED
                 self.execution.result = result
-                self.execution.end_time = datetime.now(timezone.utc)
-                self.execution.duration = (self.execution.end_time - self.execution.start_time).total_seconds()
+                self.execution.end_time = datetime.now(UTC)
+                self.execution.duration = (
+                    self.execution.end_time - self.execution.start_time
+                ).total_seconds()
 
-                self.logger.info(f"Node {self.node_id} completed successfully on attempt {attempt + 1}")
+                self.logger.info(
+                    f"Node {self.node_id} completed successfully on attempt {attempt + 1}"
+                )
                 return result
 
             except Exception as e:
                 self.execution.last_error = str(e)
 
                 # Check if this exception type should trigger retry
-                should_retry = any(isinstance(e, exc_type) for exc_type in self.retry_config.retry_on_exceptions)
+                should_retry = any(
+                    isinstance(e, exc_type) for exc_type in self.retry_config.retry_on_exceptions
+                )
 
                 if attempt < self.retry_config.max_retries and should_retry:
                     self.logger.warning(f"Node {self.node_id} failed on attempt {attempt + 1}: {e}")
                     continue
-                else:
-                    # Final failure
-                    self.execution.status = NodeStatus.FAILED
-                    self.execution.end_time = datetime.now(timezone.utc)
-                    self.execution.duration = (self.execution.end_time - self.execution.start_time).total_seconds()
+                # Final failure
+                self.execution.status = NodeStatus.FAILED
+                self.execution.end_time = datetime.now(UTC)
+                self.execution.duration = (
+                    self.execution.end_time - self.execution.start_time
+                ).total_seconds()
 
-                    self.logger.error(f"Node {self.node_id} failed permanently after {attempt + 1} attempts: {e}")
-                    raise
+                self.logger.error(
+                    f"Node {self.node_id} failed permanently after {attempt + 1} attempts: {e}"
+                )
+                raise
 
         # Should never reach here
         raise RuntimeError(f"Unexpected end of retry loop for node {self.node_id}")
@@ -223,7 +240,7 @@ class RetriableNode:
         """Calculate retry delay with exponential backoff and jitter"""
         delay = min(
             self.retry_config.base_delay * (self.retry_config.exponential_base ** (attempt - 1)),
-            self.retry_config.max_delay
+            self.retry_config.max_delay,
         )
 
         if self.retry_config.jitter:
@@ -242,7 +259,7 @@ class CheckpointManager:
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.logger = logging.getLogger(__name__)
 
-    def generate_config_version(self, config: Dict[str, Any]) -> str:
+    def generate_config_version(self, config: dict[str, Any]) -> str:
         """Generate version hash for configuration"""
         config_str = json.dumps(config, sort_keys=True)
         return hashlib.sha256(config_str.encode()).hexdigest()[:16]
@@ -252,7 +269,7 @@ class CheckpointManager:
         checkpoint_file = self.checkpoint_dir / f"checkpoint_{checkpoint.checkpoint_id}.pkl"
 
         try:
-            with open(checkpoint_file, 'wb') as f:
+            with open(checkpoint_file, "wb") as f:
                 pickle.dump(checkpoint, f)
 
             self.logger.info(f"Checkpoint saved: {checkpoint_file}")
@@ -262,7 +279,7 @@ class CheckpointManager:
             self.logger.error(f"Failed to save checkpoint: {e}")
             raise
 
-    def load_checkpoint(self, checkpoint_id: str) -> Optional[DAGCheckpoint]:
+    def load_checkpoint(self, checkpoint_id: str) -> DAGCheckpoint | None:
         """Load checkpoint from disk"""
         checkpoint_file = self.checkpoint_dir / f"checkpoint_{checkpoint_id}.pkl"
 
@@ -270,7 +287,7 @@ class CheckpointManager:
             return None
 
         try:
-            with open(checkpoint_file, 'rb') as f:
+            with open(checkpoint_file, "rb") as f:
                 checkpoint = pickle.load(f)
 
             self.logger.info(f"Checkpoint loaded: {checkpoint_file}")
@@ -280,13 +297,13 @@ class CheckpointManager:
             self.logger.error(f"Failed to load checkpoint: {e}")
             return None
 
-    def find_latest_checkpoint(self, config_version: str) -> Optional[DAGCheckpoint]:
+    def find_latest_checkpoint(self, config_version: str) -> DAGCheckpoint | None:
         """Find latest checkpoint for given config version"""
         checkpoints = []
 
         for checkpoint_file in self.checkpoint_dir.glob("checkpoint_*.pkl"):
             try:
-                with open(checkpoint_file, 'rb') as f:
+                with open(checkpoint_file, "rb") as f:
                     checkpoint = pickle.load(f)
 
                 if checkpoint.config_version == config_version:
@@ -326,14 +343,12 @@ class CheckpointManager:
 class ReliableDAGOrchestrator:
     """Enhanced DAG orchestrator with reliability features"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
 
         # Core components
-        self.seed_manager = DeterministicSeedManager(
-            base_seed=config.get("deterministic_seed", 42)
-        )
+        self.seed_manager = DeterministicSeedManager(base_seed=config.get("deterministic_seed", 42))
         self.checkpoint_manager = CheckpointManager(
             checkpoint_dir=config.get("checkpoint_dir", "research_cache/checkpoints")
         )
@@ -359,11 +374,13 @@ class ReliableDAGOrchestrator:
         rate_limits = self.config.get("rate_limits", {})
 
         for connector, limit_config in rate_limits.items():
-            self.rate_limiters[connector] = RateLimiter(RateLimitConfig(
-                requests_per_second=limit_config.get("requests_per_second", 1.0),
-                burst_size=limit_config.get("burst_size", 5),
-                cooldown_period=limit_config.get("cooldown_period", 60.0)
-            ))
+            self.rate_limiters[connector] = RateLimiter(
+                RateLimitConfig(
+                    requests_per_second=limit_config.get("requests_per_second", 1.0),
+                    burst_size=limit_config.get("burst_size", 5),
+                    cooldown_period=limit_config.get("cooldown_period", 60.0),
+                )
+            )
 
         # Default rate limiter
         if "default" not in self.rate_limiters:
@@ -375,8 +392,13 @@ class ReliableDAGOrchestrator:
         random_suffix = random.randint(1000, 9999)
         return f"dag_exec_{timestamp}_{random_suffix}"
 
-    def add_node(self, node_id: str, func: Callable, dependencies: List[str] = None,
-                retry_config: RetryConfig = None):
+    def add_node(
+        self,
+        node_id: str,
+        func: Callable,
+        dependencies: list[str] = None,
+        retry_config: RetryConfig = None,
+    ):
         """Add node to DAG"""
         dependencies = dependencies or []
 
@@ -386,10 +408,11 @@ class ReliableDAGOrchestrator:
 
         self.logger.debug(f"Added node {node_id} with dependencies: {dependencies}")
 
-    async def execute_dag(self, initial_data: Dict[str, Any] = None,
-                         resume_from_checkpoint: bool = True) -> Dict[str, Any]:
+    async def execute_dag(
+        self, initial_data: dict[str, Any] = None, resume_from_checkpoint: bool = True
+    ) -> dict[str, Any]:
         """Execute complete DAG with checkpointing"""
-        self.start_time = datetime.now(timezone.utc)
+        self.start_time = datetime.now(UTC)
         self.global_state = initial_data or {}
 
         self.logger.info(f"Starting DAG execution: {self.execution_id}")
@@ -406,7 +429,10 @@ class ReliableDAGOrchestrator:
             execution_order = self._topological_sort()
 
             for node_id in execution_order:
-                if node_id in self.node_executions and self.node_executions[node_id].status == NodeStatus.COMPLETED:
+                if (
+                    node_id in self.node_executions
+                    and self.node_executions[node_id].status == NodeStatus.COMPLETED
+                ):
                     self.logger.info(f"Skipping completed node: {node_id}")
                     continue
 
@@ -420,9 +446,13 @@ class ReliableDAGOrchestrator:
                 "execution_id": self.execution_id,
                 "status": "completed",
                 "start_time": self.start_time.isoformat(),
-                "end_time": datetime.now(timezone.utc).isoformat(),
-                "node_results": {node_id: execution.result for node_id, execution in self.node_executions.items() if execution.status == NodeStatus.COMPLETED},
-                "global_state": self.global_state
+                "end_time": datetime.now(UTC).isoformat(),
+                "node_results": {
+                    node_id: execution.result
+                    for node_id, execution in self.node_executions.items()
+                    if execution.status == NodeStatus.COMPLETED
+                },
+                "global_state": self.global_state,
             }
 
             self.logger.info(f"DAG execution completed successfully: {self.execution_id}")
@@ -472,13 +502,13 @@ class ReliableDAGOrchestrator:
             self.logger.error(f"Node {node_id} failed: {e}")
             raise
 
-    def _get_node_connector(self, node_id: str) -> Optional[str]:
+    def _get_node_connector(self, node_id: str) -> str | None:
         """Get connector name for node (for rate limiting)"""
         # This would be configured based on node type
         node_config = self.config.get("nodes", {}).get(node_id, {})
         return node_config.get("connector")
 
-    async def _prepare_node_inputs(self, node_id: str) -> Dict[str, Any]:
+    async def _prepare_node_inputs(self, node_id: str) -> dict[str, Any]:
         """Prepare inputs for node execution"""
         inputs = {"global_state": self.global_state}
 
@@ -491,9 +521,9 @@ class ReliableDAGOrchestrator:
 
         return inputs
 
-    def _topological_sort(self) -> List[str]:
+    def _topological_sort(self) -> list[str]:
         """Topological sort of DAG nodes"""
-        in_degree = {node_id: 0 for node_id in self.nodes}
+        in_degree = dict.fromkeys(self.nodes, 0)
 
         # Calculate in-degrees
         for node_id, deps in self.dependencies.items():
@@ -525,12 +555,16 @@ class ReliableDAGOrchestrator:
         """Create execution checkpoint"""
         checkpoint = DAGCheckpoint(
             checkpoint_id=f"{self.execution_id}_{len(self.node_executions)}",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             config_version=self.config_version,
-            completed_nodes={node_id: execution.result for node_id, execution in self.node_executions.items() if execution.status == NodeStatus.COMPLETED},
+            completed_nodes={
+                node_id: execution.result
+                for node_id, execution in self.node_executions.items()
+                if execution.status == NodeStatus.COMPLETED
+            },
             node_executions=self.node_executions.copy(),
             global_state=self.global_state.copy(),
-            deterministic_seed=self.seed_manager.base_seed
+            deterministic_seed=self.seed_manager.base_seed,
         )
 
         self.checkpoint_manager.save_checkpoint(checkpoint)
@@ -545,10 +579,12 @@ class ReliableDAGOrchestrator:
         self.seed_manager.base_seed = checkpoint.deterministic_seed
 
         # Log resume status
-        completed_count = sum(1 for ex in self.node_executions.values() if ex.status == NodeStatus.COMPLETED)
+        completed_count = sum(
+            1 for ex in self.node_executions.values() if ex.status == NodeStatus.COMPLETED
+        )
         self.logger.info(f"Resumed with {completed_count} completed nodes")
 
 
-def create_reliable_dag_orchestrator(config: Dict[str, Any]) -> ReliableDAGOrchestrator:
+def create_reliable_dag_orchestrator(config: dict[str, Any]) -> ReliableDAGOrchestrator:
     """Factory function for reliable DAG orchestrator"""
     return ReliableDAGOrchestrator(config)

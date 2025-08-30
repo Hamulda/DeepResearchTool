@@ -1,56 +1,59 @@
 #!/usr/bin/env python3
-"""
-Ollama Research Agent for Deep Research Tool
+"""Ollama Research Agent for Deep Research Tool
 Advanced AI integration with context-aware analysis
 
 Author: Advanced IT Specialist
 """
 
 import asyncio
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+from datetime import datetime
 import json
 import logging
-from typing import List, Dict, Any, Optional, AsyncGenerator
-from datetime import datetime
-import yaml
+from typing import Any
+
 import aiohttp
-from dataclasses import dataclass
 
 from .context_manager import ContextManager
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class AnalysisResult:
     """Result of AI analysis"""
+
     response: str
     confidence: float
     sources_analyzed: int
-    key_findings: List[str]
-    potential_issues: List[str]
-    recommendations: List[str]
+    key_findings: list[str]
+    potential_issues: list[str]
+    recommendations: list[str]
     timestamp: datetime
+
 
 class OllamaResearchAgent:
     """Advanced research agent with Ollama integration"""
 
     def __init__(self, model_name: str = "llama3.2:8b", host: str = "http://localhost:11434"):
-        """
-        Initialize the Ollama research agent
+        """Initialize the Ollama research agent
 
         Args:
             model_name: Name of the Ollama model to use
             host: Ollama server host URL
+
         """
         self.model_name = model_name
-        self.host = host.rstrip('/')
+        self.host = host.rstrip("/")
         self.context_manager = ContextManager()
         self.conversation_memory = []
         self.system_prompts = self._load_system_prompts()
 
-    def _load_system_prompts(self) -> Dict[str, str]:
+    def _load_system_prompts(self) -> dict[str, str]:
         """Load system prompts for different analysis types"""
         return {
-            'general_research': """
+            "general_research": """
             Jsi pokročilý expert na analýzu konspirativních teorií, historických výzkumů a archivních materiálů.
             Tvým úkolem je:
             1. Identifikovat klíčové informace a souvislosti v poskytnutých dokumentech
@@ -63,8 +66,7 @@ class OllamaResearchAgent:
             Buď skeptický, ale objektivní. Preferuj ověřitelné zdroje a jasně rozliš mezi fakty a spekulacemi.
             Vždy uveď stupeň jistoty svých závěrů a navrhni další kroky pro ověření.
             """,
-
-            'conspiracy_analysis': """
+            "conspiracy_analysis": """
             Specializuješ se na analýzu konspirativních teorií s vědeckým přístupem.
             Hodnotíš:
             1. Faktickou základnu tvrzení
@@ -79,8 +81,7 @@ class OllamaResearchAgent:
             - Možnými skutečnými konspiracemi
             - Čistými fantaziemi
             """,
-
-            'document_verification': """
+            "document_verification": """
             Specializuješ se na ověřování pravosti a integrity dokumentů.
             Kontroluješ:
             1. Konzistenci stylu a jazyka
@@ -91,8 +92,7 @@ class OllamaResearchAgent:
             
             Poskytni hodnocení pravděpodobnosti pravosti dokumentu a identifikuj potenciální červené vlajky.
             """,
-
-            'timeline_analysis': """
+            "timeline_analysis": """
             Specializuješ se na konstrukci a analýzu časových linií událostí.
             Vytváříš:
             1. Chronologické seřazení událostí
@@ -102,13 +102,13 @@ class OllamaResearchAgent:
             5. Srovnání s oficiálními verzemi
             
             Zvýrazni nesrovnalosti a navrhni alternativní interpretace tam, kde je to opodstatněné.
-            """
+            """,
         }
 
-    async def analyze_with_context(self, query: str, documents: List[Dict], 
-                                 analysis_type: str = 'general_research') -> AnalysisResult:
-        """
-        Perform context-aware analysis using Ollama
+    async def analyze_with_context(
+        self, query: str, documents: list[dict], analysis_type: str = "general_research"
+    ) -> AnalysisResult:
+        """Perform context-aware analysis using Ollama
 
         Args:
             query: Research query
@@ -117,6 +117,7 @@ class OllamaResearchAgent:
 
         Returns:
             AnalysisResult object
+
         """
         # Prepare context
         prioritized_context = self.context_manager.prepare_context(
@@ -124,7 +125,9 @@ class OllamaResearchAgent:
         )
 
         # Get appropriate system prompt
-        system_prompt = self.system_prompts.get(analysis_type, self.system_prompts['general_research'])
+        system_prompt = self.system_prompts.get(
+            analysis_type, self.system_prompts["general_research"]
+        )
 
         # Add memory context if available
         memory_context = self.context_manager.get_memory_context(max_items=3)
@@ -158,8 +161,9 @@ class OllamaResearchAgent:
 
             # Add to conversation memory
             self.context_manager.add_to_memory(
-                query, parsed_result.response,
-                {'analysis_type': analysis_type, 'timestamp': datetime.now()}
+                query,
+                parsed_result.response,
+                {"analysis_type": analysis_type, "timestamp": datetime.now()},
             )
 
             return parsed_result
@@ -167,18 +171,17 @@ class OllamaResearchAgent:
         except Exception as e:
             logger.error(f"Error in Ollama analysis: {e}")
             return AnalysisResult(
-                response=f"Chyba při analýze: {str(e)}",
+                response=f"Chyba při analýze: {e!s}",
                 confidence=0.0,
                 sources_analyzed=len(documents),
                 key_findings=[],
-                potential_issues=[f"Technická chyba: {str(e)}"],
+                potential_issues=[f"Technická chyba: {e!s}"],
                 recommendations=["Zkuste analýzu opakovat"],
-                timestamp=datetime.now()
+                timestamp=datetime.now(),
             )
 
-    async def chat_with_context(self, message: str, context: Dict[str, Any] = None) -> str:
-        """
-        Interactive chat with context awareness
+    async def chat_with_context(self, message: str, context: dict[str, Any] = None) -> str:
+        """Interactive chat with context awareness
 
         Args:
             message: User message
@@ -186,6 +189,7 @@ class OllamaResearchAgent:
 
         Returns:
             AI response string
+
         """
         # Build chat prompt with context
         chat_prompt = f"""
@@ -203,11 +207,10 @@ class OllamaResearchAgent:
             return response
         except Exception as e:
             logger.error(f"Error in chat: {e}")
-            return f"Omlouvám se, došlo k chybě: {str(e)}"
+            return f"Omlouvám se, došlo k chybě: {e!s}"
 
-    async def stream_analysis(self, query: str, documents: List[Dict]) -> AsyncGenerator[str, None]:
-        """
-        Stream analysis results in real-time
+    async def stream_analysis(self, query: str, documents: list[dict]) -> AsyncGenerator[str, None]:
+        """Stream analysis results in real-time
 
         Args:
             query: Research query
@@ -215,12 +218,13 @@ class OllamaResearchAgent:
 
         Yields:
             Partial analysis results
+
         """
         prioritized_context = self.context_manager.prepare_context(
             documents, query, max_tokens=3500
         )
 
-        system_prompt = self.system_prompts['general_research']
+        system_prompt = self.system_prompts["general_research"]
         analysis_prompt = f"""
         {system_prompt}
         
@@ -234,7 +238,7 @@ class OllamaResearchAgent:
             async for chunk in self._stream_ollama_request(analysis_prompt):
                 yield chunk
         except Exception as e:
-            yield f"Chyba při streamování: {str(e)}"
+            yield f"Chyba při streamování: {e!s}"
 
     async def _make_ollama_request(self, prompt: str, stream: bool = False) -> str:
         """Make request to Ollama API"""
@@ -243,11 +247,7 @@ class OllamaResearchAgent:
             "model": self.model_name,
             "prompt": prompt,
             "stream": stream,
-            "options": {
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "top_k": 40
-            }
+            "options": {"temperature": 0.7, "top_p": 0.9, "top_k": 40},
         }
 
         async with aiohttp.ClientSession() as session:
@@ -261,16 +261,15 @@ class OllamaResearchAgent:
                         if line:
                             try:
                                 data = json.loads(line.decode())
-                                if 'response' in data:
-                                    full_response += data['response']
-                                if data.get('done', False):
+                                if "response" in data:
+                                    full_response += data["response"]
+                                if data.get("done", False):
                                     break
                             except json.JSONDecodeError:
                                 continue
                     return full_response
-                else:
-                    data = await response.json()
-                    return data.get('response', '')
+                data = await response.json()
+                return data.get("response", "")
 
     async def _stream_ollama_request(self, prompt: str) -> AsyncGenerator[str, None]:
         """Stream request to Ollama API"""
@@ -279,11 +278,7 @@ class OllamaResearchAgent:
             "model": self.model_name,
             "prompt": prompt,
             "stream": True,
-            "options": {
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "top_k": 40
-            }
+            "options": {"temperature": 0.7, "top_p": 0.9, "top_k": 40},
         }
 
         async with aiohttp.ClientSession() as session:
@@ -295,9 +290,9 @@ class OllamaResearchAgent:
                     if line:
                         try:
                             data = json.loads(line.decode())
-                            if 'response' in data:
-                                yield data['response']
-                            if data.get('done', False):
+                            if "response" in data:
+                                yield data["response"]
+                            if data.get("done", False):
                                 break
                         except json.JSONDecodeError:
                             continue
@@ -323,10 +318,10 @@ class OllamaResearchAgent:
             key_findings=key_findings,
             potential_issues=potential_issues,
             recommendations=recommendations,
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
         )
 
-    def _extract_section(self, text: str, start_marker: str, end_marker: str) -> List[str]:
+    def _extract_section(self, text: str, start_marker: str, end_marker: str) -> list[str]:
         """Extract bulleted items from a section"""
         import re
 
@@ -334,17 +329,20 @@ class OllamaResearchAgent:
         start_pattern = rf"{start_marker}[:\s]*"
         end_pattern = rf"\d+\.\s*{end_marker}" if end_marker else r"$"
 
-        section_match = re.search(f"{start_pattern}(.*?)(?={end_pattern})", text, re.DOTALL | re.IGNORECASE)
+        section_match = re.search(
+            f"{start_pattern}(.*?)(?={end_pattern})", text, re.DOTALL | re.IGNORECASE
+        )
         if not section_match:
             return []
 
         section_content = section_match.group(1)
 
         # Extract bullet points or numbered items
-        items = re.findall(r'[-•*]\s*(.+?)(?=\n[-•*]|\n\d+\.|\n[A-Z]+[:.]|\Z)',
-                          section_content, re.DOTALL)
+        items = re.findall(
+            r"[-•*]\s*(.+?)(?=\n[-•*]|\n\d+\.|\n[A-Z]+[:.]|\Z)", section_content, re.DOTALL
+        )
 
-        return [item.strip().replace('\n', ' ') for item in items if item.strip()]
+        return [item.strip().replace("\n", " ") for item in items if item.strip()]
 
     def _extract_confidence(self, text: str) -> float:
         """Extract confidence level from response"""
@@ -355,7 +353,7 @@ class OllamaResearchAgent:
             r"STUPEŇ JISTOTY[:\s]*(\d+(?:\.\d+)?)",
             r"jistota[:\s]*(\d+(?:\.\d+)?)",
             r"confidence[:\s]*(\d+(?:\.\d+)?)",
-            r"(\d+(?:\.\d+)?)/10"
+            r"(\d+(?:\.\d+)?)/10",
         ]
 
         for pattern in patterns:
@@ -377,14 +375,14 @@ class OllamaResearchAgent:
                 async with session.get(url) as response:
                     if response.status == 200:
                         data = await response.json()
-                        models = [model['name'] for model in data.get('models', [])]
+                        models = [model["name"] for model in data.get("models", [])]
                         return self.model_name in models
             return False
         except Exception as e:
             logger.error(f"Failed to connect to Ollama: {e}")
             return False
 
-    async def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> list[str]:
         """Get list of available Ollama models"""
         try:
             url = f"{self.host}/api/tags"
@@ -392,7 +390,7 @@ class OllamaResearchAgent:
                 async with session.get(url) as response:
                     if response.status == 200:
                         data = await response.json()
-                        return [model['name'] for model in data.get('models', [])]
+                        return [model["name"] for model in data.get("models", [])]
             return []
         except Exception as e:
             logger.error(f"Failed to get models: {e}")
@@ -403,7 +401,7 @@ class OllamaResearchAgent:
         self.model_name = model_name
         logger.info(f"Switched to model: {model_name}")
 
-    def get_conversation_history(self) -> List[Dict[str, Any]]:
+    def get_conversation_history(self) -> list[dict[str, Any]]:
         """Get conversation history"""
         return list(self.context_manager.conversation_memory)
 
@@ -412,7 +410,9 @@ class OllamaResearchAgent:
         self.context_manager.conversation_memory.clear()
         logger.info("Conversation history cleared")
 
-    async def analyze_research(self, topic: str, context: str, analysis_type: str = 'general_research') -> AnalysisResult:
+    async def analyze_research(
+        self, topic: str, context: str, analysis_type: str = "general_research"
+    ) -> AnalysisResult:
         """Enhanced research analysis with structured JSON output"""
         try:
             # Create structured prompt for JSON output
@@ -426,26 +426,24 @@ class OllamaResearchAgent:
             if structured_data:
                 # Create analysis result from structured data
                 return self._create_analysis_from_structured_data(structured_data, topic)
-            else:
-                # Fallback to regular text analysis
-                logger.warning("Failed to parse structured response, using fallback")
-                return await self._fallback_analysis(topic, context, analysis_type)
+            # Fallback to regular text analysis
+            logger.warning("Failed to parse structured response, using fallback")
+            return await self._fallback_analysis(topic, context, analysis_type)
 
         except Exception as e:
             logger.error(f"Error in enhanced research analysis: {e}")
             return AnalysisResult(
-                response=f"Error during analysis: {str(e)}",
+                response=f"Error during analysis: {e!s}",
                 confidence=0.1,
                 key_findings=["Analysis failed due to technical error"],
                 potential_issues=[str(e)],
                 recommendations=["Please try again or contact support"],
                 analysis_type=analysis_type,
-                metadata={'error': str(e)}
+                metadata={"error": str(e)},
             )
 
     def _create_structured_prompt(self, topic: str, context: str, analysis_type: str) -> str:
         """Create prompt that encourages structured JSON output"""
-
         json_schema = {
             "analysis_result": {
                 "confidence_score": "float between 0.0 and 1.0",
@@ -454,8 +452,10 @@ class OllamaResearchAgent:
                     "people": [{"name": "string", "role": "string", "relevance": "float"}],
                     "organizations": [{"name": "string", "type": "string", "relevance": "float"}],
                     "locations": [{"name": "string", "type": "string", "relevance": "float"}],
-                    "events": [{"name": "string", "date": "YYYY-MM-DD or null", "relevance": "float"}],
-                    "documents": [{"title": "string", "type": "string", "relevance": "float"}]
+                    "events": [
+                        {"name": "string", "date": "YYYY-MM-DD or null", "relevance": "float"}
+                    ],
+                    "documents": [{"title": "string", "type": "string", "relevance": "float"}],
                 },
                 "relationships": [
                     {
@@ -463,7 +463,7 @@ class OllamaResearchAgent:
                         "entity2": "string",
                         "relationship_type": "string",
                         "strength": "float",
-                        "description": "string"
+                        "description": "string",
                     }
                 ],
                 "timeline": [
@@ -471,25 +471,25 @@ class OllamaResearchAgent:
                         "date": "YYYY-MM-DD or YYYY or null",
                         "event": "string",
                         "significance": "string",
-                        "sources": ["list of source references"]
+                        "sources": ["list of source references"],
                     }
                 ],
                 "credibility_assessment": {
                     "source_reliability": "float",
                     "evidence_strength": "float",
                     "bias_indicators": ["list of potential biases"],
-                    "fact_check_status": "verified|partially_verified|unverified|disputed"
+                    "fact_check_status": "verified|partially_verified|unverified|disputed",
                 },
                 "anomalies_detected": [
                     {
                         "type": "anachronism|inconsistency|bias|propaganda",
                         "description": "string",
-                        "severity": "low|medium|high|critical"
+                        "severity": "low|medium|high|critical",
                     }
                 ],
                 "research_gaps": ["list of missing information areas"],
                 "recommendations": ["list of next research steps"],
-                "summary": "comprehensive text summary"
+                "summary": "comprehensive text summary",
             }
         }
 
@@ -524,15 +524,15 @@ JSON Response:
 """
         return prompt
 
-    def _parse_structured_response(self, response: str) -> Optional[Dict[str, Any]]:
+    def _parse_structured_response(self, response: str) -> dict[str, Any] | None:
         """Parse structured JSON response from Ollama"""
         try:
             # Clean response - remove any text before/after JSON
             response = response.strip()
 
             # Find JSON boundaries
-            start_idx = response.find('{')
-            end_idx = response.rfind('}') + 1
+            start_idx = response.find("{")
+            end_idx = response.rfind("}") + 1
 
             if start_idx == -1 or end_idx == 0:
                 logger.warning("No JSON found in response")
@@ -544,11 +544,11 @@ JSON Response:
             structured_data = json.loads(json_str)
 
             # Validate required fields
-            if 'analysis_result' not in structured_data:
+            if "analysis_result" not in structured_data:
                 logger.warning("Missing analysis_result in structured response")
                 return None
 
-            return structured_data['analysis_result']
+            return structured_data["analysis_result"]
 
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse JSON response: {e}")
@@ -558,51 +558,55 @@ JSON Response:
             logger.error(f"Error parsing structured response: {e}")
             return None
 
-    def _create_analysis_from_structured_data(self, data: Dict[str, Any], topic: str) -> AnalysisResult:
+    def _create_analysis_from_structured_data(
+        self, data: dict[str, Any], topic: str
+    ) -> AnalysisResult:
         """Create AnalysisResult from structured data"""
         try:
             # Extract basic fields
-            confidence = float(data.get('confidence_score', 0.5))
-            key_findings = data.get('key_findings', [])
-            research_gaps = data.get('research_gaps', [])
-            recommendations = data.get('recommendations', [])
-            summary = data.get('summary', 'No summary available')
+            confidence = float(data.get("confidence_score", 0.5))
+            key_findings = data.get("key_findings", [])
+            research_gaps = data.get("research_gaps", [])
+            recommendations = data.get("recommendations", [])
+            summary = data.get("summary", "No summary available")
 
             # Extract entities and relationships for metadata
-            entities = data.get('entities', {})
-            relationships = data.get('relationships', [])
-            timeline = data.get('timeline', [])
-            credibility = data.get('credibility_assessment', {})
-            anomalies = data.get('anomalies_detected', [])
+            entities = data.get("entities", {})
+            relationships = data.get("relationships", [])
+            timeline = data.get("timeline", [])
+            credibility = data.get("credibility_assessment", {})
+            anomalies = data.get("anomalies_detected", [])
 
             # Create potential issues from anomalies and credibility assessment
             potential_issues = []
 
             # Add anomalies as potential issues
             for anomaly in anomalies:
-                issue_desc = f"{anomaly.get('type', 'Unknown')} detected: {anomaly.get('description', '')}"
-                if anomaly.get('severity') in ['high', 'critical']:
+                issue_desc = (
+                    f"{anomaly.get('type', 'Unknown')} detected: {anomaly.get('description', '')}"
+                )
+                if anomaly.get("severity") in ["high", "critical"]:
                     issue_desc = f"⚠️ {issue_desc}"
                 potential_issues.append(issue_desc)
 
             # Add credibility concerns
-            bias_indicators = credibility.get('bias_indicators', [])
+            bias_indicators = credibility.get("bias_indicators", [])
             if bias_indicators:
                 potential_issues.append(f"Bias indicators detected: {', '.join(bias_indicators)}")
 
-            fact_check_status = credibility.get('fact_check_status', 'unverified')
-            if fact_check_status in ['disputed', 'unverified']:
+            fact_check_status = credibility.get("fact_check_status", "unverified")
+            if fact_check_status in ["disputed", "unverified"]:
                 potential_issues.append(f"Fact-check status: {fact_check_status}")
 
             # Create comprehensive metadata
             metadata = {
-                'entities': entities,
-                'relationships': relationships,
-                'timeline': timeline,
-                'credibility_assessment': credibility,
-                'anomalies_detected': anomalies,
-                'structured_analysis': True,
-                'extraction_timestamp': datetime.now().isoformat()
+                "entities": entities,
+                "relationships": relationships,
+                "timeline": timeline,
+                "credibility_assessment": credibility,
+                "anomalies_detected": anomalies,
+                "structured_analysis": True,
+                "extraction_timestamp": datetime.now().isoformat(),
             }
 
             return AnalysisResult(
@@ -611,44 +615,48 @@ JSON Response:
                 key_findings=key_findings[:10],  # Limit to 10 findings
                 potential_issues=potential_issues[:10],  # Limit to 10 issues
                 recommendations=recommendations[:8],  # Limit to 8 recommendations
-                analysis_type='structured_analysis',
-                metadata=metadata
+                analysis_type="structured_analysis",
+                metadata=metadata,
             )
 
         except Exception as e:
             logger.error(f"Error creating analysis from structured data: {e}")
             return self._create_fallback_analysis(data, topic)
 
-    def _create_fallback_analysis(self, data: Dict[str, Any], topic: str) -> AnalysisResult:
+    def _create_fallback_analysis(self, data: dict[str, Any], topic: str) -> AnalysisResult:
         """Create basic analysis result when structured parsing partially fails"""
         try:
             # Extract what we can
-            summary = data.get('summary', f'Analysis of {topic} completed with partial data extraction.')
-            confidence = float(data.get('confidence_score', 0.3))
-            key_findings = data.get('key_findings', ['Partial analysis completed'])
+            summary = data.get(
+                "summary", f"Analysis of {topic} completed with partial data extraction."
+            )
+            confidence = float(data.get("confidence_score", 0.3))
+            key_findings = data.get("key_findings", ["Partial analysis completed"])
 
             return AnalysisResult(
                 response=summary,
                 confidence=confidence,
                 key_findings=key_findings,
-                potential_issues=['Structured analysis partially failed'],
-                recommendations=['Consider re-running analysis'],
-                analysis_type='partial_structured',
-                metadata={'structured_analysis': False, 'fallback_used': True}
+                potential_issues=["Structured analysis partially failed"],
+                recommendations=["Consider re-running analysis"],
+                analysis_type="partial_structured",
+                metadata={"structured_analysis": False, "fallback_used": True},
             )
         except Exception as e:
             logger.error(f"Error in fallback analysis creation: {e}")
             return AnalysisResult(
                 response=f"Analysis of {topic} encountered errors during processing.",
                 confidence=0.1,
-                key_findings=['Analysis failed'],
+                key_findings=["Analysis failed"],
                 potential_issues=[str(e)],
-                recommendations=['Please try again'],
-                analysis_type='error',
-                metadata={'error': str(e)}
+                recommendations=["Please try again"],
+                analysis_type="error",
+                metadata={"error": str(e)},
             )
 
-    async def _fallback_analysis(self, topic: str, context: str, analysis_type: str) -> AnalysisResult:
+    async def _fallback_analysis(
+        self, topic: str, context: str, analysis_type: str
+    ) -> AnalysisResult:
         """Fallback to regular text analysis if structured parsing fails"""
         logger.info("Using fallback text analysis")
 
@@ -668,10 +676,10 @@ JSON Response:
             potential_issues=issues,
             recommendations=recommendations,
             analysis_type=analysis_type,
-            metadata={'structured_analysis': False, 'fallback_used': True}
+            metadata={"structured_analysis": False, "fallback_used": True},
         )
 
-    def extract_entities_and_relationships(self, text: str) -> Dict[str, Any]:
+    def extract_entities_and_relationships(self, text: str) -> dict[str, Any]:
         """Extract structured entities and relationships from text using AI"""
         try:
             entity_prompt = f"""
@@ -710,4 +718,3 @@ JSON:
         except Exception as e:
             logger.error(f"Error extracting entities and relationships: {e}")
             return {}
-

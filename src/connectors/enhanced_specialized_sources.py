@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""
-Enhanced Source Connectors with Authority Ranking
+"""Enhanced Source Connectors with Authority Ranking
 Open-science, legal/regulatory, and archive connectors with source preference
 
 Author: Senior IT Specialist
 """
 
 import asyncio
-import aiohttp
-import logging
-import re
-from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlparse
-import json
+from datetime import UTC, datetime
+import logging
+from typing import Any
+from urllib.parse import urljoin
+
+import aiohttp
 
 from .enhanced_evidence_binding import EnhancedEvidence, EnhancedEvidenceManager
 
@@ -22,6 +20,7 @@ from .enhanced_evidence_binding import EnhancedEvidence, EnhancedEvidenceManager
 @dataclass
 class SourceAuthority:
     """Source authority and credibility scoring"""
+
     domain_authority: float = 0.5  # 0-1 scale
     peer_review_status: bool = False
     institutional_affiliation: bool = False
@@ -43,6 +42,7 @@ class SourceAuthority:
         # Citation factor (logarithmic scale)
         if self.citation_count > 0:
             import math
+
             citation_factor = min(0.2, math.log10(self.citation_count + 1) / 10)
             score += citation_factor
 
@@ -60,7 +60,7 @@ class SourceAuthority:
 class OpenScienceConnector:
     """Enhanced open science connector with DOI resolution and preference ranking"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.evidence_manager = EnhancedEvidenceManager()
@@ -78,7 +78,7 @@ class OpenScienceConnector:
             "cell": 41.582,
             "nejm": 91.245,
             "lancet": 79.321,
-            "jama": 56.272
+            "jama": 56.272,
         }
 
         # Preprint server rankings
@@ -87,10 +87,10 @@ class OpenScienceConnector:
             "biorxiv.org": 0.7,
             "medrxiv.org": 0.7,
             "chemrxiv.org": 0.6,
-            "preprints.org": 0.5
+            "preprints.org": 0.5,
         }
 
-    async def search_and_rank(self, query: str, max_results: int = 20) -> List[EnhancedEvidence]:
+    async def search_and_rank(self, query: str, max_results: int = 20) -> list[EnhancedEvidence]:
         """Search open science sources and rank by authority"""
         self.logger.info(f"Searching open science sources for: {query}")
 
@@ -99,7 +99,7 @@ class OpenScienceConnector:
             self._search_crossref(query, max_results // 4),
             self._search_europepmc(query, max_results // 4),
             self._search_openalex(query, max_results // 4),
-            self._search_unpaywall_open_access(query, max_results // 4)
+            self._search_unpaywall_open_access(query, max_results // 4),
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -130,7 +130,7 @@ class OpenScienceConnector:
         self.logger.info(f"Found {len(ranked_evidence)} ranked open science results")
         return ranked_evidence[:max_results]
 
-    async def _search_crossref(self, query: str, limit: int) -> List[EnhancedEvidence]:
+    async def _search_crossref(self, query: str, limit: int) -> list[EnhancedEvidence]:
         """Search Crossref DOI database"""
         try:
             async with aiohttp.ClientSession() as session:
@@ -138,7 +138,7 @@ class OpenScienceConnector:
                     "query": query,
                     "rows": limit,
                     "sort": "relevance",
-                    "filter": "type:journal-article"
+                    "filter": "type:journal-article",
                 }
 
                 async with session.get(self.crossref_api, params=params) as response:
@@ -150,15 +150,11 @@ class OpenScienceConnector:
 
         return []
 
-    async def _search_europepmc(self, query: str, limit: int) -> List[EnhancedEvidence]:
+    async def _search_europepmc(self, query: str, limit: int) -> list[EnhancedEvidence]:
         """Search Europe PMC database"""
         try:
             async with aiohttp.ClientSession() as session:
-                params = {
-                    "query": query,
-                    "pageSize": limit,
-                    "format": "json"
-                }
+                params = {"query": query, "pageSize": limit, "format": "json"}
 
                 url = urljoin(self.europepmc_api, "search")
                 async with session.get(url, params=params) as response:
@@ -170,15 +166,11 @@ class OpenScienceConnector:
 
         return []
 
-    async def _search_openalex(self, query: str, limit: int) -> List[EnhancedEvidence]:
+    async def _search_openalex(self, query: str, limit: int) -> list[EnhancedEvidence]:
         """Search OpenAlex database"""
         try:
             async with aiohttp.ClientSession() as session:
-                params = {
-                    "search": query,
-                    "per-page": limit,
-                    "filter": "type:article"
-                }
+                params = {"search": query, "per-page": limit, "filter": "type:article"}
 
                 async with session.get(self.openalex_api, params=params) as response:
                     if response.status == 200:
@@ -189,13 +181,13 @@ class OpenScienceConnector:
 
         return []
 
-    async def _search_unpaywall_open_access(self, query: str, limit: int) -> List[EnhancedEvidence]:
+    async def _search_unpaywall_open_access(self, query: str, limit: int) -> list[EnhancedEvidence]:
         """Search for open access versions via Unpaywall"""
         # This would typically work with DOIs from other searches
         # For demo, return empty list
         return []
 
-    def _parse_crossref_results(self, data: Dict[str, Any]) -> List[EnhancedEvidence]:
+    def _parse_crossref_results(self, data: dict[str, Any]) -> list[EnhancedEvidence]:
         """Parse Crossref API results"""
         evidence_list = []
 
@@ -216,14 +208,16 @@ class OpenScienceConnector:
                 if "published-print" in item:
                     date_parts = item["published-print"].get("date-parts", [[]])[0]
                     if len(date_parts) >= 3:
-                        pub_date = datetime(date_parts[0], date_parts[1], date_parts[2], tzinfo=timezone.utc)
+                        pub_date = datetime(
+                            date_parts[0], date_parts[1], date_parts[2], tzinfo=UTC
+                        )
 
                 # Create enhanced evidence
                 source_data = {
                     "source_id": f"crossref_{doi}",
                     "canonical_url": f"https://doi.org/{doi}",
                     "title": title,
-                    "snippet": abstract[:500] + "..." if len(abstract) > 500 else abstract
+                    "snippet": abstract[:500] + "..." if len(abstract) > 500 else abstract,
                 }
 
                 evidence = self.evidence_manager.create_enhanced_evidence(
@@ -247,7 +241,7 @@ class OpenScienceConnector:
 
         return evidence_list
 
-    def _parse_europepmc_results(self, data: Dict[str, Any]) -> List[EnhancedEvidence]:
+    def _parse_europepmc_results(self, data: dict[str, Any]) -> list[EnhancedEvidence]:
         """Parse Europe PMC results"""
         evidence_list = []
 
@@ -260,9 +254,13 @@ class OpenScienceConnector:
 
                 source_data = {
                     "source_id": f"europepmc_{pmid or doi}",
-                    "canonical_url": f"https://europepmc.org/article/MED/{pmid}" if pmid else f"https://doi.org/{doi}",
+                    "canonical_url": (
+                        f"https://europepmc.org/article/MED/{pmid}"
+                        if pmid
+                        else f"https://doi.org/{doi}"
+                    ),
                     "title": title,
-                    "snippet": abstract[:500] + "..." if len(abstract) > 500 else abstract
+                    "snippet": abstract[:500] + "..." if len(abstract) > 500 else abstract,
                 }
 
                 evidence = self.evidence_manager.create_enhanced_evidence(
@@ -274,7 +272,7 @@ class OpenScienceConnector:
                 authority = SourceAuthority(
                     domain_authority=0.85,  # Europe PMC is high quality
                     peer_review_status=True,
-                    institutional_affiliation=True
+                    institutional_affiliation=True,
                 )
                 evidence.source_authority = authority.calculate_overall_authority()
 
@@ -286,7 +284,7 @@ class OpenScienceConnector:
 
         return evidence_list
 
-    def _parse_openalex_results(self, data: Dict[str, Any]) -> List[EnhancedEvidence]:
+    def _parse_openalex_results(self, data: dict[str, Any]) -> list[EnhancedEvidence]:
         """Parse OpenAlex results"""
         evidence_list = []
 
@@ -300,7 +298,7 @@ class OpenScienceConnector:
                     "source_id": f"openalex_{item.get('id', '').split('/')[-1]}",
                     "canonical_url": item.get("doi", "") or item.get("id", ""),
                     "title": title,
-                    "snippet": abstract[:500] + "..." if len(abstract) > 500 else abstract
+                    "snippet": abstract[:500] + "..." if len(abstract) > 500 else abstract,
                 }
 
                 evidence = self.evidence_manager.create_enhanced_evidence(
@@ -314,7 +312,7 @@ class OpenScienceConnector:
                 authority = SourceAuthority(
                     domain_authority=0.8,  # OpenAlex is comprehensive
                     citation_count=citation_count,
-                    peer_review_status=True  # Assume peer-reviewed
+                    peer_review_status=True,  # Assume peer-reviewed
                 )
                 evidence.source_authority = authority.calculate_overall_authority()
                 evidence.source_type = "academic"
@@ -327,7 +325,7 @@ class OpenScienceConnector:
 
         return evidence_list
 
-    def _calculate_journal_authority(self, journal: str, item: Dict[str, Any]) -> SourceAuthority:
+    def _calculate_journal_authority(self, journal: str, item: dict[str, Any]) -> SourceAuthority:
         """Calculate authority for journal publication"""
         journal_lower = journal.lower()
 
@@ -347,7 +345,7 @@ class OpenScienceConnector:
             peer_review_status=True,
             institutional_affiliation=True,
             citation_count=citation_count,
-            impact_factor=impact_factor
+            impact_factor=impact_factor,
         )
 
         # Boost for high-impact journals
@@ -358,10 +356,10 @@ class OpenScienceConnector:
 
         return authority
 
-    def _rank_by_authority(self, evidence_list: List[EnhancedEvidence]) -> List[EnhancedEvidence]:
+    def _rank_by_authority(self, evidence_list: list[EnhancedEvidence]) -> list[EnhancedEvidence]:
         """Rank evidence by authority with peer-review preference"""
 
-        def authority_score(evidence: EnhancedEvidence) -> Tuple[int, float]:
+        def authority_score(evidence: EnhancedEvidence) -> tuple[int, float]:
             # First sort by peer-review status (1 for peer-reviewed, 0 for preprints)
             peer_reviewed = 1 if evidence.source_authority > 0.7 else 0
 
@@ -384,7 +382,7 @@ class OpenScienceConnector:
 class LegalRegulatoryConnector:
     """Legal and regulatory document connector with precise citation matching"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.evidence_manager = EnhancedEvidenceManager()
@@ -395,17 +393,19 @@ class LegalRegulatoryConnector:
             "eur-lex.europa.eu": {"authority": 0.95, "type": "eu_official"},
             "courtlistener.com": {"authority": 0.85, "type": "case_law"},
             "justia.com": {"authority": 0.7, "type": "legal_database"},
-            "law.cornell.edu": {"authority": 0.8, "type": "academic_legal"}
+            "law.cornell.edu": {"authority": 0.8, "type": "academic_legal"},
         }
 
-    async def search_legal_documents(self, query: str, max_results: int = 20) -> List[EnhancedEvidence]:
+    async def search_legal_documents(
+        self, query: str, max_results: int = 20
+    ) -> list[EnhancedEvidence]:
         """Search legal and regulatory sources"""
         self.logger.info(f"Searching legal sources for: {query}")
 
         tasks = [
             self._search_sec_edgar(query, max_results // 3),
             self._search_eur_lex(query, max_results // 3),
-            self._search_courtlistener(query, max_results // 3)
+            self._search_courtlistener(query, max_results // 3),
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -422,7 +422,7 @@ class LegalRegulatoryConnector:
 
         return ranked_evidence[:max_results]
 
-    async def _search_sec_edgar(self, query: str, limit: int) -> List[EnhancedEvidence]:
+    async def _search_sec_edgar(self, query: str, limit: int) -> list[EnhancedEvidence]:
         """Search SEC EDGAR database"""
         # Simplified SEC search implementation
         try:
@@ -435,13 +435,15 @@ class LegalRegulatoryConnector:
                     "title": f"SEC Filing related to {query}",
                     "snippet": f"Securities filing discussing {query} and regulatory compliance...",
                     "cik": "0001234567",
-                    "filing_type": "10-K"
+                    "filing_type": "10-K",
                 }
             ]
 
             evidence_list = []
             for item in mock_results:
-                evidence = self.evidence_manager.create_enhanced_evidence(item, content=item["snippet"])
+                evidence = self.evidence_manager.create_enhanced_evidence(
+                    item, content=item["snippet"]
+                )
                 evidence.source_type = "legal"
                 evidence.source_authority = 0.95  # SEC is authoritative
 
@@ -456,7 +458,7 @@ class LegalRegulatoryConnector:
             self.logger.error(f"SEC EDGAR search failed: {e}")
             return []
 
-    async def _search_eur_lex(self, query: str, limit: int) -> List[EnhancedEvidence]:
+    async def _search_eur_lex(self, query: str, limit: int) -> list[EnhancedEvidence]:
         """Search EUR-Lex legal database"""
         try:
             # Mock EU legal document
@@ -466,13 +468,15 @@ class LegalRegulatoryConnector:
                     "canonical_url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:example",
                     "title": f"EU Directive on {query}",
                     "snippet": f"European Union directive addressing {query} regulations...",
-                    "celex_number": "32024L0001"
+                    "celex_number": "32024L0001",
                 }
             ]
 
             evidence_list = []
             for item in mock_results:
-                evidence = self.evidence_manager.create_enhanced_evidence(item, content=item["snippet"])
+                evidence = self.evidence_manager.create_enhanced_evidence(
+                    item, content=item["snippet"]
+                )
                 evidence.source_type = "legal"
                 evidence.source_authority = 0.95  # EU official documents are authoritative
 
@@ -484,7 +488,7 @@ class LegalRegulatoryConnector:
             self.logger.error(f"EUR-Lex search failed: {e}")
             return []
 
-    async def _search_courtlistener(self, query: str, limit: int) -> List[EnhancedEvidence]:
+    async def _search_courtlistener(self, query: str, limit: int) -> list[EnhancedEvidence]:
         """Search CourtListener case law database"""
         try:
             # Mock case law results
@@ -495,13 +499,15 @@ class LegalRegulatoryConnector:
                     "title": f"Court Case: {query}",
                     "snippet": f"Legal precedent establishing {query} principles...",
                     "docket": "No. 2024-CV-001",
-                    "court": "Supreme Court"
+                    "court": "Supreme Court",
                 }
             ]
 
             evidence_list = []
             for item in mock_results:
-                evidence = self.evidence_manager.create_enhanced_evidence(item, content=item["snippet"])
+                evidence = self.evidence_manager.create_enhanced_evidence(
+                    item, content=item["snippet"]
+                )
                 evidence.source_type = "legal"
                 evidence.source_authority = 0.85  # Case law is authoritative but contextual
 
@@ -516,19 +522,19 @@ class LegalRegulatoryConnector:
             self.logger.error(f"CourtListener search failed: {e}")
             return []
 
-    def _rank_by_legal_authority(self, evidence_list: List[EnhancedEvidence]) -> List[EnhancedEvidence]:
+    def _rank_by_legal_authority(
+        self, evidence_list: list[EnhancedEvidence]
+    ) -> list[EnhancedEvidence]:
         """Rank legal documents by authority hierarchy"""
 
-        def legal_authority_score(evidence: EnhancedEvidence) -> Tuple[int, float]:
+        def legal_authority_score(evidence: EnhancedEvidence) -> tuple[int, float]:
             domain = evidence.domain
 
             # Legal hierarchy scoring
             hierarchy_score = 0
             if domain in self.legal_authorities:
                 auth_info = self.legal_authorities[domain]
-                if auth_info["type"] == "federal_agency":
-                    hierarchy_score = 4
-                elif auth_info["type"] == "eu_official":
+                if auth_info["type"] == "federal_agency" or auth_info["type"] == "eu_official":
                     hierarchy_score = 4
                 elif auth_info["type"] == "case_law":
                     hierarchy_score = 3
@@ -544,36 +550,35 @@ class LegalRegulatoryConnector:
         self.logger.info(f"Ranked {len(ranked)} legal documents by authority hierarchy")
         return ranked
 
-    def extract_precise_citations(self, evidence: EnhancedEvidence, cited_passage: str) -> Dict[str, Any]:
+    def extract_precise_citations(
+        self, evidence: EnhancedEvidence, cited_passage: str
+    ) -> dict[str, Any]:
         """Extract precise legal citations with string matching"""
-        citations = {
-            "exact_matches": [],
-            "partial_matches": [],
-            "confidence": 0.0
-        }
+        citations = {"exact_matches": [], "partial_matches": [], "confidence": 0.0}
 
         content = evidence.content or evidence.snippet
 
         # Exact string match
         if cited_passage.lower() in content.lower():
-            citations["exact_matches"].append({
-                "passage": cited_passage,
-                "position": content.lower().find(cited_passage.lower()),
-                "context_before": "",
-                "context_after": ""
-            })
+            citations["exact_matches"].append(
+                {
+                    "passage": cited_passage,
+                    "position": content.lower().find(cited_passage.lower()),
+                    "context_before": "",
+                    "context_after": "",
+                }
+            )
             citations["confidence"] = 1.0
 
         # Partial matches (simplified)
         words = cited_passage.lower().split()
         if len(words) > 3:
             for i in range(len(words) - 2):
-                partial = " ".join(words[i:i+3])
+                partial = " ".join(words[i : i + 3])
                 if partial in content.lower():
-                    citations["partial_matches"].append({
-                        "fragment": partial,
-                        "position": content.lower().find(partial)
-                    })
+                    citations["partial_matches"].append(
+                        {"fragment": partial, "position": content.lower().find(partial)}
+                    )
                     citations["confidence"] = max(citations["confidence"], 0.6)
 
         return citations
@@ -582,7 +587,7 @@ class LegalRegulatoryConnector:
 class ArchiveMementoConnector:
     """Archive and Memento connector with CDX/snapshot tracking"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.evidence_manager = EnhancedEvidenceManager()
@@ -591,7 +596,9 @@ class ArchiveMementoConnector:
         self.wayback_api = "https://web.archive.org/cdx/search/cdx"
         self.memento_timegate = "http://timetravel.mementoweb.org/timegate/"
 
-    async def search_archived_content(self, url: str, date_range: Tuple[str, str] = None) -> List[EnhancedEvidence]:
+    async def search_archived_content(
+        self, url: str, date_range: tuple[str, str] = None
+    ) -> list[EnhancedEvidence]:
         """Search archived versions of content with diff analysis"""
         self.logger.info(f"Searching archived content for: {url}")
 
@@ -609,9 +616,13 @@ class ArchiveMementoConnector:
                 if archived_evidence:
                     # Detect content changes
                     if previous_content:
-                        changes = self._detect_content_changes(previous_content, archived_evidence.content)
+                        changes = self._detect_content_changes(
+                            previous_content, archived_evidence.content
+                        )
                         if changes["significant_change"]:
-                            self.logger.info(f"Significant content change detected at {record['timestamp']}")
+                            self.logger.info(
+                                f"Significant content change detected at {record['timestamp']}"
+                            )
 
                     evidence_list.append(archived_evidence)
                     previous_content = archived_evidence.content
@@ -622,14 +633,12 @@ class ArchiveMementoConnector:
             self.logger.error(f"Archive search failed: {e}")
             return []
 
-    async def _get_cdx_records(self, url: str, date_range: Tuple[str, str] = None) -> List[Dict[str, Any]]:
+    async def _get_cdx_records(
+        self, url: str, date_range: tuple[str, str] = None
+    ) -> list[dict[str, Any]]:
         """Get CDX records from Wayback Machine"""
         try:
-            params = {
-                "url": url,
-                "output": "json",
-                "limit": 50
-            }
+            params = {"url": url, "output": "json", "limit": 50}
 
             if date_range:
                 params["from"] = date_range[0]
@@ -648,7 +657,7 @@ class ArchiveMementoConnector:
                         records = []
 
                         for row in data[1:]:
-                            record = dict(zip(headers, row))
+                            record = dict(zip(headers, row, strict=False))
                             records.append(record)
 
                         return records
@@ -657,17 +666,21 @@ class ArchiveMementoConnector:
             self.logger.error(f"CDX search failed: {e}")
             return []
 
-    async def _fetch_archived_content(self, cdx_record: Dict[str, Any]) -> Optional[EnhancedEvidence]:
+    async def _fetch_archived_content(
+        self, cdx_record: dict[str, Any]
+    ) -> EnhancedEvidence | None:
         """Fetch content from archived snapshot"""
         try:
-            wayback_url = f"https://web.archive.org/web/{cdx_record['timestamp']}/{cdx_record['original']}"
+            wayback_url = (
+                f"https://web.archive.org/web/{cdx_record['timestamp']}/{cdx_record['original']}"
+            )
 
             # Create evidence with archive metadata
             source_data = {
                 "source_id": f"archive_{cdx_record['timestamp']}_{hash(cdx_record['original'])}",
                 "canonical_url": cdx_record["original"],
                 "title": f"Archived: {cdx_record['original']}",
-                "snippet": f"Archived content from {cdx_record['timestamp']}"
+                "snippet": f"Archived content from {cdx_record['timestamp']}",
             }
 
             evidence = self.evidence_manager.create_enhanced_evidence(source_data)
@@ -679,13 +692,17 @@ class ArchiveMementoConnector:
             # Parse timestamp
             try:
                 timestamp_dt = datetime.strptime(cdx_record["timestamp"], "%Y%m%d%H%M%S")
-                evidence.temporal_metadata.memento_datetime = timestamp_dt.replace(tzinfo=timezone.utc)
+                evidence.temporal_metadata.memento_datetime = timestamp_dt.replace(
+                    tzinfo=UTC
+                )
             except ValueError:
                 pass
 
             # Authority based on archive age (older = more stable)
             days_old = (datetime.now() - timestamp_dt).days if timestamp_dt else 0
-            evidence.source_authority = min(0.8, 0.5 + (days_old / 3650))  # Max 0.8 for 10+ year old content
+            evidence.source_authority = min(
+                0.8, 0.5 + (days_old / 3650)
+            )  # Max 0.8 for 10+ year old content
 
             return evidence
 
@@ -693,7 +710,7 @@ class ArchiveMementoConnector:
             self.logger.error(f"Failed to fetch archived content: {e}")
             return None
 
-    def _detect_content_changes(self, old_content: str, new_content: str) -> Dict[str, Any]:
+    def _detect_content_changes(self, old_content: str, new_content: str) -> dict[str, Any]:
         """Detect significant changes between content versions"""
         # Simple change detection
         old_words = set(old_content.lower().split())
@@ -710,14 +727,14 @@ class ArchiveMementoConnector:
             "words_added": len(added_words),
             "words_removed": len(removed_words),
             "content_hash_old": hash(old_content),
-            "content_hash_new": hash(new_content)
+            "content_hash_new": hash(new_content),
         }
 
 
-def create_enhanced_source_connectors(config: Dict[str, Any]) -> Dict[str, Any]:
+def create_enhanced_source_connectors(config: dict[str, Any]) -> dict[str, Any]:
     """Factory function for enhanced source connectors"""
     return {
         "open_science": OpenScienceConnector(config.get("open_science", {})),
         "legal_regulatory": LegalRegulatoryConnector(config.get("legal", {})),
-        "archive_memento": ArchiveMementoConnector(config.get("archive", {}))
+        "archive_memento": ArchiveMementoConnector(config.get("archive", {})),
     }

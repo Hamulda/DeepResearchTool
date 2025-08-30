@@ -1,474 +1,527 @@
-#!/usr/bin/env python3
-"""
-Claim Graph System
-Track claim relationships, contradictions, and conflict sets for evidence-based research
+"""Claim Graph Engine s NetworkX
+Lokální implementace pro M1 development místo Neo4j
 
-Author: Senior IT Specialist
+Author: Senior Python/MLOps Agent
 """
 
-import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Set, Tuple
-from dataclasses import dataclass, field
-from enum import Enum
-import json
-import uuid
+from dataclasses import asdict, dataclass
 from datetime import datetime
+import json
+import logging
+from typing import Any
+
 import networkx as nx
-import numpy as np
 
-import structlog
+logger = logging.getLogger(__name__)
 
-logger = structlog.get_logger(__name__)
-
-class RelationshipType(Enum):
-    """Types of relationships between claims"""
-    SUPPORTS = "supports"
-    CONTRADICTS = "contradicts"
-    ELABORATES = "elaborates"
-    QUALIFIES = "qualifies"
-    NEUTRAL = "neutral"
 
 @dataclass
-class ClaimNode:
-    """Individual claim in the graph"""
+class Claim:
+    """Reprezentace tvrzení v grafu"""
+
     id: str
     text: str
     confidence: float
-    evidence: List[Dict[str, Any]]
-    source_query: str
-    timestamp: datetime
-    verification_status: str = "unverified"  # unverified, verified, disputed
-    dispute_reason: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    source_ids: list[str]
+    evidence_strength: float = 0.0
+    verification_status: str = "unverified"  # unverified, supported, disputed, contradicted
+    created_at: datetime = None
+    metadata: dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.created_at is None:
+            self.created_at = datetime.now()
+        if self.metadata is None:
+            self.metadata = {}
+
 
 @dataclass
-class ClaimRelationship:
-    """Relationship between two claims"""
+class Evidence:
+    """Reprezentace důkazu"""
+
     id: str
+    text: str
+    source_id: str
+    source_url: str
+    credibility_score: float
+    relevance_score: float
+    extraction_method: str = "automatic"
+    metadata: dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.metadata is None:
+            self.metadata = {}
+
+
+@dataclass
+class ClaimRelation:
+    """Vztah mezi tvrzeními"""
+
     source_claim_id: str
     target_claim_id: str
-    relationship_type: RelationshipType
+    relation_type: str  # support, contradict, neutral, duplicate
+    strength: float  # síla vztahu 0.0 - 1.0
     confidence: float
-    evidence: List[Dict[str, Any]]
-    explanation: str
-    timestamp: datetime
+    evidence_ids: list[str] = None
+    created_at: datetime = None
 
-@dataclass
-class ConflictSet:
-    """Set of conflicting claims with evidence"""
-    id: str
-    claim_ids: Set[str]
-    conflict_type: str  # "direct_contradiction", "evidence_conflict", "temporal_inconsistency"
-    severity: float  # 0.0 to 1.0
-    resolution_strategy: Optional[str] = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    def __post_init__(self):
+        if self.evidence_ids is None:
+            self.evidence_ids = []
+        if self.created_at is None:
+            self.created_at = datetime.now()
 
-class ContradictionDetector:
-    """Detect contradictions between claims using multiple strategies"""
-
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.contradiction_config = config.get("contradiction_detection", {})
-
-        # Detection thresholds
-        self.semantic_threshold = self.contradiction_config.get("semantic_threshold", 0.8)
-        self.evidence_conflict_threshold = self.contradiction_config.get("evidence_threshold", 0.7)
-
-        # Contradiction patterns
-        self.contradiction_patterns = [
-            (r"not|never|no|cannot|impossible", r"yes|always|can|possible"),
-            (r"increase|rise|grow|more", r"decrease|fall|decline|less"),
-            (r"effective|successful|works", r"ineffective|failed|doesn't work"),
-            (r"safe|secure|protected", r"dangerous|risky|harmful"),
-            (r"proven|confirmed|established", r"unproven|disputed|questionable")
-        ]
-
-        self.logger = structlog.get_logger(__name__)
-
-    async def detect_contradictions(self, claims: List[ClaimNode]) -> List[ConflictSet]:
-        """Detect contradictions between claims"""
-
-        conflict_sets = []
-
-        # Method 1: Direct semantic contradiction
-        semantic_conflicts = await self._detect_semantic_contradictions(claims)
-        conflict_sets.extend(semantic_conflicts)
-
-        # Method 2: Evidence-based conflicts
-        evidence_conflicts = await self._detect_evidence_conflicts(claims)
-        conflict_sets.extend(evidence_conflicts)
-
-        # Method 3: Temporal inconsistencies
-        temporal_conflicts = await self._detect_temporal_inconsistencies(claims)
-        conflict_sets.extend(temporal_conflicts)
-
-        self.logger.info(f"Detected {len(conflict_sets)} conflict sets")
-        return conflict_sets
-
-    async def _detect_semantic_contradictions(self, claims: List[ClaimNode]) -> List[ConflictSet]:
-        """Detect direct semantic contradictions between claim texts"""
-
-        conflicts = []
-
-        for i, claim1 in enumerate(claims):
-            for j, claim2 in enumerate(claims[i+1:], i+1):
-
-                # Check for contradiction patterns
-                contradiction_score = self._calculate_contradiction_score(claim1.text, claim2.text)
-
-                if contradiction_score > self.semantic_threshold:
-                    conflict_set = ConflictSet(
-                        id=f"semantic_conflict_{uuid.uuid4().hex[:8]}",
-                        claim_ids={claim1.id, claim2.id},
-                        conflict_type="direct_contradiction",
-                        severity=contradiction_score,
-                        timestamp=datetime.now()
-                    )
-                    conflicts.append(conflict_set)
-
-        return conflicts
-
-    def _calculate_contradiction_score(self, text1: str, text2: str) -> float:
-        """Calculate contradiction score between two texts"""
-
-        text1_lower = text1.lower()
-        text2_lower = text2.lower()
-
-        contradiction_score = 0.0
-        pattern_count = 0
-
-        for positive_pattern, negative_pattern in self.contradiction_patterns:
-            # Check if one text has positive pattern and other has negative
-            import re
-
-            text1_positive = bool(re.search(positive_pattern, text1_lower))
-            text1_negative = bool(re.search(negative_pattern, text1_lower))
-            text2_positive = bool(re.search(positive_pattern, text2_lower))
-            text2_negative = bool(re.search(negative_pattern, text2_lower))
-
-            # Contradiction if opposite patterns found
-            if (text1_positive and text2_negative) or (text1_negative and text2_positive):
-                contradiction_score += 1.0
-
-            pattern_count += 1
-
-        return contradiction_score / pattern_count if pattern_count > 0 else 0.0
-
-    async def _detect_evidence_conflicts(self, claims: List[ClaimNode]) -> List[ConflictSet]:
-        """Detect conflicts in evidence between claims"""
-
-        conflicts = []
-
-        # Group claims by similar topics (simplified by shared keywords)
-        topic_groups = self._group_claims_by_topic(claims)
-
-        for topic, topic_claims in topic_groups.items():
-            if len(topic_claims) < 2:
-                continue
-
-            # Check for conflicting evidence within topic group
-            for i, claim1 in enumerate(topic_claims):
-                for j, claim2 in enumerate(topic_claims[i+1:], i+1):
-
-                    evidence_conflict = self._check_evidence_conflict(claim1, claim2)
-
-                    if evidence_conflict:
-                        conflict_set = ConflictSet(
-                            id=f"evidence_conflict_{uuid.uuid4().hex[:8]}",
-                            claim_ids={claim1.id, claim2.id},
-                            conflict_type="evidence_conflict",
-                            severity=evidence_conflict,
-                            timestamp=datetime.now()
-                        )
-                        conflicts.append(conflict_set)
-
-        return conflicts
-
-    def _group_claims_by_topic(self, claims: List[ClaimNode]) -> Dict[str, List[ClaimNode]]:
-        """Group claims by topic using keyword similarity"""
-
-        from collections import defaultdict
-
-        topic_groups = defaultdict(list)
-
-        for claim in claims:
-            # Extract key terms (simplified)
-            import re
-            words = re.findall(r'\b\w{4,}\b', claim.text.lower())
-
-            # Use most frequent words as topic identifier
-            if words:
-                topic = "_".join(sorted(words)[:3])  # Top 3 words as topic
-                topic_groups[topic].append(claim)
-
-        return dict(topic_groups)
-
-    def _check_evidence_conflict(self, claim1: ClaimNode, claim2: ClaimNode) -> Optional[float]:
-        """Check if evidence between two claims conflicts"""
-
-        # Check for conflicting sources
-        claim1_sources = {ev.get("canonical_url", "") for ev in claim1.evidence}
-        claim2_sources = {ev.get("canonical_url", "") for ev in claim2.evidence}
-
-        # If same sources support different conclusions, potential conflict
-        shared_sources = claim1_sources & claim2_sources
-
-        if shared_sources and len(shared_sources) > 0:
-            # Check if claims are semantically different
-            contradiction_score = self._calculate_contradiction_score(claim1.text, claim2.text)
-
-            if contradiction_score > 0.3:  # Lower threshold for evidence conflicts
-                return contradiction_score * 0.8  # Scale down for evidence-based conflicts
-
-        return None
-
-    async def _detect_temporal_inconsistencies(self, claims: List[ClaimNode]) -> List[ConflictSet]:
-        """Detect temporal inconsistencies in claims"""
-
-        conflicts = []
-
-        # Group claims by temporal expressions
-        temporal_claims = []
-        for claim in claims:
-            temporal_info = self._extract_temporal_info(claim.text)
-            if temporal_info:
-                temporal_claims.append((claim, temporal_info))
-
-        # Check for temporal conflicts
-        for i, (claim1, time1) in enumerate(temporal_claims):
-            for j, (claim2, time2) in enumerate(temporal_claims[i+1:], i+1):
-
-                if self._check_temporal_conflict(time1, time2):
-                    conflict_set = ConflictSet(
-                        id=f"temporal_conflict_{uuid.uuid4().hex[:8]}",
-                        claim_ids={claim1.id, claim2.id},
-                        conflict_type="temporal_inconsistency",
-                        severity=0.6,  # Medium severity for temporal conflicts
-                        timestamp=datetime.now()
-                    )
-                    conflicts.append(conflict_set)
-
-        return conflicts
-
-    def _extract_temporal_info(self, text: str) -> Optional[Dict[str, Any]]:
-        """Extract temporal information from claim text"""
-
-        import re
-
-        # Simple temporal pattern matching
-        year_pattern = r'\b(19|20)\d{2}\b'
-        relative_pattern = r'\b(recent|latest|current|new|old|past|future)\b'
-
-        years = re.findall(year_pattern, text)
-        relative_terms = re.findall(relative_pattern, text.lower())
-
-        if years or relative_terms:
-            return {
-                "years": years,
-                "relative_terms": relative_terms,
-                "has_temporal": True
-            }
-
-        return None
-
-    def _check_temporal_conflict(self, time1: Dict[str, Any], time2: Dict[str, Any]) -> bool:
-        """Check if two temporal expressions conflict"""
-
-        # Simple heuristic: conflicting relative terms
-        conflicting_pairs = [
-            ("recent", "old"), ("new", "past"), ("current", "historical"),
-            ("latest", "previous"), ("future", "past")
-        ]
-
-        terms1 = set(time1.get("relative_terms", []))
-        terms2 = set(time2.get("relative_terms", []))
-
-        for term1, term2 in conflicting_pairs:
-            if term1 in terms1 and term2 in terms2:
-                return True
-            if term2 in terms1 and term1 in terms2:
-                return True
-
-        return False
 
 class ClaimGraph:
-    """Graph structure for managing claims and their relationships"""
+    """NetworkX-based Claim Graph pro lokální development
+    Nahrazuje Neo4j pro M1 prostředí
+    """
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.graph = nx.DiGraph()
+    def __init__(self, graph_id: str = "default"):
+        self.graph_id = graph_id
+        self.graph = nx.DiGraph()  # Directed graph pro claim relations
+        self.claims: dict[str, Claim] = {}
+        self.evidence: dict[str, Evidence] = {}
+        self.relations: dict[str, ClaimRelation] = {}
+        self.logger = logging.getLogger(__name__)
 
-        # Storage
-        self.claims: Dict[str, ClaimNode] = {}
-        self.relationships: Dict[str, ClaimRelationship] = {}
-        self.conflict_sets: Dict[str, ConflictSet] = {}
-
-        # Components
-        self.contradiction_detector = ContradictionDetector(config)
-
-        self.logger = structlog.get_logger(__name__)
-
-    def add_claim(self, claim: ClaimNode):
-        """Add claim to graph"""
-
-        self.claims[claim.id] = claim
-        self.graph.add_node(claim.id, claim=claim)
-
-        self.logger.debug(f"Added claim {claim.id} to graph")
-
-    def add_relationship(self, relationship: ClaimRelationship):
-        """Add relationship between claims"""
-
-        self.relationships[relationship.id] = relationship
-
-        # Add edge to graph
-        self.graph.add_edge(
-            relationship.source_claim_id,
-            relationship.target_claim_id,
-            relationship=relationship,
-            weight=relationship.confidence
+    def add_claim(
+        self,
+        claim_id: str,
+        text: str,
+        confidence: float,
+        source_ids: list[str],
+        metadata: dict[str, Any] = None
+    ) -> Claim:
+        """Přidá nové tvrzení do grafu"""
+        claim = Claim(
+            id=claim_id,
+            text=text,
+            confidence=confidence,
+            source_ids=source_ids,
+            metadata=metadata or {}
         )
 
-        self.logger.debug(f"Added relationship {relationship.relationship_type.value} "
-                         f"between {relationship.source_claim_id} and {relationship.target_claim_id}")
+        self.claims[claim_id] = claim
 
-    def add_conflict_set(self, conflict_set: ConflictSet):
-        """Add conflict set to graph"""
+        # Přidání do NetworkX grafu
+        self.graph.add_node(
+            claim_id,
+            type="claim",
+            text=text,
+            confidence=confidence,
+            created_at=claim.created_at.isoformat()
+        )
 
-        self.conflict_sets[conflict_set.id] = conflict_set
+        self.logger.debug(f"✅ Přidáno tvrzení: {claim_id[:20]}...")
+        return claim
 
-        # Mark involved claims as disputed
-        for claim_id in conflict_set.claim_ids:
-            if claim_id in self.claims:
-                claim = self.claims[claim_id]
-                claim.verification_status = "disputed"
-                claim.dispute_reason = f"Part of conflict set: {conflict_set.conflict_type}"
+    def add_evidence(
+        self,
+        evidence_id: str,
+        text: str,
+        source_id: str,
+        source_url: str,
+        credibility_score: float,
+        relevance_score: float,
+        metadata: dict[str, Any] = None
+    ) -> Evidence:
+        """Přidá důkaz do grafu"""
+        evidence = Evidence(
+            id=evidence_id,
+            text=text,
+            source_id=source_id,
+            source_url=source_url,
+            credibility_score=credibility_score,
+            relevance_score=relevance_score,
+            metadata=metadata or {}
+        )
 
-                # Reduce confidence
-                claim.confidence *= 0.7  # 30% confidence penalty for disputed claims
+        self.evidence[evidence_id] = evidence
 
-        self.logger.info(f"Added conflict set {conflict_set.id} affecting {len(conflict_set.claim_ids)} claims")
+        # Přidání do NetworkX grafu
+        self.graph.add_node(
+            evidence_id,
+            type="evidence",
+            text=text,
+            source_id=source_id,
+            credibility_score=credibility_score
+        )
 
-    async def detect_and_add_contradictions(self):
-        """Detect contradictions and add them to graph"""
+        self.logger.debug(f"✅ Přidán důkaz: {evidence_id[:20]}...")
+        return evidence
 
-        claims_list = list(self.claims.values())
-        conflict_sets = await self.contradiction_detector.detect_contradictions(claims_list)
+    def add_relation(
+        self,
+        source_claim_id: str,
+        target_claim_id: str,
+        relation_type: str,
+        strength: float,
+        confidence: float,
+        evidence_ids: list[str] = None
+    ) -> ClaimRelation:
+        """Přidá vztah mezi tvrzeními"""
+        if source_claim_id not in self.claims:
+            raise ValueError(f"Source claim {source_claim_id} not found")
+        if target_claim_id not in self.claims:
+            raise ValueError(f"Target claim {target_claim_id} not found")
 
-        for conflict_set in conflict_sets:
-            self.add_conflict_set(conflict_set)
+        relation_id = f"{source_claim_id}__{relation_type}__{target_claim_id}"
 
-        return len(conflict_sets)
+        relation = ClaimRelation(
+            source_claim_id=source_claim_id,
+            target_claim_id=target_claim_id,
+            relation_type=relation_type,
+            strength=strength,
+            confidence=confidence,
+            evidence_ids=evidence_ids or []
+        )
 
-    def get_claim_relationships(self, claim_id: str) -> List[ClaimRelationship]:
-        """Get all relationships for a claim"""
+        self.relations[relation_id] = relation
 
-        relationships = []
+        # Přidání edge do NetworkX grafu
+        self.graph.add_edge(
+            source_claim_id,
+            target_claim_id,
+            relation_type=relation_type,
+            strength=strength,
+            confidence=confidence,
+            evidence_ids=evidence_ids or []
+        )
 
-        # Outgoing relationships
-        for successor in self.graph.successors(claim_id):
-            edge_data = self.graph[claim_id][successor]
-            relationships.append(edge_data["relationship"])
+        self.logger.debug(f"✅ Přidán vztah: {source_claim_id} -> {target_claim_id} ({relation_type})")
+        return relation
 
-        # Incoming relationships
-        for predecessor in self.graph.predecessors(claim_id):
-            edge_data = self.graph[predecessor][claim_id]
-            relationships.append(edge_data["relationship"])
+    def link_evidence_to_claim(self, evidence_id: str, claim_id: str, support_type: str = "supports"):
+        """Propojí důkaz s tvrzením"""
+        if evidence_id not in self.evidence:
+            raise ValueError(f"Evidence {evidence_id} not found")
+        if claim_id not in self.claims:
+            raise ValueError(f"Claim {claim_id} not found")
 
-        return relationships
+        # Přidání edge mezi důkazem a tvrzením
+        self.graph.add_edge(
+            evidence_id,
+            claim_id,
+            relation_type=support_type,
+            edge_type="evidence_claim"
+        )
 
-    def get_supporting_claims(self, claim_id: str) -> List[ClaimNode]:
-        """Get claims that support the given claim"""
+        self.logger.debug(f"✅ Propojen důkaz {evidence_id} s tvrzením {claim_id}")
 
+    def get_claim_support(self, claim_id: str) -> dict[str, Any]:
+        """Získá podporu pro tvrzení"""
+        if claim_id not in self.claims:
+            return {}
+
+        # Najdi všechny supporting relations
         supporting_claims = []
-
-        for predecessor in self.graph.predecessors(claim_id):
-            edge_data = self.graph[predecessor][claim_id]
-            relationship = edge_data["relationship"]
-
-            if relationship.relationship_type == RelationshipType.SUPPORTS:
-                supporting_claims.append(self.claims[predecessor])
-
-        return supporting_claims
-
-    def get_contradicting_claims(self, claim_id: str) -> List[ClaimNode]:
-        """Get claims that contradict the given claim"""
-
         contradicting_claims = []
+        evidence_list = []
 
-        # Check direct contradictions
+        # Incoming edges (co podporuje toto tvrzení)
         for predecessor in self.graph.predecessors(claim_id):
             edge_data = self.graph[predecessor][claim_id]
-            relationship = edge_data["relationship"]
 
-            if relationship.relationship_type == RelationshipType.CONTRADICTS:
-                contradicting_claims.append(self.claims[predecessor])
+            if edge_data.get('edge_type') == 'evidence_claim':
+                # Jedná se o důkaz
+                if predecessor in self.evidence:
+                    evidence_list.append(self.evidence[predecessor])
+            else:
+                # Jedná se o claim relation
+                relation_type = edge_data.get('relation_type', '')
+                if relation_type == 'support':
+                    supporting_claims.append(self.claims[predecessor])
+                elif relation_type == 'contradict':
+                    contradicting_claims.append(self.claims[predecessor])
 
-        # Check conflict sets
-        for conflict_set in self.conflict_sets.values():
-            if claim_id in conflict_set.claim_ids:
-                for other_claim_id in conflict_set.claim_ids:
-                    if other_claim_id != claim_id:
-                        contradicting_claims.append(self.claims[other_claim_id])
+        return {
+            "claim": self.claims[claim_id],
+            "supporting_claims": supporting_claims,
+            "contradicting_claims": contradicting_claims,
+            "evidence": evidence_list,
+            "support_score": self._calculate_support_score(claim_id),
+            "verification_status": self._determine_verification_status(claim_id)
+        }
 
-        return contradicting_claims
+    def _calculate_support_score(self, claim_id: str) -> float:
+        """Vypočítá support score pro tvrzení"""
+        support_sum = 0.0
+        contradict_sum = 0.0
 
-    def get_graph_statistics(self) -> Dict[str, Any]:
-        """Get statistics about the claim graph"""
+        for predecessor in self.graph.predecessors(claim_id):
+            edge_data = self.graph[predecessor][claim_id]
+            relation_type = edge_data.get('relation_type', '')
+            strength = edge_data.get('strength', 0.0)
 
-        disputed_claims = [c for c in self.claims.values() if c.verification_status == "disputed"]
-        verified_claims = [c for c in self.claims.values() if c.verification_status == "verified"]
+            if relation_type == 'support':
+                support_sum += strength
+            elif relation_type == 'contradict':
+                contradict_sum += strength
+
+        # Evidence contribution
+        evidence_score = 0.0
+        for predecessor in self.graph.predecessors(claim_id):
+            if predecessor in self.evidence:
+                evidence_obj = self.evidence[predecessor]
+                evidence_score += evidence_obj.credibility_score * evidence_obj.relevance_score
+
+        # Combined score
+        total_score = support_sum + evidence_score - contradict_sum
+        return max(0.0, min(1.0, total_score))
+
+    def _determine_verification_status(self, claim_id: str) -> str:
+        """Určí verification status tvrzení"""
+        support_score = self._calculate_support_score(claim_id)
+
+        if support_score >= 0.8:
+            return "supported"
+        if support_score >= 0.6:
+            return "partially_supported"
+        if support_score >= 0.4:
+            return "neutral"
+        if support_score >= 0.2:
+            return "disputed"
+        return "contradicted"
+
+    def find_contradictions(self) -> list[dict[str, Any]]:
+        """Najde rozpory v grafu"""
+        contradictions = []
+
+        for edge in self.graph.edges(data=True):
+            source, target, data = edge
+            if data.get('relation_type') == 'contradict':
+                contradiction = {
+                    "source_claim": self.claims.get(source),
+                    "target_claim": self.claims.get(target),
+                    "strength": data.get('strength', 0.0),
+                    "confidence": data.get('confidence', 0.0),
+                    "evidence_ids": data.get('evidence_ids', [])
+                }
+                contradictions.append(contradiction)
+
+        return contradictions
+
+    def get_claim_chains(self, claim_id: str, max_depth: int = 3) -> list[list[str]]:
+        """Najde řetězce tvrzení od daného tvrzení"""
+        chains = []
+
+        def dfs_chains(current_id: str, path: list[str], depth: int):
+            if depth >= max_depth:
+                return
+
+            for successor in self.graph.successors(current_id):
+                if successor in self.claims:  # Pouze claim nodes
+                    new_path = path + [successor]
+                    chains.append(new_path.copy())
+                    dfs_chains(successor, new_path, depth + 1)
+
+        dfs_chains(claim_id, [claim_id], 0)
+        return chains
+
+    def export_to_json(self, filepath: str) -> None:
+        """Export grafu do JSON formátu"""
+        export_data = {
+            "graph_id": self.graph_id,
+            "claims": {k: asdict(v) for k, v in self.claims.items()},
+            "evidence": {k: asdict(v) for k, v in self.evidence.items()},
+            "relations": {k: asdict(v) for k, v in self.relations.items()},
+            "graph_structure": nx.node_link_data(self.graph),
+            "exported_at": datetime.now().isoformat()
+        }
+
+        # Handle datetime serialization
+        for claim_data in export_data["claims"].values():
+            if isinstance(claim_data.get("created_at"), datetime):
+                claim_data["created_at"] = claim_data["created_at"].isoformat()
+
+        for relation_data in export_data["relations"].values():
+            if isinstance(relation_data.get("created_at"), datetime):
+                relation_data["created_at"] = relation_data["created_at"].isoformat()
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(export_data, f, indent=2, ensure_ascii=False)
+
+        self.logger.info(f"✅ Graf exportován do {filepath}")
+
+    def import_from_json(self, filepath: str) -> None:
+        """Import grafu z JSON formátu"""
+        with open(filepath, encoding='utf-8') as f:
+            data = json.load(f)
+
+        self.graph_id = data.get("graph_id", "imported")
+
+        # Import claims
+        self.claims = {}
+        for claim_id, claim_data in data.get("claims", {}).items():
+            claim = Claim(**claim_data)
+            if isinstance(claim.created_at, str):
+                claim.created_at = datetime.fromisoformat(claim.created_at)
+            self.claims[claim_id] = claim
+
+        # Import evidence
+        self.evidence = {}
+        for evidence_id, evidence_data in data.get("evidence", {}).items():
+            evidence = Evidence(**evidence_data)
+            self.evidence[evidence_id] = evidence
+
+        # Import relations
+        self.relations = {}
+        for relation_id, relation_data in data.get("relations", {}).items():
+            relation = ClaimRelation(**relation_data)
+            if isinstance(relation.created_at, str):
+                relation.created_at = datetime.fromisoformat(relation.created_at)
+            self.relations[relation_id] = relation
+
+        # Reconstruct NetworkX graph
+        graph_data = data.get("graph_structure", {})
+        self.graph = nx.node_link_graph(graph_data, directed=True)
+
+        self.logger.info(f"✅ Graf importován z {filepath}")
+
+    def get_statistics(self) -> dict[str, Any]:
+        """Získá statistiky grafu"""
+        verification_counts = {}
+        for claim in self.claims.values():
+            status = self._determine_verification_status(claim.id)
+            verification_counts[status] = verification_counts.get(status, 0) + 1
+
+        relation_counts = {}
+        for relation in self.relations.values():
+            rel_type = relation.relation_type
+            relation_counts[rel_type] = relation_counts.get(rel_type, 0) + 1
 
         return {
             "total_claims": len(self.claims),
-            "total_relationships": len(self.relationships),
-            "total_conflicts": len(self.conflict_sets),
-            "disputed_claims": len(disputed_claims),
-            "verified_claims": len(verified_claims),
-            "average_confidence": np.mean([c.confidence for c in self.claims.values()]) if self.claims else 0,
-            "graph_density": nx.density(self.graph),
-            "connected_components": nx.number_weakly_connected_components(self.graph)
+            "total_evidence": len(self.evidence),
+            "total_relations": len(self.relations),
+            "graph_nodes": self.graph.number_of_nodes(),
+            "graph_edges": self.graph.number_of_edges(),
+            "verification_status_counts": verification_counts,
+            "relation_type_counts": relation_counts,
+            "connected_components": nx.number_weakly_connected_components(self.graph),
+            "graph_density": nx.density(self.graph)
         }
 
-    def export_graph(self) -> Dict[str, Any]:
-        """Export graph for analysis or visualization"""
+    def visualize_subgraph(self, center_claim_id: str, depth: int = 2) -> dict[str, Any]:
+        """Vytvoří data pro vizualizaci podgrafu"""
+        if center_claim_id not in self.claims:
+            return {}
+
+        # Najdi všechny nodes do dané hloubky
+        nodes_to_include = set([center_claim_id])
+        current_level = {center_claim_id}
+
+        for _ in range(depth):
+            next_level = set()
+            for node in current_level:
+                # Přidej predecessors a successors
+                next_level.update(self.graph.predecessors(node))
+                next_level.update(self.graph.successors(node))
+            nodes_to_include.update(next_level)
+            current_level = next_level
+
+        # Vytvoř subgraf
+        subgraph = self.graph.subgraph(nodes_to_include)
+
+        # Připrav data pro vizualizaci
+        viz_nodes = []
+        viz_edges = []
+
+        for node in subgraph.nodes():
+            node_data = {"id": node}
+            if node in self.claims:
+                node_data.update({
+                    "type": "claim",
+                    "label": self.claims[node].text[:50] + "...",
+                    "confidence": self.claims[node].confidence,
+                    "verification_status": self._determine_verification_status(node)
+                })
+            elif node in self.evidence:
+                node_data.update({
+                    "type": "evidence",
+                    "label": self.evidence[node].text[:30] + "...",
+                    "credibility": self.evidence[node].credibility_score
+                })
+            viz_nodes.append(node_data)
+
+        for edge in subgraph.edges(data=True):
+            source, target, data = edge
+            viz_edges.append({
+                "source": source,
+                "target": target,
+                "relation_type": data.get("relation_type", "unknown"),
+                "strength": data.get("strength", 0.5)
+            })
 
         return {
-            "claims": [
-                {
-                    "id": claim.id,
-                    "text": claim.text,
-                    "confidence": claim.confidence,
-                    "verification_status": claim.verification_status,
-                    "evidence_count": len(claim.evidence),
-                    "timestamp": claim.timestamp.isoformat()
-                }
-                for claim in self.claims.values()
-            ],
-            "relationships": [
-                {
-                    "id": rel.id,
-                    "source": rel.source_claim_id,
-                    "target": rel.target_claim_id,
-                    "type": rel.relationship_type.value,
-                    "confidence": rel.confidence,
-                    "explanation": rel.explanation
-                }
-                for rel in self.relationships.values()
-            ],
-            "conflicts": [
-                {
-                    "id": conflict.id,
-                    "claim_ids": list(conflict.claim_ids),
-                    "type": conflict.conflict_type,
-                    "severity": conflict.severity
-                }
-                for conflict in self.conflict_sets.values()
-            ],
-            "statistics": self.get_graph_statistics()
+            "nodes": viz_nodes,
+            "edges": viz_edges,
+            "center_node": center_claim_id,
+            "subgraph_size": len(nodes_to_include)
         }
 
-def create_claim_graph(config: Dict[str, Any]) -> ClaimGraph:
-    """Factory function for claim graph"""
-    return ClaimGraph(config)
+
+# Utility funkce
+def create_example_claim_graph() -> ClaimGraph:
+    """Vytvoří příklad claim grafu pro testování"""
+    graph = ClaimGraph("example_graph")
+
+    # Přidání claims
+    claim1 = graph.add_claim(
+        "claim_1",
+        "Artificial intelligence improves healthcare outcomes",
+        0.8,
+        ["source_1", "source_2"]
+    )
+
+    claim2 = graph.add_claim(
+        "claim_2",
+        "Machine learning models can predict patient outcomes accurately",
+        0.75,
+        ["source_2", "source_3"]
+    )
+
+    claim3 = graph.add_claim(
+        "claim_3",
+        "AI diagnosis systems are unreliable in complex cases",
+        0.6,
+        ["source_4"]
+    )
+
+    # Přidání evidence
+    evidence1 = graph.add_evidence(
+        "evidence_1",
+        "Study shows 23% improvement in diagnostic accuracy with AI assistance",
+        "source_1",
+        "https://example.com/study1",
+        0.9,
+        0.85
+    )
+
+    # Propojení evidence s claims
+    graph.link_evidence_to_claim("evidence_1", "claim_1", "supports")
+
+    # Přidání relations
+    graph.add_relation("claim_1", "claim_2", "support", 0.7, 0.8)
+    graph.add_relation("claim_3", "claim_1", "contradict", 0.6, 0.7)
+
+    return graph
+
+
+# Příklad použití
+if __name__ == "__main__":
+    # Vytvoření příkladu grafu
+    graph = create_example_claim_graph()
+
+    # Statistiky
+    stats = graph.get_statistics()
+    print(f"📊 Graf statistiky: {stats}")
+
+    # Analýza podpory pro claim
+    support = graph.get_claim_support("claim_1")
+    print(f"🔍 Podpora pro claim_1: {support}")
+
+    # Export/Import test
+    graph.export_to_json("example_graph.json")
+    print("✅ Graf exportován")

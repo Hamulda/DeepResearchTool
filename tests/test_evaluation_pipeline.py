@@ -29,6 +29,7 @@ class TestResearchAgentEvaluation:
     @pytest.fixture(scope="class")
     def evaluation_pipeline(self, research_agent):
         """Inicializace evaluační pipeline"""
+
         # Mock LLM client pro evaluaci (v produkci by byl skutečný)
         class MockLLMClient:
             async def generate(self, prompt: str, temperature: float = 0.1, max_tokens: int = 100):
@@ -51,10 +52,10 @@ class TestResearchAgentEvaluation:
 
         # Ověření struktury dat
         first_item = evaluation_pipeline.golden_dataset[0]
-        assert hasattr(first_item, 'id')
-        assert hasattr(first_item, 'query')
-        assert hasattr(first_item, 'expected_answer')
-        assert hasattr(first_item, 'relevant_sources')
+        assert hasattr(first_item, "id")
+        assert hasattr(first_item, "query")
+        assert hasattr(first_item, "expected_answer")
+        assert hasattr(first_item, "relevant_sources")
 
     @pytest.mark.asyncio
     async def test_single_query_evaluation(self, evaluation_pipeline):
@@ -98,7 +99,7 @@ class TestResearchAgentEvaluation:
             "avg_answer_relevance",
             "avg_answer_correctness",
             "overall_score",
-            "success_rate"
+            "success_rate",
         ]
 
         for metric in required_metrics:
@@ -113,7 +114,7 @@ class TestResearchAgentEvaluation:
             "overall_score": 0.75,
             "avg_faithfulness": 0.80,
             "avg_answer_correctness": 0.70,
-            "success_rate": 0.95
+            "success_rate": 0.95,
         }
 
         assert evaluation_pipeline.check_regression_thresholds(good_metrics) == True
@@ -123,7 +124,7 @@ class TestResearchAgentEvaluation:
             "overall_score": 0.60,  # Pod threshold 0.70
             "avg_faithfulness": 0.70,  # Pod threshold 0.75
             "avg_answer_correctness": 0.60,  # Pod threshold 0.65
-            "success_rate": 0.85   # Pod threshold 0.90
+            "success_rate": 0.85,  # Pod threshold 0.90
         }
 
         assert evaluation_pipeline.check_regression_thresholds(bad_metrics) == False
@@ -131,6 +132,7 @@ class TestResearchAgentEvaluation:
     @pytest.mark.asyncio
     async def test_rag_evaluator_metrics(self):
         """Test jednotlivých RAG metrik"""
+
         class MockLLMClient:
             async def generate(self, prompt: str, temperature: float = 0.1, max_tokens: int = 100):
                 if "relevant" in prompt.lower():
@@ -201,6 +203,7 @@ class TestCIIntegration:
                 # V produkci by zde byl skutečný LLM call
                 # Pro demo vracíme simulované hodnoty
                 import random
+
                 if "score" in prompt.lower():
                     return str(random.uniform(0.7, 0.9))
                 elif "relevant" in prompt.lower():
@@ -221,9 +224,7 @@ class TestCIIntegration:
         regression_check = pipeline.check_regression_thresholds(metrics)
 
         if not regression_check:
-            pytest.fail(
-                f"REGRESSION DETECTED! Metrics below thresholds: {metrics}"
-            )
+            pytest.fail(f"REGRESSION DETECTED! Metrics below thresholds: {metrics}")
 
         # Uložení výsledků pro reporting
         with open("evaluation/ci_results.json", "w") as f:

@@ -1,16 +1,15 @@
-"""
-FÁZE 7: Security Policy Engine
+"""FÁZE 7: Security Policy Engine
 Statická bezpečnostní pravidla a policy validation
 """
 
 import asyncio
-import json
-import logging
-import time
 from dataclasses import dataclass, field
 from enum import Enum
+import json
+import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+import time
+from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -18,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class PolicySeverity(Enum):
     """Úrovně závažnosti bezpečnostních pravidel"""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -26,6 +26,7 @@ class PolicySeverity(Enum):
 
 class PolicyAction(Enum):
     """Akce při porušení pravidel"""
+
     ALLOW = "allow"
     WARN = "warn"
     BLOCK = "block"
@@ -35,6 +36,7 @@ class PolicyAction(Enum):
 
 class PolicyType(Enum):
     """Typy bezpečnostních pravidel"""
+
     URL_FILTERING = "url_filtering"
     CONTENT_SCANNING = "content_scanning"
     RATE_LIMITING = "rate_limiting"
@@ -48,28 +50,30 @@ class PolicyType(Enum):
 @dataclass
 class SecurityRule:
     """Definice bezpečnostního pravidla"""
+
     rule_id: str
     name: str
     description: str
     policy_type: PolicyType
     severity: PolicySeverity
     action: PolicyAction
-    conditions: Dict[str, Any]
+    conditions: dict[str, Any]
     enabled: bool = True
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass
 class PolicyViolation:
     """Záznam o porušení pravidla"""
+
     violation_id: str
     rule_id: str
     rule_name: str
     severity: PolicySeverity
     action_taken: PolicyAction
-    violation_details: Dict[str, Any]
+    violation_details: dict[str, Any]
     timestamp: float
     context: str = ""
     remediation_suggested: str = ""
@@ -78,17 +82,17 @@ class PolicyViolation:
 @dataclass
 class PolicyValidationResult:
     """Výsledek validace proti pravidlům"""
+
     allowed: bool
-    violations: List[PolicyViolation]
-    warnings: List[str]
+    violations: list[PolicyViolation]
+    warnings: list[str]
     action_required: PolicyAction
     confidence_score: float
     processing_time_ms: float
 
 
 class SecurityPolicyEngine:
-    """
-    FÁZE 7: Advanced Security Policy Engine
+    """FÁZE 7: Advanced Security Policy Engine
 
     Features:
     - Konfigurovatelná bezpečnostní pravidla
@@ -100,22 +104,22 @@ class SecurityPolicyEngine:
 
     def __init__(
         self,
-        policy_file: Optional[Path] = None,
+        policy_file: Path | None = None,
         enable_dynamic_rules: bool = True,
-        default_action: PolicyAction = PolicyAction.WARN
+        default_action: PolicyAction = PolicyAction.WARN,
     ):
         self.policy_file = policy_file or Path("security_policies.json")
         self.enable_dynamic_rules = enable_dynamic_rules
         self.default_action = default_action
 
         # Bezpečnostní pravidla
-        self.rules: Dict[str, SecurityRule] = {}
+        self.rules: dict[str, SecurityRule] = {}
 
         # Whitelist/blacklist
-        self.whitelisted_domains: Set[str] = set()
-        self.blacklisted_domains: Set[str] = set()
-        self.whitelisted_ips: Set[str] = set()
-        self.blacklisted_ips: Set[str] = set()
+        self.whitelisted_domains: set[str] = set()
+        self.blacklisted_domains: set[str] = set()
+        self.whitelisted_ips: set[str] = set()
+        self.blacklisted_ips: set[str] = set()
 
         # Policy statistics
         self.policy_stats = {
@@ -123,11 +127,11 @@ class SecurityPolicyEngine:
             "violations_detected": 0,
             "blocks_enforced": 0,
             "warnings_issued": 0,
-            "rules_triggered": {}
+            "rules_triggered": {},
         }
 
         # Violation history
-        self.violation_history: List[PolicyViolation] = []
+        self.violation_history: list[PolicyViolation] = []
 
         # Load initial policies
         self._load_default_policies()
@@ -138,7 +142,6 @@ class SecurityPolicyEngine:
 
     def _load_default_policies(self) -> None:
         """Načtení výchozích bezpečnostních pravidel"""
-
         default_rules = [
             # URL Filtering Rules
             SecurityRule(
@@ -152,13 +155,12 @@ class SecurityPolicyEngine:
                     "blacklisted_domains": [
                         "malware-site.com",
                         "phishing-example.net",
-                        "suspicious-domain.org"
+                        "suspicious-domain.org",
                     ],
-                    "domain_reputation_threshold": 0.3
+                    "domain_reputation_threshold": 0.3,
                 },
-                tags=["malware", "phishing", "critical"]
+                tags=["malware", "phishing", "critical"],
             ),
-
             # Content Scanning Rules
             SecurityRule(
                 rule_id="content_malware_detection",
@@ -171,11 +173,10 @@ class SecurityPolicyEngine:
                     "scan_binaries": True,
                     "scan_archives": True,
                     "max_file_size_mb": 100,
-                    "blocked_file_types": [".exe", ".scr", ".bat", ".cmd"]
+                    "blocked_file_types": [".exe", ".scr", ".bat", ".cmd"],
                 },
-                tags=["malware", "content", "files"]
+                tags=["malware", "content", "files"],
             ),
-
             # Rate Limiting Rules
             SecurityRule(
                 rule_id="rate_limit_aggressive",
@@ -187,11 +188,10 @@ class SecurityPolicyEngine:
                 conditions={
                     "requests_per_minute_threshold": 100,
                     "requests_per_hour_threshold": 2000,
-                    "burst_threshold": 20
+                    "burst_threshold": 20,
                 },
-                tags=["rate-limiting", "ddos", "crawling"]
+                tags=["rate-limiting", "ddos", "crawling"],
             ),
-
             # PII Protection Rules
             SecurityRule(
                 rule_id="pii_strict_protection",
@@ -202,14 +202,11 @@ class SecurityPolicyEngine:
                 action=PolicyAction.BLOCK,
                 conditions={
                     "max_pii_instances": 0,
-                    "blocked_pii_types": [
-                        "ssn", "credit_card", "passport", "driver_license"
-                    ],
-                    "require_redaction": True
+                    "blocked_pii_types": ["ssn", "credit_card", "passport", "driver_license"],
+                    "require_redaction": True,
                 },
-                tags=["pii", "privacy", "gdpr"]
+                tags=["pii", "privacy", "gdpr"],
             ),
-
             # File Type Validation
             SecurityRule(
                 rule_id="file_type_validation",
@@ -220,15 +217,21 @@ class SecurityPolicyEngine:
                 action=PolicyAction.WARN,
                 conditions={
                     "allowed_file_types": [
-                        ".txt", ".pdf", ".doc", ".docx",
-                        ".html", ".htm", ".json", ".xml", ".csv"
+                        ".txt",
+                        ".pdf",
+                        ".doc",
+                        ".docx",
+                        ".html",
+                        ".htm",
+                        ".json",
+                        ".xml",
+                        ".csv",
                     ],
                     "scan_file_headers": True,
-                    "check_mime_type": True
+                    "check_mime_type": True,
                 },
-                tags=["files", "validation", "security"]
+                tags=["files", "validation", "security"],
             ),
-
             # Size Limits
             SecurityRule(
                 rule_id="content_size_limits",
@@ -240,10 +243,10 @@ class SecurityPolicyEngine:
                 conditions={
                     "max_content_size_mb": 50,
                     "max_response_size_mb": 10,
-                    "warn_threshold_mb": 5
+                    "warn_threshold_mb": 5,
                 },
-                tags=["size", "limits", "performance"]
-            )
+                tags=["size", "limits", "performance"],
+            ),
         ]
 
         for rule in default_rules:
@@ -252,7 +255,7 @@ class SecurityPolicyEngine:
     def _load_policies_from_file(self) -> None:
         """Načtení pravidel ze souboru"""
         try:
-            with open(self.policy_file, 'r', encoding='utf-8') as f:
+            with open(self.policy_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             # Load rules
@@ -267,7 +270,7 @@ class SecurityPolicyEngine:
                         action=PolicyAction(rule_data["action"]),
                         conditions=rule_data["conditions"],
                         enabled=rule_data.get("enabled", True),
-                        tags=rule_data.get("tags", [])
+                        tags=rule_data.get("tags", []),
                     )
                     self.rules[rule.rule_id] = rule
 
@@ -298,17 +301,17 @@ class SecurityPolicyEngine:
                         "enabled": rule.enabled,
                         "tags": rule.tags,
                         "created_at": rule.created_at,
-                        "updated_at": rule.updated_at
+                        "updated_at": rule.updated_at,
                     }
                     for rule in self.rules.values()
                 ],
                 "whitelisted_domains": list(self.whitelisted_domains),
                 "blacklisted_domains": list(self.blacklisted_domains),
                 "whitelisted_ips": list(self.whitelisted_ips),
-                "blacklisted_ips": list(self.blacklisted_ips)
+                "blacklisted_ips": list(self.blacklisted_ips),
             }
 
-            with open(self.policy_file, 'w', encoding='utf-8') as f:
+            with open(self.policy_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
             logger.info(f"Saved {len(self.rules)} rules to {self.policy_file}")
@@ -332,7 +335,7 @@ class SecurityPolicyEngine:
                 warnings=[],
                 action_required=PolicyAction.ALLOW,
                 confidence_score=1.0,
-                processing_time_ms=(time.time() - start_time) * 1000
+                processing_time_ms=(time.time() - start_time) * 1000,
             )
 
         # Global blacklist check
@@ -346,7 +349,7 @@ class SecurityPolicyEngine:
                 violation_details={"domain": domain, "url": url},
                 timestamp=time.time(),
                 context="Domain found in global blacklist",
-                remediation_suggested="Remove domain from blacklist or verify legitimacy"
+                remediation_suggested="Remove domain from blacklist or verify legitimacy",
             )
             violations.append(violation)
 
@@ -372,13 +375,11 @@ class SecurityPolicyEngine:
             warnings=warnings,
             action_required=action_required,
             confidence_score=self._calculate_confidence(violations),
-            processing_time_ms=(time.time() - start_time) * 1000
+            processing_time_ms=(time.time() - start_time) * 1000,
         )
 
     async def validate_content(
-        self,
-        content: str,
-        metadata: Optional[Dict[str, Any]] = None
+        self, content: str, metadata: dict[str, Any] | None = None
     ) -> PolicyValidationResult:
         """Validace obsahu proti bezpečnostním pravidlům"""
         start_time = time.time()
@@ -419,15 +420,12 @@ class SecurityPolicyEngine:
             warnings=warnings,
             action_required=action_required,
             confidence_score=self._calculate_confidence(violations),
-            processing_time_ms=(time.time() - start_time) * 1000
+            processing_time_ms=(time.time() - start_time) * 1000,
         )
 
     async def _evaluate_url_rule(
-        self,
-        rule: SecurityRule,
-        url: str,
-        domain: str
-    ) -> Optional[PolicyViolation]:
+        self, rule: SecurityRule, url: str, domain: str
+    ) -> PolicyViolation | None:
         """Evaluace URL pravidla"""
         conditions = rule.conditions
 
@@ -443,7 +441,7 @@ class SecurityPolicyEngine:
                     violation_details={"domain": domain, "url": url},
                     timestamp=time.time(),
                     context=f"Domain {domain} found in rule blacklist",
-                    remediation_suggested="Verify domain legitimacy or update blacklist"
+                    remediation_suggested="Verify domain legitimacy or update blacklist",
                 )
 
         # Domain reputation check (mock implementation)
@@ -459,21 +457,18 @@ class SecurityPolicyEngine:
                     violation_details={
                         "domain": domain,
                         "reputation_score": reputation_score,
-                        "threshold": conditions["domain_reputation_threshold"]
+                        "threshold": conditions["domain_reputation_threshold"],
                     },
                     timestamp=time.time(),
                     context=f"Domain reputation {reputation_score} below threshold",
-                    remediation_suggested="Manual review of domain reputation"
+                    remediation_suggested="Manual review of domain reputation",
                 )
 
         return None
 
     async def _evaluate_content_rule(
-        self,
-        rule: SecurityRule,
-        content: str,
-        metadata: Dict[str, Any]
-    ) -> Optional[PolicyViolation]:
+        self, rule: SecurityRule, content: str, metadata: dict[str, Any]
+    ) -> PolicyViolation | None:
         """Evaluace content scanning pravidla"""
         conditions = rule.conditions
 
@@ -490,12 +485,12 @@ class SecurityPolicyEngine:
                     violation_details={"file_type": file_type},
                     timestamp=time.time(),
                     context=f"Blocked file type detected: {file_type}",
-                    remediation_suggested="Verify file safety or update allowed file types"
+                    remediation_suggested="Verify file safety or update allowed file types",
                 )
 
         # Content size checking
         if "max_file_size_mb" in conditions:
-            file_size_mb = len(content.encode('utf-8')) / (1024 * 1024)
+            file_size_mb = len(content.encode("utf-8")) / (1024 * 1024)
             if file_size_mb > conditions["max_file_size_mb"]:
                 return PolicyViolation(
                     violation_id=f"{rule.rule_id}_{int(time.time())}",
@@ -505,33 +500,32 @@ class SecurityPolicyEngine:
                     action_taken=rule.action,
                     violation_details={
                         "file_size_mb": file_size_mb,
-                        "max_allowed_mb": conditions["max_file_size_mb"]
+                        "max_allowed_mb": conditions["max_file_size_mb"],
                     },
                     timestamp=time.time(),
                     context=f"File size {file_size_mb:.2f}MB exceeds limit",
-                    remediation_suggested="Reduce file size or increase limit"
+                    remediation_suggested="Reduce file size or increase limit",
                 )
 
         return None
 
     async def _evaluate_pii_rule(
-        self,
-        rule: SecurityRule,
-        content: str
-    ) -> Optional[PolicyViolation]:
+        self, rule: SecurityRule, content: str
+    ) -> PolicyViolation | None:
         """Evaluace PII protection pravidla"""
         conditions = rule.conditions
 
         # Mock PII detection - v produkci by se použil skutečný PII detector
         pii_patterns = {
-            "ssn": r'\b\d{3}-\d{2}-\d{4}\b',
-            "credit_card": r'\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14})\b',
-            "email": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            "ssn": r"\b\d{3}-\d{2}-\d{4}\b",
+            "credit_card": r"\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14})\b",
+            "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
         }
 
         pii_found = []
         for pii_type, pattern in pii_patterns.items():
             import re
+
             matches = re.findall(pattern, content)
             if matches:
                 pii_found.extend([(pii_type, match) for match in matches])
@@ -548,24 +542,21 @@ class SecurityPolicyEngine:
                     violation_details={
                         "pii_instances_found": len(pii_found),
                         "max_allowed": conditions["max_pii_instances"],
-                        "pii_types": list(set(pii[0] for pii in pii_found))
+                        "pii_types": list(set(pii[0] for pii in pii_found)),
                     },
                     timestamp=time.time(),
                     context=f"Found {len(pii_found)} PII instances, max allowed: {conditions['max_pii_instances']}",
-                    remediation_suggested="Apply PII redaction before processing"
+                    remediation_suggested="Apply PII redaction before processing",
                 )
 
         return None
 
     async def _evaluate_size_rule(
-        self,
-        rule: SecurityRule,
-        content: str,
-        metadata: Dict[str, Any]
-    ) -> Optional[PolicyViolation]:
+        self, rule: SecurityRule, content: str, metadata: dict[str, Any]
+    ) -> PolicyViolation | None:
         """Evaluace size limits pravidla"""
         conditions = rule.conditions
-        content_size_mb = len(content.encode('utf-8')) / (1024 * 1024)
+        content_size_mb = len(content.encode("utf-8")) / (1024 * 1024)
 
         if "max_content_size_mb" in conditions:
             if content_size_mb > conditions["max_content_size_mb"]:
@@ -577,20 +568,18 @@ class SecurityPolicyEngine:
                     action_taken=rule.action,
                     violation_details={
                         "content_size_mb": content_size_mb,
-                        "max_allowed_mb": conditions["max_content_size_mb"]
+                        "max_allowed_mb": conditions["max_content_size_mb"],
                     },
                     timestamp=time.time(),
                     context=f"Content size {content_size_mb:.2f}MB exceeds limit",
-                    remediation_suggested="Reduce content size or increase limit"
+                    remediation_suggested="Reduce content size or increase limit",
                 )
 
         return None
 
     async def _evaluate_file_type_rule(
-        self,
-        rule: SecurityRule,
-        metadata: Dict[str, Any]
-    ) -> Optional[PolicyViolation]:
+        self, rule: SecurityRule, metadata: dict[str, Any]
+    ) -> PolicyViolation | None:
         """Evaluace file type validation pravidla"""
         conditions = rule.conditions
         file_type = metadata.get("file_type", "").lower()
@@ -605,11 +594,11 @@ class SecurityPolicyEngine:
                     action_taken=rule.action,
                     violation_details={
                         "file_type": file_type,
-                        "allowed_types": conditions["allowed_file_types"]
+                        "allowed_types": conditions["allowed_file_types"],
                     },
                     timestamp=time.time(),
                     context=f"File type {file_type} not in allowed list",
-                    remediation_suggested="Add file type to allowed list or verify safety"
+                    remediation_suggested="Add file type to allowed list or verify safety",
                 )
 
         return None
@@ -621,24 +610,23 @@ class SecurityPolicyEngine:
             "wikipedia.org": 0.95,
             "github.com": 0.90,
             "stackoverflow.com": 0.85,
-            "google.com": 0.95
+            "google.com": 0.95,
         }
 
         known_bad_domains = {
             "malware-site.com": 0.1,
             "phishing-example.net": 0.05,
-            "suspicious-domain.org": 0.2
+            "suspicious-domain.org": 0.2,
         }
 
         if domain in known_good_domains:
             return known_good_domains[domain]
-        elif domain in known_bad_domains:
+        if domain in known_bad_domains:
             return known_bad_domains[domain]
-        else:
-            # Default reputation for unknown domains
-            return 0.7
+        # Default reputation for unknown domains
+        return 0.7
 
-    def _determine_action(self, violations: List[PolicyViolation]) -> PolicyAction:
+    def _determine_action(self, violations: list[PolicyViolation]) -> PolicyAction:
         """Určení finální akce na základě violations"""
         if not violations:
             return PolicyAction.ALLOW
@@ -649,7 +637,7 @@ class SecurityPolicyEngine:
             PolicyAction.LOG_ONLY: 1,
             PolicyAction.WARN: 2,
             PolicyAction.QUARANTINE: 3,
-            PolicyAction.BLOCK: 4
+            PolicyAction.BLOCK: 4,
         }
 
         max_action = PolicyAction.ALLOW
@@ -663,7 +651,7 @@ class SecurityPolicyEngine:
 
         return max_action
 
-    def _calculate_confidence(self, violations: List[PolicyViolation]) -> float:
+    def _calculate_confidence(self, violations: list[PolicyViolation]) -> float:
         """Výpočet confidence score"""
         if not violations:
             return 1.0
@@ -673,7 +661,7 @@ class SecurityPolicyEngine:
             PolicySeverity.LOW: 0.1,
             PolicySeverity.MEDIUM: 0.3,
             PolicySeverity.HIGH: 0.6,
-            PolicySeverity.CRITICAL: 1.0
+            PolicySeverity.CRITICAL: 1.0,
         }
 
         total_weight = sum(severity_weights.get(v.severity, 0.5) for v in violations)
@@ -681,7 +669,7 @@ class SecurityPolicyEngine:
 
         return confidence
 
-    def _update_statistics(self, violations: List[PolicyViolation]) -> None:
+    def _update_statistics(self, violations: list[PolicyViolation]) -> None:
         """Aktualizace statistik"""
         self.policy_stats["total_evaluations"] += 1
 
@@ -734,11 +722,10 @@ class SecurityPolicyEngine:
             return True
         return False
 
-    def get_policy_stats(self) -> Dict[str, Any]:
+    def get_policy_stats(self) -> dict[str, Any]:
         """Získání statistik policy engine"""
         recent_violations = [
-            v for v in self.violation_history
-            if time.time() - v.timestamp < 3600  # Last hour
+            v for v in self.violation_history if time.time() - v.timestamp < 3600  # Last hour
         ]
 
         return {
@@ -748,7 +735,8 @@ class SecurityPolicyEngine:
             "whitelisted_domains": len(self.whitelisted_domains),
             "blacklisted_domains": len(self.blacklisted_domains),
             "recent_violations_1h": len(recent_violations),
-            "violation_rate": len(recent_violations) / max(self.policy_stats["total_evaluations"], 1)
+            "violation_rate": len(recent_violations)
+            / max(self.policy_stats["total_evaluations"], 1),
         }
 
 
@@ -760,6 +748,7 @@ def create_security_policy_engine(**kwargs) -> SecurityPolicyEngine:
 
 # Demo usage
 if __name__ == "__main__":
+
     async def demo():
         engine = SecurityPolicyEngine()
 
@@ -767,7 +756,7 @@ if __name__ == "__main__":
         test_urls = [
             "https://wikipedia.org/page",
             "https://malware-site.com/payload",
-            "https://unknown-domain.com/content"
+            "https://unknown-domain.com/content",
         ]
 
         for url in test_urls:
@@ -788,7 +777,7 @@ if __name__ == "__main__":
         """
 
         result = await engine.validate_content(test_content)
-        print(f"\nContent validation:")
+        print("\nContent validation:")
         print(f"Allowed: {result.allowed}")
         print(f"Violations: {len(result.violations)}")
 

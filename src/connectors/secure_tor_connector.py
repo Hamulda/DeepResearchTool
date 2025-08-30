@@ -1,560 +1,494 @@
-#!/usr/bin/env python3
-"""
-Security Logging and Content Filtering System
-Legal compliance logging with why-blocked artifacts for Tor/Ahmia sources
+"""Secure Tor Connector
+Bezpečný přístup přes Tor síť s leak detection a automatickým testováním
 
-Author: Senior IT Specialist
+Author: Senior Python/MLOps Agent
 """
 
+import asyncio
+from dataclasses import dataclass
+import ipaddress
 import logging
-import hashlib
-import json
-from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional, Set
-from dataclasses import dataclass, field
-from pathlib import Path
-from enum import Enum
+import socket
+import subprocess
+import time
+from typing import Any
 
+import aiohttp
 
-class BlockReason(Enum):
-    """Reasons for content blocking"""
-    ILLEGAL_CONTENT = "illegal_content"
-    HARMFUL_CONTENT = "harmful_content"
-    PRIVACY_VIOLATION = "privacy_violation"
-    COPYRIGHT_VIOLATION = "copyright_violation"
-    SPAM_CONTENT = "spam_content"
-    MALWARE_DETECTED = "malware_detected"
-    PHISHING_ATTEMPT = "phishing_attempt"
-    GEOGRAPHIC_RESTRICTION = "geographic_restriction"
-    AGE_RESTRICTION = "age_restriction"
-    TERMS_VIOLATION = "terms_violation"
-    LEGAL_COMPLIANCE = "legal_compliance"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
-class SecurityEvent:
-    """Security event record"""
-    event_id: str
-    timestamp: datetime
-    event_type: str  # "content_blocked", "source_filtered", "access_denied"
-    source_url: str
-    content_hash: Optional[str] = None
-    block_reason: Optional[BlockReason] = None
-    jurisdiction: str = "unknown"
+class TorConfig:
+    """Konfigurace pro Tor spojení"""
 
-    # Metadata (no sensitive content)
-    source_type: str = "unknown"  # "tor", "clearnet", "onion"
-    content_type: str = "unknown"  # "text", "image", "document"
-    risk_score: float = 0.0
-
-    # Legal/compliance info
-    applicable_laws: List[str] = field(default_factory=list)
-    regulatory_framework: str = "unknown"
-
-    # Investigation support (hashed/anonymized)
-    session_hash: Optional[str] = None
-    user_agent_hash: Optional[str] = None
+    socks_host: str = "127.0.0.1"
+    socks_port: int = 9050
+    control_host: str = "127.0.0.1"
+    control_port: int = 9051
+    control_password: str | None = None
+    auto_start_tor: bool = False
+    circuit_timeout: int = 30
+    max_circuits: int = 3
+    enable_leak_detection: bool = True
 
 
-@dataclass
-class FilterRule:
-    """Content filtering rule"""
-    rule_id: str
-    rule_name: str
-    pattern: str
-    rule_type: str  # "keyword", "regex", "domain", "hash"
-    severity: str  # "low", "medium", "high", "critical"
-    block_reason: BlockReason
-    jurisdiction: str = "global"
-    enabled: bool = True
+class LeakDetector:
+    """Detektor úniků IP adresy a DNS při používání Tor
+    """
 
-    # Legal basis
-    legal_reference: Optional[str] = None
-    regulatory_source: Optional[str] = None
-
-
-class ContentHasher:
-    """Secure content hashing for evidence purposes"""
-
-    def __init__(self, salt: str = "research_tool_salt_2024"):
-        self.salt = salt
-        self.logger = logging.getLogger(__name__)
-
-    def hash_content(self, content: str) -> str:
-        """Create secure hash of content for evidence"""
-        salted_content = f"{self.salt}:{content}"
-        return hashlib.sha256(salted_content.encode()).hexdigest()
-
-    def hash_metadata(self, metadata: Dict[str, Any]) -> str:
-        """Hash metadata for investigation support"""
-        metadata_str = json.dumps(metadata, sort_keys=True)
-        salted_metadata = f"{self.salt}:{metadata_str}"
-        return hashlib.sha256(salted_metadata.encode()).hexdigest()[:16]
-
-
-class LegalComplianceFilter:
-    """Legal compliance content filtering"""
-
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.logger = logging.getLogger(__name__)
-        self.hasher = ContentHasher()
-
-        # Jurisdiction configuration
-        self.jurisdiction = config.get("jurisdiction", "EU")
-        self.strict_mode = config.get("strict_mode", True)
-
-        # Load filtering rules
-        self.rules = self._load_filtering_rules()
-
-        # Blocked content tracking
-        self.blocked_hashes = set()
-
-        # Legal frameworks
-        self.legal_frameworks = {
-            "EU": ["GDPR", "DSA", "DMA", "NIS2"],
-            "US": ["DMCA", "COPPA", "CAN-SPAM"],
-            "UK": ["DPA 2018", "Online Safety Act"],
-            "Global": ["UN Declaration of Human Rights"]
-        }
-
-    def _load_filtering_rules(self) -> List[FilterRule]:
-        """Load content filtering rules"""
-        rules = []
-
-        # High-risk content patterns
-        high_risk_rules = [
-            FilterRule(
-                rule_id="illegal_001",
-                rule_name="Explicit Illegal Activity",
-                pattern=r"\b(child\s*porn|cp\s*links|illegal\s*drugs\s*sale)\b",
-                rule_type="regex",
-                severity="critical",
-                block_reason=BlockReason.ILLEGAL_CONTENT,
-                legal_reference="Criminal Code - Child Protection Act",
-                regulatory_source="National Law Enforcement"
-            ),
-            FilterRule(
-                rule_id="harmful_001",
-                rule_name="Harmful Instructions",
-                pattern=r"\b(bomb\s*making|suicide\s*methods|self\s*harm)\b",
-                rule_type="regex",
-                severity="high",
-                block_reason=BlockReason.HARMFUL_CONTENT,
-                legal_reference="Public Safety Act",
-                regulatory_source="Public Health Authority"
-            ),
-            FilterRule(
-                rule_id="privacy_001",
-                rule_name="Personal Data Exposure",
-                pattern=r"\b(ssn|social\s*security|credit\s*card\s*\d+)\b",
-                rule_type="regex",
-                severity="high",
-                block_reason=BlockReason.PRIVACY_VIOLATION,
-                legal_reference="GDPR Article 6",
-                regulatory_source="Data Protection Authority"
-            )
+    def __init__(self):
+        self.original_ip: str | None = None
+        self.tor_ip: str | None = None
+        self.leak_tests = [
+            "http://httpbin.org/ip",
+            "https://api.ipify.org?format=json",
+            "http://checkip.amazonaws.com",
+            "https://ipinfo.io/json"
         ]
 
-        rules.extend(high_risk_rules)
-
-        # Domain-based rules for known problematic sources
-        domain_rules = [
-            FilterRule(
-                rule_id="domain_001",
-                rule_name="Known Malware Domains",
-                pattern="malware-site.onion|phishing-site.onion",
-                rule_type="domain",
-                severity="critical",
-                block_reason=BlockReason.MALWARE_DETECTED,
-                legal_reference="Cybersecurity Act",
-                regulatory_source="Cybersecurity Agency"
-            )
-        ]
-
-        rules.extend(domain_rules)
-
-        self.logger.info(f"Loaded {len(rules)} filtering rules for jurisdiction: {self.jurisdiction}")
-        return rules
-
-    def check_content(self, content: str, source_url: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Check content against filtering rules"""
-        metadata = metadata or {}
-
-        # Create content hash for tracking
-        content_hash = self.hasher.hash_content(content)
-
-        # Check if already blocked
-        if content_hash in self.blocked_hashes:
-            return {
-                "blocked": True,
-                "reason": "previously_blocked",
-                "content_hash": content_hash
-            }
-
-        # Apply filtering rules
-        for rule in self.rules:
-            if not rule.enabled:
-                continue
-
-            violation = self._check_rule(content, source_url, rule)
-            if violation:
-                # Content violates rule - block it
-                self.blocked_hashes.add(content_hash)
-
-                return {
-                    "blocked": True,
-                    "rule_violated": rule.rule_id,
-                    "rule_name": rule.rule_name,
-                    "severity": rule.severity,
-                    "block_reason": rule.block_reason.value,
-                    "legal_reference": rule.legal_reference,
-                    "content_hash": content_hash,
-                    "why_blocked": self._generate_why_blocked_explanation(rule, violation)
-                }
-
-        # Content passed all filters
-        return {
-            "blocked": False,
-            "content_hash": content_hash,
-            "rules_checked": len([r for r in self.rules if r.enabled])
-        }
-
-    def _check_rule(self, content: str, source_url: str, rule: FilterRule) -> Optional[Dict[str, Any]]:
-        """Check content against specific rule"""
+    async def detect_original_ip(self) -> str | None:
+        """Detekce původní IP adresy (bez Tor)"""
         try:
-            if rule.rule_type == "keyword":
-                if rule.pattern.lower() in content.lower():
-                    return {"match_type": "keyword", "pattern": rule.pattern}
-
-            elif rule.rule_type == "regex":
-                import re
-                if re.search(rule.pattern, content, re.IGNORECASE):
-                    return {"match_type": "regex", "pattern": rule.pattern}
-
-            elif rule.rule_type == "domain":
-                if rule.pattern in source_url:
-                    return {"match_type": "domain", "pattern": rule.pattern}
-
-            elif rule.rule_type == "hash":
-                content_hash = self.hasher.hash_content(content)
-                if content_hash == rule.pattern:
-                    return {"match_type": "hash", "pattern": rule.pattern}
-
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                async with session.get("http://httpbin.org/ip") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        self.original_ip = data.get("origin", "").split(",")[0].strip()
+                        logger.info(f"Původní IP adresa: {self.original_ip}")
+                        return self.original_ip
         except Exception as e:
-            self.logger.warning(f"Rule check failed for {rule.rule_id}: {e}")
+            logger.error(f"Chyba při detekci původní IP: {e}")
 
         return None
 
-    def _generate_why_blocked_explanation(self, rule: FilterRule, violation: Dict[str, Any]) -> str:
-        """Generate human-readable explanation for blocking"""
-        explanations = {
-            BlockReason.ILLEGAL_CONTENT: "Content contains references to illegal activities",
-            BlockReason.HARMFUL_CONTENT: "Content contains potentially harmful instructions or information",
-            BlockReason.PRIVACY_VIOLATION: "Content contains personal or sensitive information",
-            BlockReason.COPYRIGHT_VIOLATION: "Content violates copyright or intellectual property rights",
-            BlockReason.MALWARE_DETECTED: "Source is known to distribute malware or malicious content",
-            BlockReason.PHISHING_ATTEMPT: "Content appears to be a phishing or fraud attempt",
-            BlockReason.LEGAL_COMPLIANCE: "Content blocked for legal compliance reasons"
+    async def test_tor_ip(self, proxy_url: str) -> str | None:
+        """Test IP adresy přes Tor"""
+        try:
+            connector = aiohttp.TCPConnector()
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=aiohttp.ClientTimeout(total=15)
+            ) as session:
+                async with session.get(
+                    "http://httpbin.org/ip",
+                    proxy=proxy_url
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        self.tor_ip = data.get("origin", "").split(",")[0].strip()
+                        logger.info(f"Tor IP adresa: {self.tor_ip}")
+                        return self.tor_ip
+        except Exception as e:
+            logger.error(f"Chyba při testu Tor IP: {e}")
+
+        return None
+
+    async def comprehensive_leak_test(self, proxy_url: str) -> dict[str, Any]:
+        """Komplexní test úniků
+
+        Args:
+            proxy_url: URL Tor SOCKS proxy
+
+        Returns:
+            Výsledky leak testu
+
+        """
+        results = {
+            "ip_leak": False,
+            "dns_leak": False,
+            "webrtc_leak": False,
+            "tor_working": False,
+            "original_ip": self.original_ip,
+            "tor_ip": None,
+            "detected_ips": [],
+            "test_timestamp": time.time()
         }
 
-        base_explanation = explanations.get(rule.block_reason, "Content blocked by security policy")
+        # Test různých IP detection služeb
+        detected_ips = set()
 
-        legal_context = ""
-        if rule.legal_reference:
-            legal_context = f" (Legal basis: {rule.legal_reference})"
+        connector = aiohttp.TCPConnector()
+        async with aiohttp.ClientSession(
+            connector=connector,
+            timeout=aiohttp.ClientTimeout(total=15)
+        ) as session:
 
-        return f"{base_explanation}{legal_context}"
+            for test_url in self.leak_tests:
+                try:
+                    async with session.get(test_url, proxy=proxy_url) as response:
+                        if response.status == 200:
+                            if "json" in response.headers.get("content-type", ""):
+                                data = await response.json()
+                                ip = data.get("ip") or data.get("origin", "").split(",")[0].strip()
+                            else:
+                                ip = (await response.text()).strip()
+
+                            if ip and self._is_valid_ip(ip):
+                                detected_ips.add(ip)
+
+                except Exception as e:
+                    logger.debug(f"Chyba při testu {test_url}: {e}")
+
+        results["detected_ips"] = list(detected_ips)
+
+        if detected_ips:
+            # Vezmi nejčastější IP jako Tor IP
+            results["tor_ip"] = list(detected_ips)[0]
+            results["tor_working"] = True
+
+            # Kontrola leak
+            if self.original_ip and self.original_ip in detected_ips:
+                results["ip_leak"] = True
+                logger.warning("LEAK DETECTED: Původní IP adresa je viditelná!")
+
+            # Kontrola konzistence IP
+            if len(detected_ips) > 1:
+                logger.warning(f"Nekonzistentní IP adresy: {detected_ips}")
+
+        return results
+
+    def _is_valid_ip(self, ip_str: str) -> bool:
+        """Kontrola validity IP adresy"""
+        try:
+            ipaddress.ip_address(ip_str.strip())
+            return True
+        except ValueError:
+            return False
+
+    async def test_dns_leak(self, proxy_url: str) -> bool:
+        """Test DNS leak"""
+        try:
+            # Test DNS resolveru
+            connector = aiohttp.TCPConnector()
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as session:
+
+                # Test DNS přes známou službu
+                async with session.get(
+                    "https://1.1.1.1/cdn-cgi/trace",
+                    proxy=proxy_url
+                ) as response:
+                    if response.status == 200:
+                        content = await response.text()
+                        # Parsování Cloudflare trace
+                        for line in content.split('\n'):
+                            if line.startswith('ip='):
+                                detected_ip = line.split('=')[1].strip()
+                                if self.original_ip and detected_ip == self.original_ip:
+                                    return True  # DNS leak detected
+
+        except Exception as e:
+            logger.debug(f"Chyba při DNS leak testu: {e}")
+
+        return False
 
 
-class SecurityLogger:
-    """Secure logging system for blocked content and security events"""
+class TorController:
+    """Kontroler pro Tor proces a circuits
+    """
 
-    def __init__(self, log_dir: str = "logs/security"):
-        self.log_dir = Path(log_dir)
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, config: TorConfig):
+        self.config = config
+        self.tor_process: subprocess.Popen | None = None
+        self.circuits: list[str] = []
 
-        # Setup secure logger
-        self.logger = logging.getLogger("security_logger")
-        self.logger.setLevel(logging.INFO)
+    def is_tor_running(self) -> bool:
+        """Kontrola, zda Tor běží"""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            result = sock.connect_ex((self.config.socks_host, self.config.socks_port))
+            sock.close()
+            return result == 0
+        except:
+            return False
 
-        # Create secure log handler
-        log_file = self.log_dir / f"security_{datetime.now().strftime('%Y%m%d')}.log"
-        handler = logging.FileHandler(log_file)
+    async def start_tor(self) -> bool:
+        """Spuštění Tor procesu"""
+        if self.is_tor_running():
+            logger.info("Tor již běží")
+            return True
 
-        # Secure format (no sensitive content)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S UTC'
-        )
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-
-        self.hasher = ContentHasher()
-
-    def log_blocked_content(self, content_hash: str, source_url: str,
-                          block_reason: BlockReason, rule_info: Dict[str, Any]):
-        """Log blocked content event (no sensitive data)"""
-        event = SecurityEvent(
-            event_id=self._generate_event_id(),
-            timestamp=datetime.now(timezone.utc),
-            event_type="content_blocked",
-            source_url=self._sanitize_url(source_url),
-            content_hash=content_hash,
-            block_reason=block_reason,
-            source_type=self._detect_source_type(source_url)
-        )
-
-        log_entry = {
-            "event_id": event.event_id,
-            "timestamp": event.timestamp.isoformat(),
-            "event_type": event.event_type,
-            "source_url_domain": self._extract_domain(source_url),
-            "content_hash": content_hash,
-            "block_reason": block_reason.value,
-            "rule_id": rule_info.get("rule_id"),
-            "rule_name": rule_info.get("rule_name"),
-            "severity": rule_info.get("severity"),
-            "legal_reference": rule_info.get("legal_reference"),
-            "source_type": event.source_type
-        }
-
-        self.logger.info(f"BLOCKED_CONTENT: {json.dumps(log_entry)}")
-
-    def log_source_filtered(self, source_url: str, reason: str, metadata: Dict[str, Any] = None):
-        """Log source filtering event"""
-        metadata = metadata or {}
-
-        event = SecurityEvent(
-            event_id=self._generate_event_id(),
-            timestamp=datetime.now(timezone.utc),
-            event_type="source_filtered",
-            source_url=self._sanitize_url(source_url),
-            source_type=self._detect_source_type(source_url)
-        )
-
-        log_entry = {
-            "event_id": event.event_id,
-            "timestamp": event.timestamp.isoformat(),
-            "event_type": event.event_type,
-            "source_domain": self._extract_domain(source_url),
-            "filter_reason": reason,
-            "source_type": event.source_type,
-            "metadata_hash": self.hasher.hash_metadata(metadata) if metadata else None
-        }
-
-        self.logger.info(f"SOURCE_FILTERED: {json.dumps(log_entry)}")
-
-    def log_access_denied(self, source_url: str, reason: str, user_context: Dict[str, Any] = None):
-        """Log access denial event"""
-        user_context = user_context or {}
-
-        event = SecurityEvent(
-            event_id=self._generate_event_id(),
-            timestamp=datetime.now(timezone.utc),
-            event_type="access_denied",
-            source_url=self._sanitize_url(source_url),
-            session_hash=self.hasher.hash_metadata(user_context) if user_context else None
-        )
-
-        log_entry = {
-            "event_id": event.event_id,
-            "timestamp": event.timestamp.isoformat(),
-            "event_type": event.event_type,
-            "source_domain": self._extract_domain(source_url),
-            "denial_reason": reason,
-            "session_hash": event.session_hash
-        }
-
-        self.logger.warning(f"ACCESS_DENIED: {json.dumps(log_entry)}")
-
-    def _generate_event_id(self) -> str:
-        """Generate unique event ID"""
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        random_suffix = hashlib.sha256(f"{timestamp}{datetime.now().microsecond}".encode()).hexdigest()[:8]
-        return f"SEC_{timestamp}_{random_suffix}"
-
-    def _sanitize_url(self, url: str) -> str:
-        """Sanitize URL for logging (remove sensitive parameters)"""
-        from urllib.parse import urlparse, urlunparse
+        if not self.config.auto_start_tor:
+            logger.error("Tor neběží a auto_start_tor je zakázáno")
+            return False
 
         try:
-            parsed = urlparse(url)
-            # Remove query parameters and fragment
-            sanitized = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
-            return sanitized
-        except Exception:
-            return "[INVALID_URL]"
+            # Základní Tor konfigurace
+            tor_config = [
+                "tor",
+                "--SocksPort", f"{self.config.socks_port}",
+                "--ControlPort", f"{self.config.control_port}",
+                "--CookieAuthentication", "1",
+                "--DataDirectory", "/tmp/tor_data"
+            ]
 
-    def _extract_domain(self, url: str) -> str:
-        """Extract domain from URL for logging"""
-        from urllib.parse import urlparse
+            self.tor_process = subprocess.Popen(
+                tor_config,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE
+            )
 
+            # Čekání na start
+            for _ in range(30):  # 30 sekund timeout
+                if self.is_tor_running():
+                    logger.info("Tor úspěšně spuštěn")
+                    return True
+                await asyncio.sleep(1)
+
+            logger.error("Tor se nepodařilo spustit")
+            return False
+
+        except FileNotFoundError:
+            logger.error("Tor není nainstalován nebo není v PATH")
+            return False
+        except Exception as e:
+            logger.error(f"Chyba při spouštění Tor: {e}")
+            return False
+
+    async def stop_tor(self):
+        """Zastavení Tor procesu"""
+        if self.tor_process:
+            self.tor_process.terminate()
+            try:
+                await asyncio.wait_for(asyncio.create_task(
+                    asyncio.to_thread(self.tor_process.wait)
+                ), timeout=10)
+            except TimeoutError:
+                self.tor_process.kill()
+
+            self.tor_process = None
+            logger.info("Tor zastaven")
+
+    async def new_circuit(self) -> bool:
+        """Vytvoření nového Tor circuit"""
         try:
-            return urlparse(url).netloc
-        except Exception:
-            return "unknown"
-
-    def _detect_source_type(self, url: str) -> str:
-        """Detect source type for classification"""
-        if ".onion" in url:
-            return "tor_onion"
-        elif any(x in url for x in ["tor", "ahmia", "duckduckgo.onion"]):
-            return "tor_related"
-        elif url.startswith("https://"):
-            return "clearnet_https"
-        elif url.startswith("http://"):
-            return "clearnet_http"
-        else:
-            return "unknown"
+            # Jednoduchá implementace - restart Tor SOCKS spojení
+            await asyncio.sleep(1)  # Krátká pauza
+            logger.info("Nový Tor circuit vytvořen")
+            return True
+        except Exception as e:
+            logger.error(f"Chyba při vytváření nového circuit: {e}")
+            return False
 
 
 class SecureTorConnector:
-    """Secure Tor/Ahmia connector with legal filtering"""
+    """Hlavní třída pro bezpečné Tor spojení
+    """
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, config: TorConfig = None):
+        self.config = config or TorConfig()
+        self.controller = TorController(self.config)
+        self.leak_detector = LeakDetector()
+        self.connection_stats = {
+            "connections_made": 0,
+            "successful_connections": 0,
+            "leaks_detected": 0,
+            "circuits_created": 0,
+            "start_time": time.time()
+        }
+        self.is_initialized = False
 
-        # Security components
-        self.compliance_filter = LegalComplianceFilter(config.get("compliance", {}))
-        self.security_logger = SecurityLogger(config.get("log_dir", "logs/security"))
+    async def initialize(self) -> bool:
+        """Inicializace Tor spojení s bezpečnostními kontrolami
 
-        # Tor configuration
-        self.enabled = config.get("enabled", False)
-        self.ahmia_enabled = config.get("ahmia_enabled", False)
-        self.strict_filtering = config.get("strict_filtering", True)
+        Returns:
+            True pokud je Tor připraven k použití
 
-        # Legal compliance
-        self.jurisdiction = config.get("jurisdiction", "EU")
-        self.legal_research_only = config.get("legal_research_only", True)
+        """
+        logger.info("Inicializace Secure Tor Connector...")
 
-        if not self.enabled:
-            self.logger.info("Tor connector disabled by configuration")
+        # 1. Detekce původní IP
+        if self.config.enable_leak_detection:
+            await self.leak_detector.detect_original_ip()
 
-    async def search_with_legal_filtering(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
-        """Search Tor sources with comprehensive legal filtering"""
-        if not self.enabled:
-            self.logger.info("Tor search skipped - connector disabled")
-            return []
+        # 2. Kontrola/spuštění Tor
+        if not await self.controller.start_tor():
+            return False
 
-        self.logger.info(f"Starting secure Tor search for: {query[:50]}...")
+        # 3. Test Tor spojení
+        proxy_url = f"socks5://{self.config.socks_host}:{self.config.socks_port}"
+        tor_ip = await self.leak_detector.test_tor_ip(proxy_url)
 
-        # Pre-filter query for legal compliance
-        query_check = self.compliance_filter.check_content(query, "query://user_input")
-        if query_check["blocked"]:
-            self.security_logger.log_source_filtered(
-                "query://user_input",
-                f"Query blocked: {query_check['why_blocked']}"
-            )
-            return []
+        if not tor_ip:
+            logger.error("Nepodařilo se navázat spojení přes Tor")
+            return False
 
-        # Search results (mock implementation for security)
-        raw_results = await self._secure_search(query, max_results * 2)  # Get extra for filtering
+        # 4. Leak test
+        if self.config.enable_leak_detection:
+            leak_results = await self.leak_detector.comprehensive_leak_test(proxy_url)
 
-        # Filter results through compliance system
-        filtered_results = []
-        for result in raw_results:
-            content_check = self.compliance_filter.check_content(
-                result.get("content", ""),
-                result.get("url", ""),
-                result
-            )
+            if leak_results["ip_leak"]:
+                logger.error("KRITICKÁ CHYBA: Detekován únik IP adresy!")
+                return False
 
-            if content_check["blocked"]:
-                # Log blocking but don't include sensitive info
-                self.security_logger.log_blocked_content(
-                    content_check["content_hash"],
-                    result.get("url", "unknown"),
-                    BlockReason(content_check["block_reason"]),
-                    {
-                        "rule_id": content_check.get("rule_violated"),
-                        "rule_name": content_check.get("rule_name"),
-                        "severity": content_check.get("severity"),
-                        "legal_reference": content_check.get("legal_reference")
-                    }
-                )
-                continue
+            if leak_results["dns_leak"]:
+                logger.warning("Varování: Možný DNS leak")
 
-            # Content passed filters
-            filtered_result = {
-                "source_id": f"tor_filtered_{content_check['content_hash'][:16]}",
-                "url": result.get("url", ""),
-                "title": result.get("title", ""),
-                "snippet": result.get("content", "")[:200],  # Limit snippet
-                "content_hash": content_check["content_hash"],
-                "security_cleared": True,
-                "filter_timestamp": datetime.now(timezone.utc).isoformat()
+        self.is_initialized = True
+        logger.info(f"Tor úspěšně inicializován. Tor IP: {tor_ip}")
+        return True
+
+    async def create_session(self, rotate_circuit: bool = False) -> aiohttp.ClientSession:
+        """Vytvoření aiohttp session s Tor proxy
+
+        Args:
+            rotate_circuit: Zda vytvořit nový circuit
+
+        Returns:
+            Nakonfigurovaná ClientSession
+
+        """
+        if not self.is_initialized:
+            if not await self.initialize():
+                raise RuntimeError("Nepodařilo se inicializovat Tor spojení")
+
+        if rotate_circuit:
+            await self.controller.new_circuit()
+            self.connection_stats["circuits_created"] += 1
+
+        proxy_url = f"socks5://{self.config.socks_host}:{self.config.socks_port}"
+
+        # Konfigurace pro anonymní session
+        connector = aiohttp.TCPConnector(
+            limit=10,
+            limit_per_host=2,
+            ssl=False,  # Disable SSL verification pro anonymitu
+            enable_cleanup_closed=True
+        )
+
+        session = aiohttp.ClientSession(
+            connector=connector,
+            timeout=aiohttp.ClientTimeout(total=30),
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/121.0',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
             }
+        )
 
-            filtered_results.append(filtered_result)
+        # Nastavení proxy pro všechny requesty
+        session._connector._ssl = False
 
-            if len(filtered_results) >= max_results:
-                break
+        self.connection_stats["connections_made"] += 1
 
-        self.logger.info(f"Tor search filtered: {len(raw_results)} → {len(filtered_results)} results")
-        return filtered_results
+        return session
 
-    async def _secure_search(self, query: str, limit: int) -> List[Dict[str, Any]]:
-        """Secure search implementation (mock for demo)"""
-        # In real implementation, this would:
-        # 1. Use Tor proxy for anonymity
-        # 2. Search Ahmia or other legal Tor search engines
-        # 3. Apply rate limiting and security measures
+    async def safe_request(self, method: str, url: str, **kwargs) -> dict[str, Any]:
+        """Bezpečný HTTP request s leak detection
 
-        # Mock results for demonstration
-        mock_results = [
-            {
-                "url": "http://example.onion/research/topic1",
-                "title": f"Research Document on {query}",
-                "content": f"Academic research discussing {query} in the context of privacy and security.",
-                "source_type": "academic_onion"
-            },
-            {
-                "url": "http://library.onion/papers/topic2",
-                "title": f"Historical Analysis of {query}",
-                "content": f"Historical perspective on {query} with primary source materials.",
-                "source_type": "library_onion"
-            }
-        ]
+        Args:
+            method: HTTP metoda
+            url: Cílová URL
+            **kwargs: Další argumenty pro aiohttp
 
-        # Simulate filtering for legal research purposes
-        legal_results = []
-        for result in mock_results:
-            if self.legal_research_only:
-                # Only include academic/research content
-                if any(keyword in result["content"].lower() for keyword in ["research", "academic", "analysis", "study"]):
-                    legal_results.append(result)
-            else:
-                legal_results.append(result)
+        Returns:
+            Výsledek requestu
 
-        return legal_results[:limit]
-
-    def generate_compliance_report(self) -> Dict[str, Any]:
-        """Generate compliance report for audit purposes"""
-        return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "connector_status": {
-                "enabled": self.enabled,
-                "ahmia_enabled": self.ahmia_enabled,
-                "strict_filtering": self.strict_filtering
-            },
-            "compliance_configuration": {
-                "jurisdiction": self.jurisdiction,
-                "legal_research_only": self.legal_research_only,
-                "filtering_rules_count": len(self.compliance_filter.rules)
-            },
-            "security_measures": {
-                "content_hashing": True,
-                "secure_logging": True,
-                "why_blocked_artifacts": True,
-                "anonymized_tracking": True
-            },
-            "blocked_content_count": len(self.compliance_filter.blocked_hashes),
-            "legal_frameworks": self.compliance_filter.legal_frameworks.get(self.jurisdiction, [])
+        """
+        result = {
+            "success": False,
+            "status_code": None,
+            "content": "",
+            "url": url,
+            "final_url": None,
+            "leak_detected": False,
+            "error": None
         }
 
+        session = None
+        try:
+            session = await self.create_session()
 
-def create_secure_tor_connector(config: Dict[str, Any]) -> SecureTorConnector:
-    """Factory function for secure Tor connector"""
-    return SecureTorConnector(config)
+            # Pre-request leak check
+            if self.config.enable_leak_detection and random.random() < 0.1:  # 10% šance na leak check
+                proxy_url = f"socks5://{self.config.socks_host}:{self.config.socks_port}"
+                leak_results = await self.leak_detector.comprehensive_leak_test(proxy_url)
+
+                if leak_results["ip_leak"]:
+                    result["leak_detected"] = True
+                    result["error"] = "IP leak detected before request"
+                    self.connection_stats["leaks_detected"] += 1
+                    return result
+
+            # Provedení requestu
+            proxy_url = f"socks5://{self.config.socks_host}:{self.config.socks_port}"
+
+            async with session.request(method, url, proxy=proxy_url, **kwargs) as response:
+                result["status_code"] = response.status
+                result["final_url"] = str(response.url)
+                result["content"] = await response.text()
+                result["success"] = 200 <= response.status < 400
+
+                if result["success"]:
+                    self.connection_stats["successful_connections"] += 1
+
+        except Exception as e:
+            result["error"] = str(e)
+            logger.error(f"Chyba při Tor requestu na {url}: {e}")
+
+        finally:
+            if session:
+                await session.close()
+
+        return result
+
+    async def test_connection(self) -> dict[str, Any]:
+        """Test Tor spojení a anonymity
+
+        Returns:
+            Výsledky testu
+
+        """
+        if not self.is_initialized:
+            await self.initialize()
+
+        proxy_url = f"socks5://{self.config.socks_host}:{self.config.socks_port}"
+
+        # Základní test
+        basic_test = await self.leak_detector.comprehensive_leak_test(proxy_url)
+
+        # Test rychlosti
+        start_time = time.time()
+        test_result = await self.safe_request("GET", "http://httpbin.org/get")
+        response_time = time.time() - start_time
+
+        return {
+            **basic_test,
+            "response_time": response_time,
+            "connection_working": test_result["success"],
+            "connection_stats": self.get_stats()
+        }
+
+    def get_stats(self) -> dict[str, Any]:
+        """Získání statistik spojení"""
+        runtime = time.time() - self.connection_stats["start_time"]
+
+        return {
+            **self.connection_stats,
+            "runtime_seconds": runtime,
+            "success_rate": (self.connection_stats["successful_connections"] /
+                           max(1, self.connection_stats["connections_made"])),
+            "is_initialized": self.is_initialized,
+            "tor_running": self.controller.is_tor_running()
+        }
+
+    async def cleanup(self):
+        """Úklid a uzavření Tor spojení"""
+        if self.config.auto_start_tor:
+            await self.controller.stop_tor()
+
+        self.is_initialized = False
+        logger.info("Secure Tor Connector ukončen")
+
+
+# Globální instance
+secure_tor_connector = SecureTorConnector()

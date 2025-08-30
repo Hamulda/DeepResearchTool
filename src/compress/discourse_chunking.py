@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""
-Discourse-Aware Chunking System
+"""Discourse-Aware Chunking System
 Inteligentní chunking který respektuje diskurzní strukturu dokumentů
 
 Author: Senior Python/MLOps Agent
 """
 
-import re
-import logging
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+import logging
+import re
+from typing import Any
+
 import spacy
 from spacy.lang.en import English
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class ChunkType(Enum):
     """Typy chunků podle diskurzní struktury"""
+
     TITLE = "title"
     HEADING = "heading"
     PARAGRAPH = "paragraph"
@@ -33,6 +34,7 @@ class ChunkType(Enum):
 
 class SpeechActType(Enum):
     """Typy řečových aktů"""
+
     CLAIM = "claim"
     EVIDENCE = "evidence"
     HYPOTHESIS = "hypothesis"
@@ -47,25 +49,26 @@ class SpeechActType(Enum):
 @dataclass
 class DiscourseChunk:
     """Chunk s diskurzní anotací"""
+
     id: str
     text: str
     chunk_type: ChunkType
-    speech_act: Optional[SpeechActType]
+    speech_act: SpeechActType | None
     start_position: int
     end_position: int
     depth_level: int  # Hierarchical depth (headings)
-    parent_chunk_id: Optional[str]
-    children_chunk_ids: List[str]
-    discourse_markers: List[str]
-    entities: List[str]
+    parent_chunk_id: str | None
+    children_chunk_ids: list[str]
+    discourse_markers: list[str]
+    entities: list[str]
     claims_density: float
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class DiscourseAwareChunker:
     """Diskurz-aware chunking engine"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.chunking_config = config.get("compression", {}).get("discourse_chunking", {})
 
@@ -87,7 +90,6 @@ class DiscourseAwareChunker:
 
     async def initialize(self):
         """Inicializace NLP modelů"""
-
         logger.info("Initializing Discourse-Aware Chunker...")
 
         try:
@@ -107,72 +109,77 @@ class DiscourseAwareChunker:
 
     def _compile_discourse_patterns(self):
         """Kompilace regex patterns pro diskurzní struktury"""
-
         # Heading patterns
         self.heading_patterns = [
-            re.compile(r'^#{1,6}\s+(.+)$', re.MULTILINE),  # Markdown headings
-            re.compile(r'^([A-Z][A-Z\s]{2,})$', re.MULTILINE),  # ALL CAPS headings
-            re.compile(r'^\d+\.\s+([A-Z].+)$', re.MULTILINE),  # Numbered headings
-            re.compile(r'^([IVX]+)\.\s+([A-Z].+)$', re.MULTILINE),  # Roman numeral headings
+            re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE),  # Markdown headings
+            re.compile(r"^([A-Z][A-Z\s]{2,})$", re.MULTILINE),  # ALL CAPS headings
+            re.compile(r"^\d+\.\s+([A-Z].+)$", re.MULTILINE),  # Numbered headings
+            re.compile(r"^([IVX]+)\.\s+([A-Z].+)$", re.MULTILINE),  # Roman numeral headings
         ]
 
         # List patterns
         self.list_patterns = [
-            re.compile(r'^\s*[\*\-\+]\s+(.+)$', re.MULTILINE),  # Bullet lists
-            re.compile(r'^\s*\d+\.\s+(.+)$', re.MULTILINE),  # Numbered lists
-            re.compile(r'^\s*[a-z]\)\s+(.+)$', re.MULTILINE),  # Lettered lists
+            re.compile(r"^\s*[\*\-\+]\s+(.+)$", re.MULTILINE),  # Bullet lists
+            re.compile(r"^\s*\d+\.\s+(.+)$", re.MULTILINE),  # Numbered lists
+            re.compile(r"^\s*[a-z]\)\s+(.+)$", re.MULTILINE),  # Lettered lists
         ]
 
         # Citation patterns
         self.citation_patterns = [
-            re.compile(r'\[(\d+)\]'),  # [1], [2], etc.
-            re.compile(r'\(([A-Za-z]+,?\s*\d{4})\)'),  # (Author, 2024)
-            re.compile(r'([A-Za-z]+\s+et\s+al\.,?\s*\d{4})'),  # Author et al., 2024
-            re.compile(r'doi:\s*([^\s]+)'),  # DOI citations
+            re.compile(r"\[(\d+)\]"),  # [1], [2], etc.
+            re.compile(r"\(([A-Za-z]+,?\s*\d{4})\)"),  # (Author, 2024)
+            re.compile(r"([A-Za-z]+\s+et\s+al\.,?\s*\d{4})"),  # Author et al., 2024
+            re.compile(r"doi:\s*([^\s]+)"),  # DOI citations
         ]
 
         # Quote patterns
         self.quote_patterns = [
             re.compile(r'"([^"]+)"'),  # Double quotes
-            re.compile(r''([^']+)''),  # Smart quotes
-            re.compile(r'^\s*>\s+(.+)$', re.MULTILINE),  # Blockquotes
+            re.compile(r"'([^']+)'"),  # Smart quotes
+            re.compile(r"^\s*>\s+(.+)$", re.MULTILINE),  # Blockquotes
         ]
 
         # Speech act indicators
         self.speech_act_patterns = {
             SpeechActType.CLAIM: [
-                re.compile(r'\b(we\s+claim|we\s+argue|we\s+propose|we\s+assert)\b', re.IGNORECASE),
-                re.compile(r'\b(it\s+is\s+evident|clearly|obviously|undoubtedly)\b', re.IGNORECASE),
+                re.compile(r"\b(we\s+claim|we\s+argue|we\s+propose|we\s+assert)\b", re.IGNORECASE),
+                re.compile(r"\b(it\s+is\s+evident|clearly|obviously|undoubtedly)\b", re.IGNORECASE),
             ],
             SpeechActType.EVIDENCE: [
-                re.compile(r'\b(evidence\s+shows|data\s+indicates|studies\s+show|research\s+demonstrates)\b', re.IGNORECASE),
-                re.compile(r'\b(according\s+to|based\s+on|as\s+shown\s+by)\b', re.IGNORECASE),
+                re.compile(
+                    r"\b(evidence\s+shows|data\s+indicates|studies\s+show|research\s+demonstrates)\b",
+                    re.IGNORECASE,
+                ),
+                re.compile(r"\b(according\s+to|based\s+on|as\s+shown\s+by)\b", re.IGNORECASE),
             ],
             SpeechActType.HYPOTHESIS: [
-                re.compile(r'\b(we\s+hypothesize|we\s+predict|we\s+expect|presumably)\b', re.IGNORECASE),
-                re.compile(r'\b(if\s+.+\s+then|assuming\s+that)\b', re.IGNORECASE),
+                re.compile(
+                    r"\b(we\s+hypothesize|we\s+predict|we\s+expect|presumably)\b", re.IGNORECASE
+                ),
+                re.compile(r"\b(if\s+.+\s+then|assuming\s+that)\b", re.IGNORECASE),
             ],
             SpeechActType.CONCLUSION: [
-                re.compile(r'\b(in\s+conclusion|therefore|thus|hence|consequently)\b', re.IGNORECASE),
-                re.compile(r'\b(we\s+conclude|our\s+results\s+suggest)\b', re.IGNORECASE),
+                re.compile(
+                    r"\b(in\s+conclusion|therefore|thus|hence|consequently)\b", re.IGNORECASE
+                ),
+                re.compile(r"\b(we\s+conclude|our\s+results\s+suggest)\b", re.IGNORECASE),
             ],
             SpeechActType.QUESTION: [
-                re.compile(r'\?'),  # Simple question mark
-                re.compile(r'\b(what\s+if|how\s+might|why\s+does)\b', re.IGNORECASE),
+                re.compile(r"\?"),  # Simple question mark
+                re.compile(r"\b(what\s+if|how\s+might|why\s+does)\b", re.IGNORECASE),
             ],
             SpeechActType.DEFINITION: [
-                re.compile(r'\b(is\s+defined\s+as|refers\s+to|means\s+that)\b', re.IGNORECASE),
-                re.compile(r'\b(.+)\s+is\s+(.+)$'),  # X is Y pattern
+                re.compile(r"\b(is\s+defined\s+as|refers\s+to|means\s+that)\b", re.IGNORECASE),
+                re.compile(r"\b(.+)\s+is\s+(.+)$"),  # X is Y pattern
             ],
             SpeechActType.CAUSATION: [
-                re.compile(r'\b(because\s+of|due\s+to|caused\s+by|results\s+in)\b', re.IGNORECASE),
-                re.compile(r'\b(leads\s+to|triggers|induces|produces)\b', re.IGNORECASE),
-            ]
+                re.compile(r"\b(because\s+of|due\s+to|caused\s+by|results\s+in)\b", re.IGNORECASE),
+                re.compile(r"\b(leads\s+to|triggers|induces|produces)\b", re.IGNORECASE),
+            ],
         }
 
-    async def chunk_document(self, text: str, document_id: str = "doc") -> List[DiscourseChunk]:
-        """
-        Hlavní chunking funkce s diskurzní analýzou
+    async def chunk_document(self, text: str, document_id: str = "doc") -> list[DiscourseChunk]:
+        """Hlavní chunking funkce s diskurzní analýzou
 
         Args:
             text: Text dokumentu k rozchunkování
@@ -180,8 +187,8 @@ class DiscourseAwareChunker:
 
         Returns:
             List DiscourseChunk s diskurzní anotacemi
-        """
 
+        """
         logger.info(f"Starting discourse-aware chunking for document {document_id}")
 
         if not self.nlp:
@@ -217,61 +224,65 @@ class DiscourseAwareChunker:
 
     def _preprocess_text(self, text: str) -> str:
         """Předzpracování textu"""
-
         # Normalize whitespace
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r"\s+", " ", text)
 
         # Preserve paragraph breaks
-        text = re.sub(r'\n\s*\n', '\n\n', text)
+        text = re.sub(r"\n\s*\n", "\n\n", text)
 
         # Clean up common artifacts
-        text = re.sub(r'\u00a0', ' ', text)  # Non-breaking spaces
-        text = re.sub(r'[\ufeff\u200b]', '', text)  # Zero-width characters
+        text = re.sub(r"\u00a0", " ", text)  # Non-breaking spaces
+        text = re.sub(r"[\ufeff\u200b]", "", text)  # Zero-width characters
 
         return text.strip()
 
-    def _identify_discourse_structures(self, text: str) -> Dict[str, List[Dict[str, Any]]]:
+    def _identify_discourse_structures(self, text: str) -> dict[str, list[dict[str, Any]]]:
         """Identifikace diskurzních struktur v textu"""
-
         structures = {
             "headings": [],
             "lists": [],
             "citations": [],
             "quotes": [],
             "code_blocks": [],
-            "tables": []
+            "tables": [],
         }
 
         # Find headings
         for pattern in self.heading_patterns:
             for match in pattern.finditer(text):
-                structures["headings"].append({
-                    "text": match.group().strip(),
-                    "start": match.start(),
-                    "end": match.end(),
-                    "level": self._determine_heading_level(match.group())
-                })
+                structures["headings"].append(
+                    {
+                        "text": match.group().strip(),
+                        "start": match.start(),
+                        "end": match.end(),
+                        "level": self._determine_heading_level(match.group()),
+                    }
+                )
 
         # Find lists
         for pattern in self.list_patterns:
             for match in pattern.finditer(text):
-                structures["lists"].append({
-                    "text": match.group().strip(),
-                    "start": match.start(),
-                    "end": match.end(),
-                    "item_text": match.group(1) if match.groups() else match.group()
-                })
+                structures["lists"].append(
+                    {
+                        "text": match.group().strip(),
+                        "start": match.start(),
+                        "end": match.end(),
+                        "item_text": match.group(1) if match.groups() else match.group(),
+                    }
+                )
 
         # Find citations
         all_citations = []
         for pattern in self.citation_patterns:
             for match in pattern.finditer(text):
-                all_citations.append({
-                    "text": match.group(),
-                    "start": match.start(),
-                    "end": match.end(),
-                    "citation_id": match.group(1) if match.groups() else match.group()
-                })
+                all_citations.append(
+                    {
+                        "text": match.group(),
+                        "start": match.start(),
+                        "end": match.end(),
+                        "citation_id": match.group(1) if match.groups() else match.group(),
+                    }
+                )
 
         # Merge overlapping citations
         structures["citations"] = self._merge_overlapping_spans(all_citations)
@@ -279,21 +290,21 @@ class DiscourseAwareChunker:
         # Find quotes
         for pattern in self.quote_patterns:
             for match in pattern.finditer(text):
-                structures["quotes"].append({
-                    "text": match.group(),
-                    "start": match.start(),
-                    "end": match.end(),
-                    "quote_content": match.group(1) if match.groups() else match.group()
-                })
+                structures["quotes"].append(
+                    {
+                        "text": match.group(),
+                        "start": match.start(),
+                        "end": match.end(),
+                        "quote_content": match.group(1) if match.groups() else match.group(),
+                    }
+                )
 
         # Find code blocks (basic detection)
-        code_pattern = re.compile(r'```[\s\S]*?```|`[^`]+`')
+        code_pattern = re.compile(r"```[\s\S]*?```|`[^`]+`")
         for match in code_pattern.finditer(text):
-            structures["code_blocks"].append({
-                "text": match.group(),
-                "start": match.start(),
-                "end": match.end()
-            })
+            structures["code_blocks"].append(
+                {"text": match.group(), "start": match.start(), "end": match.end()}
+            )
 
         # Sort all structures by position
         for key in structures:
@@ -303,28 +314,26 @@ class DiscourseAwareChunker:
 
     def _determine_heading_level(self, heading_text: str) -> int:
         """Určení úrovně nadpisu"""
-
         # Markdown style
-        if heading_text.startswith('#'):
-            return len(heading_text) - len(heading_text.lstrip('#'))
+        if heading_text.startswith("#"):
+            return len(heading_text) - len(heading_text.lstrip("#"))
 
         # All caps - assume level 1
         if heading_text.isupper():
             return 1
 
         # Numbered - extract level from numbering
-        if re.match(r'^\d+\.', heading_text):
+        if re.match(r"^\d+\.", heading_text):
             return 2
 
         # Roman numerals - level 1
-        if re.match(r'^[IVX]+\.', heading_text):
+        if re.match(r"^[IVX]+\.", heading_text):
             return 1
 
         return 2  # Default level
 
-    def _merge_overlapping_spans(self, spans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _merge_overlapping_spans(self, spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Sloučení překrývajících se spanů"""
-
         if not spans:
             return []
 
@@ -340,17 +349,17 @@ class DiscourseAwareChunker:
                     "text": last["text"] + " " + current["text"],
                     "start": last["start"],
                     "end": max(last["end"], current["end"]),
-                    "citation_id": f"{last.get('citation_id', '')},{current.get('citation_id', '')}"
+                    "citation_id": f"{last.get('citation_id', '')},{current.get('citation_id', '')}",
                 }
             else:
                 merged.append(current)
 
         return merged
 
-    def _create_structural_chunks(self, text: str, structures: Dict[str, List[Dict[str, Any]]],
-                                document_id: str) -> List[DiscourseChunk]:
+    def _create_structural_chunks(
+        self, text: str, structures: dict[str, list[dict[str, Any]]], document_id: str
+    ) -> list[DiscourseChunk]:
         """Vytvoření chunků podle struktury"""
-
         chunks = []
         chunk_id_counter = 0
 
@@ -359,18 +368,12 @@ class DiscourseAwareChunker:
 
         for struct_type, items in structures.items():
             for item in items:
-                all_boundaries.append({
-                    "position": item["start"],
-                    "type": struct_type,
-                    "data": item,
-                    "is_start": True
-                })
-                all_boundaries.append({
-                    "position": item["end"],
-                    "type": struct_type,
-                    "data": item,
-                    "is_start": False
-                })
+                all_boundaries.append(
+                    {"position": item["start"], "type": struct_type, "data": item, "is_start": True}
+                )
+                all_boundaries.append(
+                    {"position": item["end"], "type": struct_type, "data": item, "is_start": False}
+                )
 
         # Add document boundaries
         all_boundaries.append({"position": 0, "type": "document", "is_start": True})
@@ -409,9 +412,12 @@ class DiscourseAwareChunker:
                         claims_density=0.0,  # Will be calculated later
                         metadata={
                             "structural_context": current_context.copy(),
-                            "boundary_types": [b["type"] for b in all_boundaries
-                                             if last_pos <= b["position"] <= pos]
-                        }
+                            "boundary_types": [
+                                b["type"]
+                                for b in all_boundaries
+                                if last_pos <= b["position"] <= pos
+                            ],
+                        },
                     )
 
                     chunks.append(chunk)
@@ -422,29 +428,31 @@ class DiscourseAwareChunker:
                 current_context.append(boundary)
             else:
                 # Remove corresponding start boundary
-                current_context = [ctx for ctx in current_context
-                                 if not (ctx["type"] == boundary["type"] and
-                                        ctx["data"] == boundary["data"])]
+                current_context = [
+                    ctx
+                    for ctx in current_context
+                    if not (ctx["type"] == boundary["type"] and ctx["data"] == boundary["data"])
+                ]
 
             last_pos = pos
 
         return chunks
 
-    def _determine_chunk_characteristics(self, text: str,
-                                       context: List[Dict[str, Any]]) -> Tuple[ChunkType, Optional[SpeechActType]]:
+    def _determine_chunk_characteristics(
+        self, text: str, context: list[dict[str, Any]]
+    ) -> tuple[ChunkType, SpeechActType | None]:
         """Určení typu chunku a řečového aktu"""
-
         # Check context for explicit types
         for ctx in context:
             if ctx["type"] == "headings":
                 return ChunkType.HEADING, None
-            elif ctx["type"] == "lists":
+            if ctx["type"] == "lists":
                 return ChunkType.LIST_ITEM, None
-            elif ctx["type"] == "citations":
+            if ctx["type"] == "citations":
                 return ChunkType.CITATION, None
-            elif ctx["type"] == "quotes":
+            if ctx["type"] == "quotes":
                 return ChunkType.QUOTE, None
-            elif ctx["type"] == "code_blocks":
+            if ctx["type"] == "code_blocks":
                 return ChunkType.CODE_BLOCK, None
 
         # Detect speech acts in text
@@ -453,9 +461,8 @@ class DiscourseAwareChunker:
         # Default to paragraph
         return ChunkType.PARAGRAPH, speech_act
 
-    def _detect_primary_speech_act(self, text: str) -> Optional[SpeechActType]:
+    def _detect_primary_speech_act(self, text: str) -> SpeechActType | None:
         """Detekce primárního řečového aktu v textu"""
-
         act_scores = {}
 
         for act_type, patterns in self.speech_act_patterns.items():
@@ -472,9 +479,8 @@ class DiscourseAwareChunker:
 
         return None
 
-    def _get_current_depth(self, context: List[Dict[str, Any]]) -> int:
+    def _get_current_depth(self, context: list[dict[str, Any]]) -> int:
         """Získání aktuální hierarchické hloubky"""
-
         heading_levels = []
         for ctx in context:
             if ctx["type"] == "headings":
@@ -482,18 +488,17 @@ class DiscourseAwareChunker:
 
         return max(heading_levels) if heading_levels else 0
 
-    def _extract_discourse_markers(self, text: str) -> List[str]:
+    def _extract_discourse_markers(self, text: str) -> list[str]:
         """Extrakce diskurzních markerů"""
-
         markers = []
 
         # Common discourse markers
         marker_patterns = [
-            r'\b(however|nevertheless|furthermore|moreover|therefore|thus|hence)\b',
-            r'\b(in contrast|on the other hand|similarly|likewise)\b',
-            r'\b(first|second|third|finally|in conclusion)\b',
-            r'\b(for example|for instance|such as|namely)\b',
-            r'\b(because|since|as a result|consequently)\b'
+            r"\b(however|nevertheless|furthermore|moreover|therefore|thus|hence)\b",
+            r"\b(in contrast|on the other hand|similarly|likewise)\b",
+            r"\b(first|second|third|finally|in conclusion)\b",
+            r"\b(for example|for instance|such as|namely)\b",
+            r"\b(because|since|as a result|consequently)\b",
         ]
 
         for pattern in marker_patterns:
@@ -502,9 +507,10 @@ class DiscourseAwareChunker:
 
         return list(set(markers))  # Remove duplicates
 
-    async def _apply_size_based_chunking(self, chunks: List[DiscourseChunk]) -> List[DiscourseChunk]:
+    async def _apply_size_based_chunking(
+        self, chunks: list[DiscourseChunk]
+    ) -> list[DiscourseChunk]:
         """Aplikace size-based chunkingu v rámci strukturálních chunků"""
-
         sized_chunks = []
 
         for chunk in chunks:
@@ -518,9 +524,8 @@ class DiscourseAwareChunker:
 
         return sized_chunks
 
-    async def _split_large_chunk(self, chunk: DiscourseChunk) -> List[DiscourseChunk]:
+    async def _split_large_chunk(self, chunk: DiscourseChunk) -> list[DiscourseChunk]:
         """Rozdělení velkého chunku s ohledem na diskurz"""
-
         text = chunk.text
         target_size = self.max_chunk_size
         overlap_size = int(target_size * self.overlap_ratio)
@@ -531,7 +536,7 @@ class DiscourseAwareChunker:
             sentences = [sent.text for sent in doc.sents]
         else:
             # Fallback sentence splitting
-            sentences = re.split(r'[.!?]+\s+', text)
+            sentences = re.split(r"[.!?]+\s+", text)
 
         sub_chunks = []
         current_text = ""
@@ -555,11 +560,7 @@ class DiscourseAwareChunker:
                     discourse_markers=chunk.discourse_markers,
                     entities=[],
                     claims_density=0.0,
-                    metadata={
-                        **chunk.metadata,
-                        "is_sub_chunk": True,
-                        "parent_chunk": chunk.id
-                    }
+                    metadata={**chunk.metadata, "is_sub_chunk": True, "parent_chunk": chunk.id},
                 )
 
                 sub_chunks.append(sub_chunk)
@@ -592,36 +593,30 @@ class DiscourseAwareChunker:
                 discourse_markers=chunk.discourse_markers,
                 entities=[],
                 claims_density=0.0,
-                metadata={
-                    **chunk.metadata,
-                    "is_sub_chunk": True,
-                    "parent_chunk": chunk.id
-                }
+                metadata={**chunk.metadata, "is_sub_chunk": True, "parent_chunk": chunk.id},
             )
 
             sub_chunks.append(sub_chunk)
 
         return sub_chunks
 
-    def _detect_speech_acts(self, chunks: List[DiscourseChunk]) -> List[DiscourseChunk]:
-        """Detekce řečových aktů v chuncích"""
-
+    def _detect_speech_acts(self, chunks: list[DiscourseChunk]) -> list[DiscourseChunk]:
+        """Detekce ře��ových aktů v chuncích"""
         for chunk in chunks:
             if chunk.speech_act is None:  # Only if not already detected
                 chunk.speech_act = self._detect_primary_speech_act(chunk.text)
 
         return chunks
 
-    def _calculate_claims_density(self, chunks: List[DiscourseChunk]) -> List[DiscourseChunk]:
+    def _calculate_claims_density(self, chunks: list[DiscourseChunk]) -> list[DiscourseChunk]:
         """Výpočet hustoty tvrzení v chuncích"""
-
         for chunk in chunks:
             # Simple heuristic for claims density
             claim_indicators = [
-                r'\b(we\s+claim|we\s+argue|we\s+propose|we\s+assert)\b',
-                r'\b(it\s+is\s+evident|clearly|obviously)\b',
-                r'\b(shows?\s+that|indicates?\s+that|suggests?\s+that)\b',
-                r'\b(therefore|thus|hence|consequently)\b'
+                r"\b(we\s+claim|we\s+argue|we\s+propose|we\s+assert)\b",
+                r"\b(it\s+is\s+evident|clearly|obviously)\b",
+                r"\b(shows?\s+that|indicates?\s+that|suggests?\s+that)\b",
+                r"\b(therefore|thus|hence|consequently)\b",
             ]
 
             total_indicators = 0
@@ -635,9 +630,8 @@ class DiscourseAwareChunker:
 
         return chunks
 
-    def _build_chunk_hierarchy(self, chunks: List[DiscourseChunk]) -> List[DiscourseChunk]:
+    def _build_chunk_hierarchy(self, chunks: list[DiscourseChunk]) -> list[DiscourseChunk]:
         """Vybudování hierarchických vztahů mezi chunky"""
-
         # Sort chunks by position
         sorted_chunks = sorted(chunks, key=lambda x: x.start_position)
 
@@ -661,9 +655,8 @@ class DiscourseAwareChunker:
 
         return sorted_chunks
 
-    def get_chunking_stats(self, chunks: List[DiscourseChunk]) -> Dict[str, Any]:
+    def get_chunking_stats(self, chunks: list[DiscourseChunk]) -> dict[str, Any]:
         """Statistiky chunkingu"""
-
         chunk_types = {}
         speech_acts = {}
 
@@ -689,18 +682,18 @@ class DiscourseAwareChunker:
                 "min": min(chunk_sizes) if chunk_sizes else 0,
                 "max": max(chunk_sizes) if chunk_sizes else 0,
                 "mean": sum(chunk_sizes) / len(chunk_sizes) if chunk_sizes else 0,
-                "median": sorted(chunk_sizes)[len(chunk_sizes)//2] if chunk_sizes else 0
+                "median": sorted(chunk_sizes)[len(chunk_sizes) // 2] if chunk_sizes else 0,
             },
             "claims_density_stats": {
                 "min": min(claims_densities) if claims_densities else 0,
                 "max": max(claims_densities) if claims_densities else 0,
-                "mean": sum(claims_densities) / len(claims_densities) if claims_densities else 0
+                "mean": sum(claims_densities) / len(claims_densities) if claims_densities else 0,
             },
-            "hierarchical_depth": max([chunk.depth_level for chunk in chunks]) if chunks else 0
+            "hierarchical_depth": max([chunk.depth_level for chunk in chunks]) if chunks else 0,
         }
 
 
 # Factory function
-def create_discourse_chunker(config: Dict[str, Any]) -> DiscourseAwareChunker:
+def create_discourse_chunker(config: dict[str, Any]) -> DiscourseAwareChunker:
     """Factory function pro Discourse-Aware Chunker"""
     return DiscourseAwareChunker(config)

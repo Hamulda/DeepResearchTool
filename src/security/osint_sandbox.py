@@ -1,37 +1,37 @@
 #!/usr/bin/env python3
-"""
-OSINT Security Sandbox
+"""OSINT Security Sandbox
 Secure execution environment for OSINT operations with whitelists/blacklists
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, List, Any, Optional, Set, Tuple
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-import logging
-import re
-import hashlib
-import json
-from pathlib import Path
-from urllib.parse import urlparse, urljoin
-import threading
 from collections import defaultdict, deque
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from enum import Enum
+import json
+import logging
+from pathlib import Path
+import re
+import threading
+from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 
 class SecurityLevel(Enum):
     """Security levels for OSINT operations"""
-    LOW = "low"           # Minimal restrictions
-    MEDIUM = "medium"     # Standard security
-    HIGH = "high"         # Strict security
-    PARANOID = "paranoid" # Maximum security
+
+    LOW = "low"  # Minimal restrictions
+    MEDIUM = "medium"  # Standard security
+    HIGH = "high"  # Strict security
+    PARANOID = "paranoid"  # Maximum security
 
 
 class AccessResult(Enum):
     """Results of access control checks"""
+
     ALLOWED = "allowed"
     BLOCKED = "blocked"
     RATE_LIMITED = "rate_limited"
@@ -41,18 +41,19 @@ class AccessResult(Enum):
 @dataclass
 class SecurityRule:
     """Individual security rule"""
+
     rule_id: str
     rule_type: str  # whitelist, blacklist, rate_limit, content_filter
     pattern: str
     action: str  # allow, block, quarantine, rate_limit
     priority: int = 100
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def matches(self, url: str, content: str = "") -> bool:
         """Check if rule matches the given URL/content"""
         if self.rule_type in ["whitelist", "blacklist"]:
             return self._matches_url_pattern(url)
-        elif self.rule_type == "content_filter":
+        if self.rule_type == "content_filter":
             return self._matches_content_pattern(content)
         return False
 
@@ -66,15 +67,14 @@ class SecurityRule:
             if self.pattern.startswith("regex:"):
                 pattern = self.pattern[6:]
                 return bool(re.search(pattern, url, re.IGNORECASE))
-            elif self.pattern.startswith("domain:"):
+            if self.pattern.startswith("domain:"):
                 target_domain = self.pattern[7:]
                 return domain == target_domain or domain.endswith(f".{target_domain}")
-            elif self.pattern.startswith("subdomain:"):
+            if self.pattern.startswith("subdomain:"):
                 target_domain = self.pattern[10:]
                 return domain.endswith(f".{target_domain}")
-            else:
-                # Simple substring match
-                return self.pattern.lower() in url.lower()
+            # Simple substring match
+            return self.pattern.lower() in url.lower()
         except Exception:
             return False
 
@@ -83,46 +83,48 @@ class SecurityRule:
         if self.pattern.startswith("regex:"):
             pattern = self.pattern[6:]
             return bool(re.search(pattern, content, re.IGNORECASE))
-        else:
-            return self.pattern.lower() in content.lower()
+        return self.pattern.lower() in content.lower()
 
 
 @dataclass
 class AccessAttempt:
     """Record of an access attempt"""
+
     timestamp: datetime
     url: str
     source_ip: str
     user_agent: str
     result: AccessResult
-    rule_matched: Optional[str] = None
-    content_hash: Optional[str] = None
+    rule_matched: str | None = None
+    content_hash: str | None = None
 
 
 class RateLimiter:
     """Rate limiting for OSINT operations"""
 
-    def __init__(self, config: Dict[str, Any]):
-        self.limits = config.get("rate_limits", {
-            "requests_per_minute": 60,
-            "requests_per_hour": 1000,
-            "requests_per_day": 10000,
-            "concurrent_requests": 10
-        })
+    def __init__(self, config: dict[str, Any]):
+        self.limits = config.get(
+            "rate_limits",
+            {
+                "requests_per_minute": 60,
+                "requests_per_hour": 1000,
+                "requests_per_day": 10000,
+                "concurrent_requests": 10,
+            },
+        )
 
         # Tracking structures
         self.request_times: deque = deque(maxlen=10000)
-        self.domain_requests: Dict[str, deque] = defaultdict(lambda: deque(maxlen=1000))
-        self.active_requests: Set[str] = set()
+        self.domain_requests: dict[str, deque] = defaultdict(lambda: deque(maxlen=1000))
+        self.active_requests: set[str] = set()
         self.lock = threading.Lock()
 
         logger.info(f"Rate limiter initialized: {self.limits}")
 
-    def check_rate_limit(self, url: str, source_ip: str = "unknown") -> Tuple[bool, str]:
+    def check_rate_limit(self, url: str, source_ip: str = "unknown") -> tuple[bool, str]:
         """Check if request is within rate limits"""
-
         with self.lock:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             domain = urlparse(url).netloc
 
             # Clean old entries
@@ -159,9 +161,8 @@ class RateLimiter:
 
     def record_request(self, url: str, source_ip: str = "unknown"):
         """Record a request for rate limiting"""
-
         with self.lock:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             domain = urlparse(url).netloc
 
             self.request_times.append(now)
@@ -170,14 +171,12 @@ class RateLimiter:
 
     def complete_request(self, url: str, timestamp: datetime):
         """Mark request as completed"""
-
         with self.lock:
             request_id = f"{url}_{timestamp.timestamp()}"
             self.active_requests.discard(request_id)
 
     def _cleanup_old_entries(self, now: datetime):
         """Clean up old tracking entries"""
-
         day_ago = now - timedelta(days=1)
 
         # Clean global request times
@@ -198,32 +197,31 @@ class RateLimiter:
 class ContentSanitizer:
     """Sanitize and filter content for security"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.sanitization_config = config.get("content_sanitization", {})
 
         # PII patterns
         self.pii_patterns = {
-            "email": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-            "phone": r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',
-            "ssn": r'\b\d{3}-\d{2}-\d{4}\b',
-            "credit_card": r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
-            "ip_address": r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
+            "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+            "phone": r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b",
+            "ssn": r"\b\d{3}-\d{2}-\d{4}\b",
+            "credit_card": r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b",
+            "ip_address": r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",
         }
 
         # Dangerous content patterns
         self.dangerous_patterns = {
-            "malware_url": r'(malware|virus|trojan|ransomware)',
-            "phishing": r'(phishing|scam|fake|suspicious)',
-            "explicit_content": r'(explicit|nsfw|adult)',
-            "illegal_content": r'(illegal|criminal|terrorism)'
+            "malware_url": r"(malware|virus|trojan|ransomware)",
+            "phishing": r"(phishing|scam|fake|suspicious)",
+            "explicit_content": r"(explicit|nsfw|adult)",
+            "illegal_content": r"(illegal|criminal|terrorism)",
         }
 
         logger.info("Content sanitizer initialized")
 
-    def sanitize_content(self, content: str, redact_pii: bool = True) -> Tuple[str, Dict[str, Any]]:
+    def sanitize_content(self, content: str, redact_pii: bool = True) -> tuple[str, dict[str, Any]]:
         """Sanitize content and return sanitized version with metadata"""
-
         sanitized = content
         redactions = {"pii": [], "dangerous": []}
 
@@ -238,14 +236,13 @@ class ContentSanitizer:
             "original_length": len(content),
             "sanitized_length": len(sanitized),
             "redactions": redactions,
-            "sanitization_timestamp": datetime.now(timezone.utc).isoformat()
+            "sanitization_timestamp": datetime.now(UTC).isoformat(),
         }
 
         return sanitized, metadata
 
-    def _redact_pii(self, content: str) -> Tuple[str, List[Dict[str, Any]]]:
+    def _redact_pii(self, content: str) -> tuple[str, list[dict[str, Any]]]:
         """Redact personally identifiable information"""
-
         redacted_content = content
         redactions = []
 
@@ -255,23 +252,24 @@ class ContentSanitizer:
             for match in reversed(matches):  # Reverse to maintain positions
                 redacted_text = f"[REDACTED_{pii_type.upper()}]"
                 redacted_content = (
-                    redacted_content[:match.start()] +
-                    redacted_text +
-                    redacted_content[match.end():]
+                    redacted_content[: match.start()]
+                    + redacted_text
+                    + redacted_content[match.end() :]
                 )
 
-                redactions.append({
-                    "type": pii_type,
-                    "original_text": match.group(),
-                    "position": match.start(),
-                    "replacement": redacted_text
-                })
+                redactions.append(
+                    {
+                        "type": pii_type,
+                        "original_text": match.group(),
+                        "position": match.start(),
+                        "replacement": redacted_text,
+                    }
+                )
 
         return redacted_content, redactions
 
-    def _filter_dangerous_content(self, content: str) -> Tuple[str, List[Dict[str, Any]]]:
+    def _filter_dangerous_content(self, content: str) -> tuple[str, list[dict[str, Any]]]:
         """Filter dangerous content"""
-
         filtered_content = content
         removals = []
 
@@ -281,29 +279,25 @@ class ContentSanitizer:
             for match in reversed(matches):
                 # Remove dangerous content sections
                 filtered_content = (
-                    filtered_content[:match.start()] +
-                    f"[FILTERED_{danger_type.upper()}]" +
-                    filtered_content[match.end():]
+                    filtered_content[: match.start()]
+                    + f"[FILTERED_{danger_type.upper()}]"
+                    + filtered_content[match.end() :]
                 )
 
-                removals.append({
-                    "type": danger_type,
-                    "original_text": match.group(),
-                    "position": match.start(),
-                    "reason": f"dangerous_content_{danger_type}"
-                })
+                removals.append(
+                    {
+                        "type": danger_type,
+                        "original_text": match.group(),
+                        "position": match.start(),
+                        "reason": f"dangerous_content_{danger_type}",
+                    }
+                )
 
         return filtered_content, removals
 
-    def check_content_safety(self, content: str) -> Dict[str, Any]:
+    def check_content_safety(self, content: str) -> dict[str, Any]:
         """Check content safety without modification"""
-
-        safety_report = {
-            "safe": True,
-            "risk_level": "low",
-            "issues": [],
-            "score": 1.0
-        }
+        safety_report = {"safe": True, "risk_level": "low", "issues": [], "score": 1.0}
 
         total_issues = 0
 
@@ -311,24 +305,28 @@ class ContentSanitizer:
         for pii_type, pattern in self.pii_patterns.items():
             matches = re.findall(pattern, content)
             if matches:
-                safety_report["issues"].append({
-                    "type": "pii",
-                    "subtype": pii_type,
-                    "count": len(matches),
-                    "severity": "medium"
-                })
+                safety_report["issues"].append(
+                    {
+                        "type": "pii",
+                        "subtype": pii_type,
+                        "count": len(matches),
+                        "severity": "medium",
+                    }
+                )
                 total_issues += len(matches)
 
         # Check for dangerous content
         for danger_type, pattern in self.dangerous_patterns.items():
             matches = re.findall(pattern, content, re.IGNORECASE)
             if matches:
-                safety_report["issues"].append({
-                    "type": "dangerous_content",
-                    "subtype": danger_type,
-                    "count": len(matches),
-                    "severity": "high"
-                })
+                safety_report["issues"].append(
+                    {
+                        "type": "dangerous_content",
+                        "subtype": danger_type,
+                        "count": len(matches),
+                        "severity": "high",
+                    }
+                )
                 total_issues += len(matches) * 3  # Weight dangerous content more
 
         # Calculate risk level and score
@@ -350,27 +348,25 @@ class ContentSanitizer:
 class OSINTSecuritySandbox:
     """Main security sandbox for OSINT operations"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.security_config = config.get("security", {})
         self.osint_config = self.security_config.get("osint", {})
 
         # Security level
-        self.security_level = SecurityLevel(
-            self.osint_config.get("security_level", "medium")
-        )
+        self.security_level = SecurityLevel(self.osint_config.get("security_level", "medium"))
 
         # Components
         self.rate_limiter = RateLimiter(self.osint_config)
         self.content_sanitizer = ContentSanitizer(config)
 
         # Security rules
-        self.security_rules: List[SecurityRule] = []
+        self.security_rules: list[SecurityRule] = []
         self._load_security_rules()
 
         # Access logging
         self.access_log: deque = deque(maxlen=10000)
-        self.blocked_attempts: Dict[str, int] = defaultdict(int)
+        self.blocked_attempts: dict[str, int] = defaultdict(int)
 
         # Audit trail
         self.audit_trail_file = Path(config.get("audit_trail", "security_audit.jsonl"))
@@ -380,7 +376,6 @@ class OSINTSecuritySandbox:
 
     def _load_security_rules(self):
         """Load security rules from configuration"""
-
         rules_config = self.osint_config.get("rules", {})
 
         # Default whitelists
@@ -393,7 +388,7 @@ class OSINTSecuritySandbox:
             "domain:cdc.gov",
             "domain:europa.eu",
             "domain:gov",
-            "domain:edu"
+            "domain:edu",
         ]
 
         whitelist = rules_config.get("whitelist", default_whitelist)
@@ -403,7 +398,7 @@ class OSINTSecuritySandbox:
                 rule_type="whitelist",
                 pattern=pattern,
                 action="allow",
-                priority=10
+                priority=10,
             )
             self.security_rules.append(rule)
 
@@ -413,7 +408,7 @@ class OSINTSecuritySandbox:
             "regex:.*\\.onion$",  # Tor hidden services (unless explicitly enabled)
             "regex:.*malware.*",
             "regex:.*phishing.*",
-            "domain:suspicious-site.com"
+            "domain:suspicious-site.com",
         ]
 
         blacklist = rules_config.get("blacklist", default_blacklist)
@@ -423,15 +418,15 @@ class OSINTSecuritySandbox:
                 rule_type="blacklist",
                 pattern=pattern,
                 action="block",
-                priority=20
+                priority=20,
             )
             self.security_rules.append(rule)
 
         # Content filters
-        content_filters = rules_config.get("content_filters", [
-            "regex:(password|secret|api[_-]?key)",
-            "regex:(malware|virus|trojan)"
-        ])
+        content_filters = rules_config.get(
+            "content_filters",
+            ["regex:(password|secret|api[_-]?key)", "regex:(malware|virus|trojan)"],
+        )
 
         for i, pattern in enumerate(content_filters):
             rule = SecurityRule(
@@ -439,7 +434,7 @@ class OSINTSecuritySandbox:
                 rule_type="content_filter",
                 pattern=pattern,
                 action="quarantine",
-                priority=30
+                priority=30,
             )
             self.security_rules.append(rule)
 
@@ -449,14 +444,10 @@ class OSINTSecuritySandbox:
         logger.info(f"Loaded {len(self.security_rules)} security rules")
 
     def check_access_permission(
-        self,
-        url: str,
-        source_ip: str = "unknown",
-        user_agent: str = "DeepResearchTool"
-    ) -> Tuple[AccessResult, Dict[str, Any]]:
+        self, url: str, source_ip: str = "unknown", user_agent: str = "DeepResearchTool"
+    ) -> tuple[AccessResult, dict[str, Any]]:
         """Check if access to URL is permitted"""
-
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
 
         # Rate limiting check
         rate_ok, rate_reason = self.rate_limiter.check_rate_limit(url, source_ip)
@@ -474,21 +465,25 @@ class OSINTSecuritySandbox:
                     metadata = {
                         "rule_matched": rule.rule_id,
                         "rule_type": rule.rule_type,
-                        "timestamp": timestamp.isoformat()
+                        "timestamp": timestamp.isoformat(),
                     }
-                    self._log_access_attempt(timestamp, url, source_ip, user_agent, result, rule.rule_id)
+                    self._log_access_attempt(
+                        timestamp, url, source_ip, user_agent, result, rule.rule_id
+                    )
                     self.rate_limiter.record_request(url, source_ip)
                     return result, metadata
 
-                elif rule.action == "block":
+                if rule.action == "block":
                     result = AccessResult.BLOCKED
                     metadata = {
                         "rule_matched": rule.rule_id,
                         "rule_type": rule.rule_type,
                         "reason": f"blocked_by_{rule.rule_type}",
-                        "timestamp": timestamp.isoformat()
+                        "timestamp": timestamp.isoformat(),
                     }
-                    self._log_access_attempt(timestamp, url, source_ip, user_agent, result, rule.rule_id)
+                    self._log_access_attempt(
+                        timestamp, url, source_ip, user_agent, result, rule.rule_id
+                    )
                     self.blocked_attempts[url] += 1
                     return result, metadata
 
@@ -499,30 +494,25 @@ class OSINTSecuritySandbox:
             metadata = {
                 "reason": "default_deny_policy",
                 "security_level": self.security_level.value,
-                "timestamp": timestamp.isoformat()
+                "timestamp": timestamp.isoformat(),
             }
             self._log_access_attempt(timestamp, url, source_ip, user_agent, result, "default_deny")
             return result, metadata
-        else:
-            # Allow by default for low/medium security
-            result = AccessResult.ALLOWED
-            metadata = {
-                "reason": "default_allow_policy",
-                "security_level": self.security_level.value,
-                "timestamp": timestamp.isoformat()
-            }
-            self._log_access_attempt(timestamp, url, source_ip, user_agent, result, "default_allow")
-            self.rate_limiter.record_request(url, source_ip)
-            return result, metadata
+        # Allow by default for low/medium security
+        result = AccessResult.ALLOWED
+        metadata = {
+            "reason": "default_allow_policy",
+            "security_level": self.security_level.value,
+            "timestamp": timestamp.isoformat(),
+        }
+        self._log_access_attempt(timestamp, url, source_ip, user_agent, result, "default_allow")
+        self.rate_limiter.record_request(url, source_ip)
+        return result, metadata
 
     def process_content(
-        self,
-        content: str,
-        url: str,
-        sanitize: bool = True
-    ) -> Tuple[str, Dict[str, Any]]:
+        self, content: str, url: str, sanitize: bool = True
+    ) -> tuple[str, dict[str, Any]]:
         """Process and sanitize content according to security rules"""
-
         # Check content safety
         safety_report = self.content_sanitizer.check_content_safety(content)
 
@@ -531,7 +521,7 @@ class OSINTSecuritySandbox:
             "safety_report": safety_report,
             "processed": False,
             "url": url,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         # Apply content filters
@@ -544,10 +534,12 @@ class OSINTSecuritySandbox:
 
         # Sanitize content if enabled
         if sanitize and (
-            not safety_report["safe"] or
-            self.security_level in [SecurityLevel.HIGH, SecurityLevel.PARANOID]
+            not safety_report["safe"]
+            or self.security_level in [SecurityLevel.HIGH, SecurityLevel.PARANOID]
         ):
-            processed_content, sanitization_metadata = self.content_sanitizer.sanitize_content(content)
+            processed_content, sanitization_metadata = self.content_sanitizer.sanitize_content(
+                content
+            )
             processing_metadata["sanitization"] = sanitization_metadata
             processing_metadata["processed"] = True
 
@@ -563,17 +555,16 @@ class OSINTSecuritySandbox:
         source_ip: str,
         user_agent: str,
         result: AccessResult,
-        rule_matched: Optional[str] = None
+        rule_matched: str | None = None,
     ):
         """Log access attempt"""
-
         attempt = AccessAttempt(
             timestamp=timestamp,
             url=url,
             source_ip=source_ip,
             user_agent=user_agent,
             result=result,
-            rule_matched=rule_matched
+            rule_matched=rule_matched,
         )
 
         self.access_log.append(attempt)
@@ -586,43 +577,36 @@ class OSINTSecuritySandbox:
             "source_ip": source_ip,
             "user_agent": user_agent,
             "result": result.value,
-            "rule_matched": rule_matched
+            "rule_matched": rule_matched,
         }
 
         self._write_audit_entry(audit_entry)
 
     def _log_content_processing(
-        self,
-        url: str,
-        original_size: int,
-        processed_size: int,
-        safety_report: Dict[str, Any]
+        self, url: str, original_size: int, processed_size: int, safety_report: dict[str, Any]
     ):
         """Log content processing"""
-
         audit_entry = {
             "type": "content_processing",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "url": url,
             "original_size": original_size,
             "processed_size": processed_size,
-            "safety_report": safety_report
+            "safety_report": safety_report,
         }
 
         self._write_audit_entry(audit_entry)
 
-    def _write_audit_entry(self, entry: Dict[str, Any]):
+    def _write_audit_entry(self, entry: dict[str, Any]):
         """Write entry to audit trail"""
-
         try:
-            with open(self.audit_trail_file, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(entry) + '\n')
+            with open(self.audit_trail_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
         except Exception as e:
             logger.error(f"Failed to write audit entry: {e}")
 
-    def get_security_statistics(self) -> Dict[str, Any]:
+    def get_security_statistics(self) -> dict[str, Any]:
         """Get security statistics and metrics"""
-
         total_attempts = len(self.access_log)
 
         if total_attempts == 0:
@@ -634,15 +618,11 @@ class OSINTSecuritySandbox:
             result_counts[attempt.result.value] += 1
 
         # Recent activity (last hour)
-        hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+        hour_ago = datetime.now(UTC) - timedelta(hours=1)
         recent_attempts = [a for a in self.access_log if a.timestamp > hour_ago]
 
         # Top blocked URLs
-        top_blocked = sorted(
-            self.blocked_attempts.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:10]
+        top_blocked = sorted(self.blocked_attempts.items(), key=lambda x: x[1], reverse=True)[:10]
 
         # Rule effectiveness
         rule_usage = defaultdict(int)
@@ -662,24 +642,21 @@ class OSINTSecuritySandbox:
             "security_level": self.security_level.value,
             "rate_limiter_stats": {
                 "active_requests": len(self.rate_limiter.active_requests),
-                "tracked_domains": len(self.rate_limiter.domain_requests)
-            }
+                "tracked_domains": len(self.rate_limiter.domain_requests),
+            },
         }
 
     def export_audit_trail(
-        self,
-        since: Optional[datetime] = None,
-        format: str = "json"
-    ) -> Dict[str, Any]:
+        self, since: datetime | None = None, format: str = "json"
+    ) -> dict[str, Any]:
         """Export audit trail for analysis"""
-
         if since is None:
-            since = datetime.now(timezone.utc) - timedelta(days=7)
+            since = datetime.now(UTC) - timedelta(days=7)
 
         # Read audit trail file
         audit_entries = []
         try:
-            with open(self.audit_trail_file, 'r', encoding='utf-8') as f:
+            with open(self.audit_trail_file, encoding="utf-8") as f:
                 for line in f:
                     try:
                         entry = json.loads(line.strip())
@@ -692,16 +669,16 @@ class OSINTSecuritySandbox:
             pass
 
         return {
-            "export_timestamp": datetime.now(timezone.utc).isoformat(),
+            "export_timestamp": datetime.now(UTC).isoformat(),
             "export_range_start": since.isoformat(),
             "format": format,
             "total_entries": len(audit_entries),
             "entries": audit_entries,
-            "statistics": self.get_security_statistics()
+            "statistics": self.get_security_statistics(),
         }
 
 
-def create_osint_security_sandbox(config: Dict[str, Any]) -> OSINTSecuritySandbox:
+def create_osint_security_sandbox(config: dict[str, Any]) -> OSINTSecuritySandbox:
     """Factory function for OSINT security sandbox"""
     return OSINTSecuritySandbox(config)
 
@@ -712,17 +689,14 @@ if __name__ == "__main__":
         "security": {
             "osint": {
                 "security_level": "medium",
-                "rate_limits": {
-                    "requests_per_minute": 30,
-                    "requests_per_hour": 500
-                },
+                "rate_limits": {"requests_per_minute": 30, "requests_per_hour": 500},
                 "rules": {
                     "whitelist": ["domain:arxiv.org", "domain:pubmed.ncbi.nlm.nih.gov"],
-                    "blacklist": ["regex:.*malware.*", "domain:suspicious-site.com"]
-                }
+                    "blacklist": ["regex:.*malware.*", "domain:suspicious-site.com"],
+                },
             }
         },
-        "audit_trail": "test_audit.jsonl"
+        "audit_trail": "test_audit.jsonl",
     }
 
     sandbox = OSINTSecuritySandbox(config)
@@ -731,7 +705,7 @@ if __name__ == "__main__":
     test_urls = [
         "https://arxiv.org/article123",  # Should be allowed (whitelist)
         "https://suspicious-site.com/page",  # Should be blocked (blacklist)
-        "https://example.com/research"  # Should depend on security level
+        "https://example.com/research",  # Should depend on security level
     ]
 
     for url in test_urls:

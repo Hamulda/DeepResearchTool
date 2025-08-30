@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
-"""
-FÁZE 5: Enhanced Metrics Framework
+"""FÁZE 5: Enhanced Metrics Framework
 Rozšířený systém metrik pro evaluaci evidence-based research
 
 Author: Senior Python/MLOps Agent
 """
 
-import json
-import time
-import math
-import numpy as np
-from typing import Dict, List, Any, Optional, Tuple, Set
 from dataclasses import dataclass, field
-from collections import defaultdict
 from datetime import datetime
-import asyncio
+import json
+import math
 from pathlib import Path
+import time
+from typing import Any
+
+import numpy as np
 
 
 @dataclass
 class EvidenceItem:
     """Jednotka evidence s kompletními metadaty"""
+
     doc_id: str
     content: str
     char_offset_start: int
@@ -30,30 +29,32 @@ class EvidenceItem:
     recency_score: float
     relevance_score: float
     citation_context: str
-    quality_indicators: Dict[str, float] = field(default_factory=dict)
+    quality_indicators: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
 class ClaimWithEvidence:
     """Tvrzení s vázanou evidencí"""
+
     claim_text: str
     claim_id: str
-    evidence_items: List[EvidenceItem]
+    evidence_items: list[EvidenceItem]
     confidence_score: float
-    supporting_citations: List[str]
-    contradicting_citations: List[str] = field(default_factory=list)
+    supporting_citations: list[str]
+    contradicting_citations: list[str] = field(default_factory=list)
     consensus_strength: float = 0.0
 
 
 @dataclass
 class EvaluationResult:
     """Výsledek evaluace s kompletními metrikami"""
+
     query: str
     timestamp: datetime
 
     # Retrieval metrics
-    recall_at_k: Dict[int, float] = field(default_factory=dict)
-    ndcg_at_k: Dict[int, float] = field(default_factory=dict)
+    recall_at_k: dict[int, float] = field(default_factory=dict)
+    ndcg_at_k: dict[int, float] = field(default_factory=dict)
 
     # Evidence quality metrics
     evidence_coverage: float = 0.0
@@ -74,20 +75,24 @@ class EvaluationResult:
     temporal_currency: float = 0.0
 
     # Detailed breakdown
-    claims_with_evidence: List[ClaimWithEvidence] = field(default_factory=list)
-    processing_log: List[Dict[str, Any]] = field(default_factory=list)
+    claims_with_evidence: list[ClaimWithEvidence] = field(default_factory=list)
+    processing_log: list[dict[str, Any]] = field(default_factory=list)
 
 
 class EnhancedMetricsCalculator:
     """Pokročilý kalkulátor metrik pro FÁZE 5"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
-        self.k_values = config.get('evaluation', {}).get('k_values', [1, 3, 5, 10, 20])
-        self.min_evidence_per_claim = config.get('evaluation', {}).get('min_evidence_per_claim', 2)
-        self.hallucination_threshold = config.get('evaluation', {}).get('hallucination_threshold', 0.1)
+        self.k_values = config.get("evaluation", {}).get("k_values", [1, 3, 5, 10, 20])
+        self.min_evidence_per_claim = config.get("evaluation", {}).get("min_evidence_per_claim", 2)
+        self.hallucination_threshold = config.get("evaluation", {}).get(
+            "hallucination_threshold", 0.1
+        )
 
-    def calculate_recall_at_k(self, retrieved_docs: List[str], relevant_docs: List[str], k: int) -> float:
+    def calculate_recall_at_k(
+        self, retrieved_docs: list[str], relevant_docs: list[str], k: int
+    ) -> float:
         """Vypočítá recall@k metriku"""
         if not relevant_docs:
             return 0.0
@@ -98,7 +103,9 @@ class EnhancedMetricsCalculator:
         intersection = retrieved_k.intersection(relevant_set)
         return len(intersection) / len(relevant_set)
 
-    def calculate_ndcg_at_k(self, retrieved_docs: List[str], relevance_scores: Dict[str, float], k: int) -> float:
+    def calculate_ndcg_at_k(
+        self, retrieved_docs: list[str], relevance_scores: dict[str, float], k: int
+    ) -> float:
         """Vypočítá nDCG@k metriku"""
         if not retrieved_docs or not relevance_scores:
             return 0.0
@@ -118,7 +125,7 @@ class EnhancedMetricsCalculator:
 
         return dcg / idcg if idcg > 0 else 0.0
 
-    def calculate_evidence_coverage(self, claims: List[ClaimWithEvidence]) -> float:
+    def calculate_evidence_coverage(self, claims: list[ClaimWithEvidence]) -> float:
         """Vypočítá evidence coverage - kolik claims má dostatečnou evidenci"""
         if not claims:
             return 0.0
@@ -131,7 +138,7 @@ class EnhancedMetricsCalculator:
 
         return well_supported_claims / len(claims)
 
-    def calculate_citation_precision(self, claims: List[ClaimWithEvidence]) -> float:
+    def calculate_citation_precision(self, claims: list[ClaimWithEvidence]) -> float:
         """Vypočítá precision citací - kolik citací je skutečně relevantních"""
         total_citations = 0
         accurate_citations = 0
@@ -145,7 +152,7 @@ class EnhancedMetricsCalculator:
 
         return accurate_citations / total_citations if total_citations > 0 else 0.0
 
-    def calculate_groundedness(self, claims: List[ClaimWithEvidence]) -> float:
+    def calculate_groundedness(self, claims: list[ClaimWithEvidence]) -> float:
         """Vypočítá groundedness - míru zakotvenosti claims v evidenci"""
         if not claims:
             return 0.0
@@ -155,8 +162,7 @@ class EnhancedMetricsCalculator:
             claim_groundedness = 0.0
             for evidence in claim.evidence_items:
                 # Combine relevance and authority scores
-                evidence_strength = (evidence.relevance_score * 0.6 +
-                                   evidence.authority_score * 0.4)
+                evidence_strength = evidence.relevance_score * 0.6 + evidence.authority_score * 0.4
                 claim_groundedness += evidence_strength
 
             # Normalize by number of evidence items
@@ -167,7 +173,7 @@ class EnhancedMetricsCalculator:
 
         return total_groundedness / len(claims)
 
-    def calculate_hallucination_rate(self, claims: List[ClaimWithEvidence]) -> float:
+    def calculate_hallucination_rate(self, claims: list[ClaimWithEvidence]) -> float:
         """Vypočítá hallucination rate - míru nepodložených tvrzení"""
         if not claims:
             return 0.0
@@ -176,14 +182,16 @@ class EnhancedMetricsCalculator:
         for claim in claims:
             # Claim is considered hallucinated if it has very weak evidence support
             evidence_strength = sum(evidence.relevance_score for evidence in claim.evidence_items)
-            avg_evidence_strength = evidence_strength / len(claim.evidence_items) if claim.evidence_items else 0
+            avg_evidence_strength = (
+                evidence_strength / len(claim.evidence_items) if claim.evidence_items else 0
+            )
 
             if avg_evidence_strength < self.hallucination_threshold:
                 hallucinated_claims += 1
 
         return hallucinated_claims / len(claims)
 
-    def calculate_disagreement_coverage(self, claims: List[ClaimWithEvidence]) -> float:
+    def calculate_disagreement_coverage(self, claims: list[ClaimWithEvidence]) -> float:
         """Vypočítá disagreement coverage - kolik kvalitních protinázorů bylo nalezeno"""
         if not claims:
             return 0.0
@@ -193,7 +201,8 @@ class EnhancedMetricsCalculator:
             if claim.contradicting_citations:
                 # Check quality of contradicting evidence
                 high_quality_contradictions = sum(
-                    1 for citation in claim.contradicting_citations
+                    1
+                    for citation in claim.contradicting_citations
                     if self._is_high_quality_contradiction(citation)
                 )
                 if high_quality_contradictions > 0:
@@ -201,16 +210,16 @@ class EnhancedMetricsCalculator:
 
         return claims_with_counterevidence / len(claims)
 
-    def calculate_context_usage_efficiency(self, claims: List[ClaimWithEvidence],
-                                         token_budget_used: int, token_budget_total: int) -> float:
+    def calculate_context_usage_efficiency(
+        self, claims: list[ClaimWithEvidence], token_budget_used: int, token_budget_total: int
+    ) -> float:
         """Vypočítá context usage efficiency"""
         if token_budget_total == 0:
             return 0.0
 
         # Calculate information density
         total_evidence_quality = sum(
-            sum(evidence.relevance_score for evidence in claim.evidence_items)
-            for claim in claims
+            sum(evidence.relevance_score for evidence in claim.evidence_items) for claim in claims
         )
 
         budget_utilization = token_budget_used / token_budget_total
@@ -220,7 +229,7 @@ class EnhancedMetricsCalculator:
             return total_evidence_quality / (token_budget_used / 1000)  # per 1k tokens
         return 0.0
 
-    def calculate_primary_source_ratio(self, claims: List[ClaimWithEvidence]) -> float:
+    def calculate_primary_source_ratio(self, claims: list[ClaimWithEvidence]) -> float:
         """Vypočítá poměr primárních zdrojů"""
         total_evidence = 0
         primary_evidence = 0
@@ -233,7 +242,7 @@ class EnhancedMetricsCalculator:
 
         return primary_evidence / total_evidence if total_evidence > 0 else 0.0
 
-    def calculate_citation_diversity(self, claims: List[ClaimWithEvidence]) -> float:
+    def calculate_citation_diversity(self, claims: list[ClaimWithEvidence]) -> float:
         """Vypočítá diverzitu citací"""
         all_doc_ids = set()
         for claim in claims:
@@ -245,7 +254,7 @@ class EnhancedMetricsCalculator:
 
         return unique_sources / total_citations if total_citations > 0 else 0.0
 
-    def calculate_temporal_currency(self, claims: List[ClaimWithEvidence]) -> float:
+    def calculate_temporal_currency(self, claims: list[ClaimWithEvidence]) -> float:
         """Vypočítá temporal currency - aktuálnost zdrojů"""
         total_recency = 0.0
         total_evidence = 0
@@ -276,32 +285,31 @@ class EnhancedMetricsCalculator:
 class ComprehensiveEvaluator:
     """Komprehenzivní evaluátor pro FÁZE 5"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.metrics_calculator = EnhancedMetricsCalculator(config)
-        self.k_values = config.get('evaluation', {}).get('k_values', [1, 3, 5, 10, 20])
+        self.k_values = config.get("evaluation", {}).get("k_values", [1, 3, 5, 10, 20])
 
-    async def evaluate_research_session(self,
-                                      query: str,
-                                      retrieved_documents: List[Dict[str, Any]],
-                                      generated_claims: List[ClaimWithEvidence],
-                                      ground_truth: Optional[Dict[str, Any]] = None,
-                                      processing_metrics: Optional[Dict[str, Any]] = None) -> EvaluationResult:
+    async def evaluate_research_session(
+        self,
+        query: str,
+        retrieved_documents: list[dict[str, Any]],
+        generated_claims: list[ClaimWithEvidence],
+        ground_truth: dict[str, Any] | None = None,
+        processing_metrics: dict[str, Any] | None = None,
+    ) -> EvaluationResult:
         """Provede komprehenzivní evaluaci research session"""
-
         start_time = time.time()
 
         result = EvaluationResult(
-            query=query,
-            timestamp=datetime.now(),
-            claims_with_evidence=generated_claims
+            query=query, timestamp=datetime.now(), claims_with_evidence=generated_claims
         )
 
         # Calculate retrieval metrics if ground truth available
         if ground_truth:
-            retrieved_doc_ids = [doc.get('doc_id', '') for doc in retrieved_documents]
-            relevant_doc_ids = ground_truth.get('relevant_documents', [])
-            relevance_scores = ground_truth.get('relevance_scores', {})
+            retrieved_doc_ids = [doc.get("doc_id", "") for doc in retrieved_documents]
+            relevant_doc_ids = ground_truth.get("relevant_documents", [])
+            relevance_scores = ground_truth.get("relevance_scores", {})
 
             for k in self.k_values:
                 result.recall_at_k[k] = self.metrics_calculator.calculate_recall_at_k(
@@ -312,39 +320,59 @@ class ComprehensiveEvaluator:
                 )
 
         # Calculate evidence quality metrics
-        result.evidence_coverage = self.metrics_calculator.calculate_evidence_coverage(generated_claims)
-        result.citation_precision = self.metrics_calculator.calculate_citation_precision(generated_claims)
+        result.evidence_coverage = self.metrics_calculator.calculate_evidence_coverage(
+            generated_claims
+        )
+        result.citation_precision = self.metrics_calculator.calculate_citation_precision(
+            generated_claims
+        )
         result.groundedness = self.metrics_calculator.calculate_groundedness(generated_claims)
-        result.hallucination_rate = self.metrics_calculator.calculate_hallucination_rate(generated_claims)
-        result.disagreement_coverage = self.metrics_calculator.calculate_disagreement_coverage(generated_claims)
+        result.hallucination_rate = self.metrics_calculator.calculate_hallucination_rate(
+            generated_claims
+        )
+        result.disagreement_coverage = self.metrics_calculator.calculate_disagreement_coverage(
+            generated_claims
+        )
 
         # Calculate efficiency metrics
         if processing_metrics:
-            token_used = processing_metrics.get('token_budget_used', 0)
-            token_total = processing_metrics.get('token_budget_total', 0)
+            token_used = processing_metrics.get("token_budget_used", 0)
+            token_total = processing_metrics.get("token_budget_total", 0)
             result.token_budget_used = token_used
             result.token_budget_total = token_total
-            result.context_usage_efficiency = self.metrics_calculator.calculate_context_usage_efficiency(
-                generated_claims, token_used, token_total
+            result.context_usage_efficiency = (
+                self.metrics_calculator.calculate_context_usage_efficiency(
+                    generated_claims, token_used, token_total
+                )
             )
-            result.latency_ms = processing_metrics.get('total_latency_ms', 0)
+            result.latency_ms = processing_metrics.get("total_latency_ms", 0)
 
         # Calculate quality breakdown metrics
-        result.primary_source_ratio = self.metrics_calculator.calculate_primary_source_ratio(generated_claims)
-        result.citation_diversity = self.metrics_calculator.calculate_citation_diversity(generated_claims)
-        result.temporal_currency = self.metrics_calculator.calculate_temporal_currency(generated_claims)
+        result.primary_source_ratio = self.metrics_calculator.calculate_primary_source_ratio(
+            generated_claims
+        )
+        result.citation_diversity = self.metrics_calculator.calculate_citation_diversity(
+            generated_claims
+        )
+        result.temporal_currency = self.metrics_calculator.calculate_temporal_currency(
+            generated_claims
+        )
 
         # Log processing details
-        result.processing_log.append({
-            "step": "comprehensive_evaluation",
-            "duration_ms": (time.time() - start_time) * 1000,
-            "metrics_calculated": len([attr for attr in dir(result) if not attr.startswith('_')]),
-            "timestamp": datetime.now().isoformat()
-        })
+        result.processing_log.append(
+            {
+                "step": "comprehensive_evaluation",
+                "duration_ms": (time.time() - start_time) * 1000,
+                "metrics_calculated": len(
+                    [attr for attr in dir(result) if not attr.startswith("_")]
+                ),
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
         return result
 
-    def generate_evaluation_report(self, results: List[EvaluationResult]) -> Dict[str, Any]:
+    def generate_evaluation_report(self, results: list[EvaluationResult]) -> dict[str, Any]:
         """Generuje souhrnný evaluační report"""
         if not results:
             return {"error": "No evaluation results provided"}
@@ -354,20 +382,26 @@ class ComprehensiveEvaluator:
                 "total_queries_evaluated": len(results),
                 "evaluation_period": {
                     "start": min(r.timestamp for r in results).isoformat(),
-                    "end": max(r.timestamp for r in results).isoformat()
-                }
+                    "end": max(r.timestamp for r in results).isoformat(),
+                },
             },
             "aggregate_metrics": {},
             "performance_analysis": {},
             "quality_trends": {},
-            "recommendations": []
+            "recommendations": [],
         }
 
         # Aggregate metrics across all results
         metrics_to_aggregate = [
-            'evidence_coverage', 'citation_precision', 'groundedness',
-            'hallucination_rate', 'disagreement_coverage', 'context_usage_efficiency',
-            'primary_source_ratio', 'citation_diversity', 'temporal_currency'
+            "evidence_coverage",
+            "citation_precision",
+            "groundedness",
+            "hallucination_rate",
+            "disagreement_coverage",
+            "context_usage_efficiency",
+            "primary_source_ratio",
+            "citation_diversity",
+            "temporal_currency",
         ]
 
         for metric in metrics_to_aggregate:
@@ -378,7 +412,7 @@ class ComprehensiveEvaluator:
                     "std": np.std(values),
                     "min": np.min(values),
                     "max": np.max(values),
-                    "median": np.median(values)
+                    "median": np.median(values),
                 }
 
         # Aggregate recall@k and nDCG@k
@@ -389,13 +423,13 @@ class ComprehensiveEvaluator:
             if recall_values:
                 report["aggregate_metrics"][f"recall_at_{k}"] = {
                     "mean": np.mean(recall_values),
-                    "std": np.std(recall_values)
+                    "std": np.std(recall_values),
                 }
 
             if ndcg_values:
                 report["aggregate_metrics"][f"ndcg_at_{k}"] = {
                     "mean": np.mean(ndcg_values),
-                    "std": np.std(ndcg_values)
+                    "std": np.std(ndcg_values),
                 }
 
         # Performance analysis
@@ -405,7 +439,7 @@ class ComprehensiveEvaluator:
                 "mean": np.mean(latencies),
                 "p50": np.percentile(latencies, 50),
                 "p95": np.percentile(latencies, 95),
-                "p99": np.percentile(latencies, 99)
+                "p99": np.percentile(latencies, 99),
             }
 
         # Generate recommendations
@@ -414,13 +448,13 @@ class ComprehensiveEvaluator:
 
         return report
 
-    def _generate_recommendations(self, aggregate_metrics: Dict[str, Any]) -> List[str]:
+    def _generate_recommendations(self, aggregate_metrics: dict[str, Any]) -> list[str]:
         """Generuje doporučení na základě metrik"""
         recommendations = []
 
         # Check evidence coverage
-        if 'evidence_coverage' in aggregate_metrics:
-            coverage = aggregate_metrics['evidence_coverage']['mean']
+        if "evidence_coverage" in aggregate_metrics:
+            coverage = aggregate_metrics["evidence_coverage"]["mean"]
             if coverage < 0.8:
                 recommendations.append(
                     f"Evidence coverage je nízká ({coverage:.2f}). "
@@ -428,8 +462,8 @@ class ComprehensiveEvaluator:
                 )
 
         # Check hallucination rate
-        if 'hallucination_rate' in aggregate_metrics:
-            hallucination = aggregate_metrics['hallucination_rate']['mean']
+        if "hallucination_rate" in aggregate_metrics:
+            hallucination = aggregate_metrics["hallucination_rate"]["mean"]
             if hallucination > 0.1:
                 recommendations.append(
                     f"Hallucination rate je vysoká ({hallucination:.2f}). "
@@ -437,8 +471,8 @@ class ComprehensiveEvaluator:
                 )
 
         # Check primary source ratio
-        if 'primary_source_ratio' in aggregate_metrics:
-            primary_ratio = aggregate_metrics['primary_source_ratio']['mean']
+        if "primary_source_ratio" in aggregate_metrics:
+            primary_ratio = aggregate_metrics["primary_source_ratio"]["mean"]
             if primary_ratio < 0.6:
                 recommendations.append(
                     f"Poměr primárních zdrojů je nízký ({primary_ratio:.2f}). "
@@ -446,8 +480,8 @@ class ComprehensiveEvaluator:
                 )
 
         # Check context efficiency
-        if 'context_usage_efficiency' in aggregate_metrics:
-            efficiency = aggregate_metrics['context_usage_efficiency']['mean']
+        if "context_usage_efficiency" in aggregate_metrics:
+            efficiency = aggregate_metrics["context_usage_efficiency"]["mean"]
             if efficiency < 2.0:  # Arbitrary threshold
                 recommendations.append(
                     f"Context usage efficiency je nízká ({efficiency:.2f}). "
@@ -456,8 +490,9 @@ class ComprehensiveEvaluator:
 
         return recommendations
 
-    async def export_detailed_results(self, results: List[EvaluationResult],
-                                    output_path: str) -> None:
+    async def export_detailed_results(
+        self, results: list[EvaluationResult], output_path: str
+    ) -> None:
         """Exportuje detailní výsledky do JSON"""
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -483,19 +518,24 @@ class ComprehensiveEvaluator:
                 "citation_diversity": result.citation_diversity,
                 "temporal_currency": result.temporal_currency,
                 "claims_count": len(result.claims_with_evidence),
-                "processing_log": result.processing_log
+                "processing_log": result.processing_log,
             }
             serializable_results.append(result_dict)
 
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                "evaluation_results": serializable_results,
-                "summary_report": self.generate_evaluation_report(results)
-            }, f, indent=2, ensure_ascii=False)
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "evaluation_results": serializable_results,
+                    "summary_report": self.generate_evaluation_report(results),
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
 
 
 # Factory function for creating evaluator
-def create_comprehensive_evaluator(config: Dict[str, Any]) -> ComprehensiveEvaluator:
+def create_comprehensive_evaluator(config: dict[str, Any]) -> ComprehensiveEvaluator:
     """Factory function pro vytvoření comprehensive evaluator"""
     return ComprehensiveEvaluator(config)
 
@@ -506,7 +546,7 @@ if __name__ == "__main__":
         "evaluation": {
             "k_values": [1, 3, 5, 10],
             "min_evidence_per_claim": 2,
-            "hallucination_threshold": 0.1
+            "hallucination_threshold": 0.1,
         }
     }
 

@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
-"""
-FÁZE 2 Metriky a Reporting Systém
+"""FÁZE 2 Metriky a Reporting Systém
 Recall@10, nDCG@10, citation-precision, context_usage_efficiency + export
 
 Author: Senior Python/MLOps Agent
 """
 
-import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple
-from dataclasses import dataclass, asdict
-import time
-import numpy as np
-import json
-from pathlib import Path
+from dataclasses import asdict, dataclass
 from datetime import datetime
+import json
+import logging
 import math
+from pathlib import Path
+import time
+from typing import Any
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Phase2Metrics:
     """Metriky pro FÁZI 2"""
+
     # Core retrieval metrics
     recall_at_10: float = 0.0
     ndcg_at_10: float = 0.0
@@ -80,14 +80,11 @@ class MetricsCalculator:
         self.calculation_stats = {
             "metrics_calculated": 0,
             "ground_truth_available": 0,
-            "avg_calculation_time": 0.0
+            "avg_calculation_time": 0.0,
         }
 
     def calculate_recall_at_k(
-        self,
-        retrieved_docs: List[Dict[str, Any]],
-        relevant_doc_ids: List[str],
-        k: int = 10
+        self, retrieved_docs: list[dict[str, Any]], relevant_doc_ids: list[str], k: int = 10
     ) -> float:
         """Vypočítá Recall@K"""
         if not relevant_doc_ids:
@@ -103,10 +100,7 @@ class MetricsCalculator:
         return recall
 
     def calculate_ndcg_at_k(
-        self,
-        retrieved_docs: List[Dict[str, Any]],
-        relevance_scores: Dict[str, float],
-        k: int = 10
+        self, retrieved_docs: list[dict[str, Any]], relevance_scores: dict[str, float], k: int = 10
     ) -> float:
         """Vypočítá nDCG@K"""
         if not relevance_scores:
@@ -139,8 +133,8 @@ class MetricsCalculator:
 
     def calculate_citation_precision(
         self,
-        claims: List[Dict[str, Any]],
-        ground_truth_citations: Optional[Dict[str, List[str]]] = None
+        claims: list[dict[str, Any]],
+        ground_truth_citations: dict[str, list[str]] | None = None,
     ) -> float:
         """Vypočítá citation precision"""
         if not claims:
@@ -174,10 +168,7 @@ class MetricsCalculator:
         return correct_citations / total_citations
 
     def calculate_context_usage_efficiency(
-        self,
-        used_tokens: int,
-        available_tokens: int,
-        quality_score: float = 1.0
+        self, used_tokens: int, available_tokens: int, quality_score: float = 1.0
     ) -> float:
         """Vypočítá context usage efficiency"""
         if available_tokens <= 0:
@@ -192,10 +183,8 @@ class MetricsCalculator:
         return min(efficiency, 1.0)
 
     def calculate_per_channel_contributions(
-        self,
-        final_docs: List[Dict[str, Any]],
-        channel_results: Dict[str, List[Dict[str, Any]]]
-    ) -> Dict[str, float]:
+        self, final_docs: list[dict[str, Any]], channel_results: dict[str, list[dict[str, Any]]]
+    ) -> dict[str, float]:
         """Vypočítá příspěvky jednotlivých kanálů"""
         contributions = {}
 
@@ -234,9 +223,9 @@ class MetricsCalculator:
 
     def calculate_rrf_improvement(
         self,
-        baseline_results: List[Dict[str, Any]],
-        rrf_results: List[Dict[str, Any]],
-        ground_truth: Optional[Dict[str, Any]] = None
+        baseline_results: list[dict[str, Any]],
+        rrf_results: list[dict[str, Any]],
+        ground_truth: dict[str, Any] | None = None,
     ) -> float:
         """Vypočítá zlepšení díky RRF"""
         if not baseline_results or not rrf_results:
@@ -245,14 +234,10 @@ class MetricsCalculator:
         if ground_truth:
             # Use ground truth for comparison
             baseline_ndcg = self.calculate_ndcg_at_k(
-                baseline_results,
-                ground_truth.get("relevance_scores", {}),
-                10
+                baseline_results, ground_truth.get("relevance_scores", {}), 10
             )
             rrf_ndcg = self.calculate_ndcg_at_k(
-                rrf_results,
-                ground_truth.get("relevance_scores", {}),
-                10
+                rrf_results, ground_truth.get("relevance_scores", {}), 10
             )
 
             if baseline_ndcg > 0:
@@ -268,10 +253,8 @@ class MetricsCalculator:
         return 0.0
 
     def calculate_mmr_diversity_gain(
-        self,
-        before_mmr: List[Dict[str, Any]],
-        after_mmr: List[Dict[str, Any]]
-    ) -> Tuple[float, float]:
+        self, before_mmr: list[dict[str, Any]], after_mmr: list[dict[str, Any]]
+    ) -> tuple[float, float]:
         """Vypočítá diversity gain z MMR"""
         if len(before_mmr) < 2 or len(after_mmr) < 2:
             return 0.0, 0.0
@@ -295,10 +278,10 @@ class MetricsCalculator:
 
     def calculate_deduplication_metrics(
         self,
-        original_docs: List[Dict[str, Any]],
-        deduplicated_docs: List[Dict[str, Any]],
-        merge_mapping: Dict[str, Any]
-    ) -> Tuple[float, float, float]:
+        original_docs: list[dict[str, Any]],
+        deduplicated_docs: list[dict[str, Any]],
+        merge_mapping: dict[str, Any],
+    ) -> tuple[float, float, float]:
         """Vypočítá deduplication metriky"""
         if not merge_mapping:
             return 1.0, 1.0, 1.0  # No deduplication performed
@@ -310,7 +293,9 @@ class MetricsCalculator:
         for merged_doc_idx, original_indices in merge_mapping.items():
             if len(original_indices) > 1:
                 # Check if merged documents are actually similar
-                docs_to_check = [original_docs[i] for i in original_indices if i < len(original_docs)]
+                docs_to_check = [
+                    original_docs[i] for i in original_indices if i < len(original_docs)
+                ]
                 if self._are_docs_similar_group(docs_to_check):
                     correct_merges += 1
 
@@ -331,7 +316,9 @@ class MetricsCalculator:
             recall = 1.0
 
         # Merge accuracy: how well content was preserved
-        merge_accuracy = self._calculate_merge_accuracy(original_docs, deduplicated_docs, merge_mapping)
+        merge_accuracy = self._calculate_merge_accuracy(
+            original_docs, deduplicated_docs, merge_mapping
+        )
 
         return precision, recall, merge_accuracy
 
@@ -346,7 +333,7 @@ class MetricsCalculator:
         overlap = len(claim_words.intersection(citation_words))
         return overlap / len(claim_words) > 0.2  # At least 20% word overlap
 
-    def _calculate_doc_similarity(self, doc1: Dict[str, Any], doc2: Dict[str, Any]) -> float:
+    def _calculate_doc_similarity(self, doc1: dict[str, Any], doc2: dict[str, Any]) -> float:
         """Vypočítá similaritu mezi dokumenty"""
         content1 = doc1.get("content", "").lower().split()
         content2 = doc2.get("content", "").lower().split()
@@ -362,7 +349,7 @@ class MetricsCalculator:
 
         return intersection / union if union > 0 else 0.0
 
-    def _are_docs_similar_group(self, docs: List[Dict[str, Any]], threshold: float = 0.8) -> bool:
+    def _are_docs_similar_group(self, docs: list[dict[str, Any]], threshold: float = 0.8) -> bool:
         """Zkontroluje, zda jsou dokumenty v skupině podobné"""
         if len(docs) < 2:
             return True
@@ -375,7 +362,9 @@ class MetricsCalculator:
 
         return True
 
-    def _find_true_duplicate_pairs(self, docs: List[Dict[str, Any]], threshold: float = 0.85) -> set:
+    def _find_true_duplicate_pairs(
+        self, docs: list[dict[str, Any]], threshold: float = 0.85
+    ) -> set:
         """Najde skutečné duplicate páry"""
         duplicate_pairs = set()
 
@@ -389,9 +378,9 @@ class MetricsCalculator:
 
     def _calculate_merge_accuracy(
         self,
-        original_docs: List[Dict[str, Any]],
-        merged_docs: List[Dict[str, Any]],
-        merge_mapping: Dict[str, Any]
+        original_docs: list[dict[str, Any]],
+        merged_docs: list[dict[str, Any]],
+        merge_mapping: dict[str, Any],
     ) -> float:
         """Vypočítá přesnost merge operací"""
         if not merge_mapping:
@@ -427,7 +416,7 @@ class MetricsCalculator:
 
         if not words1 and not words2:
             return 1.0
-        elif not words1 or not words2:
+        if not words1 or not words2:
             return 0.0
 
         intersection = len(words1.intersection(words2))
@@ -446,8 +435,8 @@ class Phase2MetricsCollector:
     async def collect_comprehensive_metrics(
         self,
         query: str,
-        pipeline_results: Dict[str, Any],
-        ground_truth: Optional[Dict[str, Any]] = None
+        pipeline_results: dict[str, Any],
+        ground_truth: dict[str, Any] | None = None,
     ) -> Phase2Metrics:
         """Sbírá komprehensivní metriky pro FÁZI 2"""
         start_time = time.time()
@@ -519,8 +508,10 @@ class Phase2MetricsCollector:
             original_docs = pipeline_results.get("original_documents", [])
             merge_mapping = dedup_metadata.get("merge_mapping", {})
 
-            dedup_precision, dedup_recall, merge_accuracy = self.calculator.calculate_deduplication_metrics(
-                original_docs, final_docs, merge_mapping
+            dedup_precision, dedup_recall, merge_accuracy = (
+                self.calculator.calculate_deduplication_metrics(
+                    original_docs, final_docs, merge_mapping
+                )
             )
             metrics.dedup_precision = dedup_precision
             metrics.dedup_recall = dedup_recall
@@ -543,7 +534,9 @@ class Phase2MetricsCollector:
         metrics.rrf_latency_ms = rrf_metadata.get("fusion_time_seconds", 0.0) * 1000
         metrics.dedup_latency_ms = dedup_metadata.get("processing_time_seconds", 0.0) * 1000
         metrics.rerank_latency_ms = rerank_metadata.get("rerank_time_seconds", 0.0) * 1000
-        metrics.compression_latency_ms = compression_metadata.get("compression_time_seconds", 0.0) * 1000
+        metrics.compression_latency_ms = (
+            compression_metadata.get("compression_time_seconds", 0.0) * 1000
+        )
 
         # Error rates
         hyde_stats = retrieval_metadata.get("hyde_stats", {})
@@ -553,18 +546,20 @@ class Phase2MetricsCollector:
 
         # Store in history
         collection_time = time.time() - start_time
-        self.collection_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "query": query,
-            "metrics": asdict(metrics),
-            "collection_time_seconds": collection_time
-        })
+        self.collection_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "query": query,
+                "metrics": asdict(metrics),
+                "collection_time_seconds": collection_time,
+            }
+        )
 
         logger.info(f"Phase 2 metrics collected in {collection_time:.2f}s")
 
         return metrics
 
-    def get_metrics_summary(self, recent_n: int = 10) -> Dict[str, Any]:
+    def get_metrics_summary(self, recent_n: int = 10) -> dict[str, Any]:
         """Získá shrnutí metrik z posledních N běhů"""
         if not self.collection_history:
             return {"error": "No metrics collected yet"}
@@ -576,10 +571,7 @@ class Phase2MetricsCollector:
         metric_names = list(asdict(Phase2Metrics()).keys())
 
         for metric_name in metric_names:
-            values = [
-                entry["metrics"].get(metric_name, 0.0)
-                for entry in recent_metrics
-            ]
+            values = [entry["metrics"].get(metric_name, 0.0) for entry in recent_metrics]
             values = [v for v in values if v is not None and not math.isnan(v)]
 
             if values:
@@ -588,20 +580,24 @@ class Phase2MetricsCollector:
                     "std": np.std(values),
                     "min": np.min(values),
                     "max": np.max(values),
-                    "count": len(values)
+                    "count": len(values),
                 }
             else:
                 aggregated[metric_name] = {
-                    "mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0, "count": 0
+                    "mean": 0.0,
+                    "std": 0.0,
+                    "min": 0.0,
+                    "max": 0.0,
+                    "count": 0,
                 }
 
         return {
             "summary_period": f"Last {len(recent_metrics)} runs",
             "total_runs": len(self.collection_history),
             "aggregated_metrics": aggregated,
-            "avg_collection_time": np.mean([
-                entry["collection_time_seconds"] for entry in recent_metrics
-            ])
+            "avg_collection_time": np.mean(
+                [entry["collection_time_seconds"] for entry in recent_metrics]
+            ),
         }
 
 
@@ -612,7 +608,7 @@ class Phase2Reporter:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
 
-    def export_metrics_json(self, metrics: Phase2Metrics, metadata: Dict[str, Any] = None) -> str:
+    def export_metrics_json(self, metrics: Phase2Metrics, metadata: dict[str, Any] = None) -> str:
         """Export metrik do JSON"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"phase2_metrics_{timestamp}.json"
@@ -623,10 +619,7 @@ class Phase2Reporter:
             "phase": "FÁZE 2",
             "metrics": asdict(metrics),
             "metadata": metadata or {},
-            "export_info": {
-                "format_version": "1.0",
-                "tool": "DeepResearchTool Phase 2 Reporter"
-            }
+            "export_info": {"format_version": "1.0", "tool": "DeepResearchTool Phase 2 Reporter"},
         }
 
         with open(filepath, "w", encoding="utf-8") as f:
@@ -638,8 +631,8 @@ class Phase2Reporter:
     def export_metrics_markdown(
         self,
         metrics: Phase2Metrics,
-        metadata: Dict[str, Any] = None,
-        include_recommendations: bool = True
+        metadata: dict[str, Any] = None,
+        include_recommendations: bool = True,
     ) -> str:
         """Export metrik do Markdown reportu"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -647,7 +640,9 @@ class Phase2Reporter:
         filepath = self.output_dir / filename
 
         # Generate markdown content
-        markdown_content = self._generate_markdown_report(metrics, metadata, include_recommendations)
+        markdown_content = self._generate_markdown_report(
+            metrics, metadata, include_recommendations
+        )
 
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(markdown_content)
@@ -656,10 +651,7 @@ class Phase2Reporter:
         return str(filepath)
 
     def _generate_markdown_report(
-        self,
-        metrics: Phase2Metrics,
-        metadata: Dict[str, Any],
-        include_recommendations: bool
+        self, metrics: Phase2Metrics, metadata: dict[str, Any], include_recommendations: bool
     ) -> str:
         """Generuje Markdown report"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -760,31 +752,45 @@ HyDE Channel:      {metrics.hyde_contribution:.1%}
 
         # Recall@10 recommendations
         if metrics.recall_at_10 < 0.7:
-            recommendations.append("📈 **Recall@10 nízký:** Zvyš ef_search_param nebo rozšiř HyDE strategii")
+            recommendations.append(
+                "📈 **Recall@10 nízký:** Zvyš ef_search_param nebo rozšiř HyDE strategii"
+            )
 
         # nDCG@10 recommendations
         if metrics.ndcg_at_10 < 0.6:
-            recommendations.append("🎯 **nDCG@10 nízký:** Vylaď RRF váhy nebo vylepši re-ranking model")
+            recommendations.append(
+                "🎯 **nDCG@10 nízký:** Vylaď RRF váhy nebo vylepši re-ranking model"
+            )
 
         # Citation precision recommendations
         if metrics.citation_precision < 0.8:
-            recommendations.append("📚 **Citation precision nízká:** Zpřísni synthesis validation nebo vylepši evidence extraction")
+            recommendations.append(
+                "📚 **Citation precision nízká:** Zpřísni synthesis validation nebo vylepši evidence extraction"
+            )
 
         # Context usage recommendations
         if metrics.context_usage_efficiency < 0.7:
-            recommendations.append("🗜️ **Context usage neefektivní:** Optimalizuj compression ratio nebo salience detection")
+            recommendations.append(
+                "🗜️ **Context usage neefektivní:** Optimalizuj compression ratio nebo salience detection"
+            )
 
         # Performance recommendations
         if metrics.total_latency_ms > 30000:  # 30 seconds
-            recommendations.append("⚡ **Latency vysoká:** Optimalizuj batch processing nebo parallel execution")
+            recommendations.append(
+                "⚡ **Latency vysoká:** Optimalizuj batch processing nebo parallel execution"
+            )
 
         # HyDE recommendations
         if metrics.hyde_fallback_rate > 0.2:
-            recommendations.append("🔄 **HyDE fallback častý:** Zkontroluj LLM connection nebo sniž temperature")
+            recommendations.append(
+                "🔄 **HyDE fallback častý:** Zkontroluj LLM connection nebo sniž temperature"
+            )
 
         # Diversity recommendations
         if metrics.similarity_reduction < 0.1:
-            recommendations.append("🎨 **MMR diversity nízká:** Zvyš diversity_lambda nebo sniž similarity_threshold")
+            recommendations.append(
+                "🎨 **MMR diversity nízká:** Zvyš diversity_lambda nebo sniž similarity_threshold"
+            )
 
         if not recommendations:
             recommendations.append("✅ **Všechny metriky v pořádku:** Systém funguje optimálně")
@@ -799,9 +805,7 @@ HyDE Channel:      {metrics.hyde_contribution:.1%}
         return rec_section
 
     def export_performance_comparison(
-        self,
-        baseline_metrics: Phase2Metrics,
-        current_metrics: Phase2Metrics
+        self, baseline_metrics: Phase2Metrics, current_metrics: Phase2Metrics
     ) -> str:
         """Export srovnání performance"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -864,7 +868,7 @@ HyDE Channel:      {metrics.hyde_contribution:.1%}
 
 
 # Factory funkce
-def create_phase2_metrics_system() -> Tuple[Phase2MetricsCollector, Phase2Reporter]:
+def create_phase2_metrics_system() -> tuple[Phase2MetricsCollector, Phase2Reporter]:
     """Factory funkce pro FÁZI 2 metrics systém"""
     collector = Phase2MetricsCollector()
     reporter = Phase2Reporter()
@@ -877,5 +881,5 @@ __all__ = [
     "Phase2Metrics",
     "Phase2MetricsCollector",
     "Phase2Reporter",
-    "create_phase2_metrics_system"
+    "create_phase2_metrics_system",
 ]

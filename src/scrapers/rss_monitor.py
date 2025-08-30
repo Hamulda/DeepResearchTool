@@ -1,31 +1,32 @@
 #!/usr/bin/env python3
-"""
-RSS Monitor for Deep Research Tool
+"""RSS Monitor for Deep Research Tool
 Real-time monitoring of RSS feeds for alternative media and research sources
 
 Author: Advanced IT Specialist
 """
 
 import asyncio
+from datetime import datetime
 import logging
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
-import feedparser
+import re
+from typing import Any
+
 import aiohttp
 from bs4 import BeautifulSoup
-import re
+import feedparser
 
 logger = logging.getLogger(__name__)
+
 
 class RSSMonitor:
     """RSS feed monitoring for alternative media and research sources"""
 
     def __init__(self, rate_limit: float = 2.0):
-        """
-        Initialize RSS monitor
+        """Initialize RSS monitor
 
         Args:
             rate_limit: Requests per second limit
+
         """
         self.rate_limit = rate_limit
         self.default_feeds = [
@@ -40,12 +41,13 @@ class RSSMonitor:
             # News sources
             "https://rss.cnn.com/rss/edition.rss",
             "http://feeds.bbci.co.uk/news/rss.xml",
-            "https://feeds.reuters.com/reuters/topNews"
+            "https://feeds.reuters.com/reuters/topNews",
         ]
 
-    async def search_async(self, topic: str, time_range: Optional[Tuple[datetime, datetime]] = None) -> List[Dict[str, Any]]:
-        """
-        Search RSS feeds for topic-related content
+    async def search_async(
+        self, topic: str, time_range: tuple[datetime, datetime] | None = None
+    ) -> list[dict[str, Any]]:
+        """Search RSS feeds for topic-related content
 
         Args:
             topic: Search topic
@@ -53,6 +55,7 @@ class RSSMonitor:
 
         Returns:
             List of relevant articles
+
         """
         results = []
         search_keywords = self._extract_keywords(topic)
@@ -60,7 +63,9 @@ class RSSMonitor:
         async with aiohttp.ClientSession() as session:
             for feed_url in self.default_feeds:
                 try:
-                    articles = await self._process_feed(session, feed_url, search_keywords, time_range)
+                    articles = await self._process_feed(
+                        session, feed_url, search_keywords, time_range
+                    )
                     results.extend(articles)
 
                     # Rate limiting
@@ -71,20 +76,39 @@ class RSSMonitor:
                     continue
 
         # Sort by relevance and date
-        results.sort(key=lambda x: (x.get('relevance_score', 0), x.get('date', datetime.min)), reverse=True)
+        results.sort(
+            key=lambda x: (x.get("relevance_score", 0), x.get("date", datetime.min)), reverse=True
+        )
 
         logger.info(f"RSS monitor found {len(results)} relevant articles")
         return results[:50]  # Limit results
 
-    def search(self, topic: str, time_range: Optional[Tuple[datetime, datetime]] = None) -> List[Dict[str, Any]]:
+    def search(
+        self, topic: str, time_range: tuple[datetime, datetime] | None = None
+    ) -> list[dict[str, Any]]:
         """Synchronous search method"""
         return asyncio.run(self.search_async(topic, time_range))
 
-    def _extract_keywords(self, topic: str) -> List[str]:
+    def _extract_keywords(self, topic: str) -> list[str]:
         """Extract search keywords from topic"""
         # Remove stop words and extract meaningful terms
-        stop_words = {"the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by", "a", "an"}
-        words = re.findall(r'\b\w{3,}\b', topic.lower())
+        stop_words = {
+            "the",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "a",
+            "an",
+        }
+        words = re.findall(r"\b\w{3,}\b", topic.lower())
         keywords = [word for word in words if word not in stop_words]
 
         # Add the full topic as a phrase
@@ -92,8 +116,13 @@ class RSSMonitor:
 
         return keywords[:10]
 
-    async def _process_feed(self, session: aiohttp.ClientSession, feed_url: str,
-                           keywords: List[str], time_range: Optional[Tuple[datetime, datetime]]) -> List[Dict[str, Any]]:
+    async def _process_feed(
+        self,
+        session: aiohttp.ClientSession,
+        feed_url: str,
+        keywords: list[str],
+        time_range: tuple[datetime, datetime] | None,
+    ) -> list[dict[str, Any]]:
         """Process individual RSS feed"""
         try:
             async with session.get(feed_url, timeout=30) as response:
@@ -115,20 +144,25 @@ class RSSMonitor:
             logger.error(f"Error fetching feed {feed_url}: {e}")
             return []
 
-    async def _process_entry(self, session: aiohttp.ClientSession, entry,
-                           keywords: List[str], time_range: Optional[Tuple[datetime, datetime]]) -> Optional[Dict[str, Any]]:
+    async def _process_entry(
+        self,
+        session: aiohttp.ClientSession,
+        entry,
+        keywords: list[str],
+        time_range: tuple[datetime, datetime] | None,
+    ) -> dict[str, Any] | None:
         """Process individual RSS entry"""
         try:
             # Extract basic information
-            title = entry.get('title', '')
-            summary = entry.get('summary', '')
-            link = entry.get('link', '')
+            title = entry.get("title", "")
+            summary = entry.get("summary", "")
+            link = entry.get("link", "")
 
             # Parse publication date
             pub_date = None
-            if hasattr(entry, 'published_parsed') and entry.published_parsed:
+            if hasattr(entry, "published_parsed") and entry.published_parsed:
                 pub_date = datetime(*entry.published_parsed[:6])
-            elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+            elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
                 pub_date = datetime(*entry.updated_parsed[:6])
 
             # Check time range
@@ -148,27 +182,27 @@ class RSSMonitor:
             content = full_content if full_content else summary
 
             return {
-                'title': title,
-                'content': content,
-                'summary': summary,
-                'url': link,
-                'date': pub_date or datetime.now(),
-                'source': 'rss_feed',
-                'source_type': 'news',
-                'relevance_score': relevance_score,
-                'metadata': {
-                    'feed_url': entry.get('id', ''),
-                    'author': entry.get('author', ''),
-                    'tags': [tag.term for tag in entry.get('tags', [])],
-                    'content_length': len(content)
-                }
+                "title": title,
+                "content": content,
+                "summary": summary,
+                "url": link,
+                "date": pub_date or datetime.now(),
+                "source": "rss_feed",
+                "source_type": "news",
+                "relevance_score": relevance_score,
+                "metadata": {
+                    "feed_url": entry.get("id", ""),
+                    "author": entry.get("author", ""),
+                    "tags": [tag.term for tag in entry.get("tags", [])],
+                    "content_length": len(content),
+                },
             }
 
         except Exception as e:
             logger.error(f"Error processing RSS entry: {e}")
             return None
 
-    def _calculate_relevance(self, text: str, keywords: List[str]) -> float:
+    def _calculate_relevance(self, text: str, keywords: list[str]) -> float:
         """Calculate relevance score based on keyword matches"""
         text_lower = text.lower()
         total_score = 0.0
@@ -186,7 +220,7 @@ class RSSMonitor:
 
         return min(1.0, total_score)
 
-    async def _fetch_full_article(self, session: aiohttp.ClientSession, url: str) -> Optional[str]:
+    async def _fetch_full_article(self, session: aiohttp.ClientSession, url: str) -> str | None:
         """Fetch full article content from URL"""
         try:
             async with session.get(url, timeout=15) as response:
@@ -194,24 +228,24 @@ class RSSMonitor:
                     return None
 
                 content = await response.text()
-                soup = BeautifulSoup(content, 'html.parser')
+                soup = BeautifulSoup(content, "html.parser")
 
                 # Remove unwanted elements
-                for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'ad']):
+                for element in soup(["script", "style", "nav", "header", "footer", "aside", "ad"]):
                     element.decompose()
 
                 # Try to find main content
                 main_content = (
-                    soup.find('article') or
-                    soup.find('main') or
-                    soup.find('div', class_=re.compile(r'content|article|post')) or
-                    soup.find('div', id=re.compile(r'content|article|post'))
+                    soup.find("article")
+                    or soup.find("main")
+                    or soup.find("div", class_=re.compile(r"content|article|post"))
+                    or soup.find("div", id=re.compile(r"content|article|post"))
                 )
 
                 if main_content:
-                    text = main_content.get_text(separator=' ', strip=True)
+                    text = main_content.get_text(separator=" ", strip=True)
                     # Clean up whitespace
-                    text = re.sub(r'\s+', ' ', text)
+                    text = re.sub(r"\s+", " ", text)
                     return text[:5000]  # Limit length
 
         except Exception as e:
@@ -219,7 +253,7 @@ class RSSMonitor:
 
         return None
 
-    async def monitor_feeds_realtime(self, keywords: List[str], callback) -> None:
+    async def monitor_feeds_realtime(self, keywords: list[str], callback) -> None:
         """Monitor feeds in real-time for new content"""
         seen_articles = set()
 
@@ -230,7 +264,7 @@ class RSSMonitor:
                         articles = await self._process_feed(session, feed_url, keywords, None)
 
                         for article in articles:
-                            article_id = article.get('url', '') + article.get('title', '')
+                            article_id = article.get("url", "") + article.get("title", "")
                             if article_id not in seen_articles:
                                 seen_articles.add(article_id)
                                 await callback(article)

@@ -20,11 +20,7 @@ class TestAdaptiveChunker:
     @pytest.fixture
     def chunker(self):
         """Fixture pro AdaptiveChunker"""
-        return AdaptiveChunker(
-            chunk_size=500,
-            overlap_size=50,
-            min_chunk_size=100
-        )
+        return AdaptiveChunker(chunk_size=500, overlap_size=50, min_chunk_size=100)
 
     def test_simple_text_chunking(self, chunker, sample_text_data):
         """Test základního chunkingu textu"""
@@ -44,7 +40,7 @@ class TestAdaptiveChunker:
             # Kontrola překrývání mezi sousedními chunky
             overlap_found = False
             for i in range(len(chunks) - 1):
-                if any(word in chunks[i+1] for word in chunks[i].split()[-10:]):
+                if any(word in chunks[i + 1] for word in chunks[i].split()[-10:]):
                     overlap_found = True
                     break
             assert overlap_found
@@ -67,17 +63,10 @@ class TestAdaptiveChunker:
         chunks = chunker.chunk_text("   \n\t   ")
         assert len(chunks) == 0
 
-    @pytest.mark.parametrize("chunk_size,overlap", [
-        (100, 10),
-        (1000, 100),
-        (2000, 200)
-    ])
+    @pytest.mark.parametrize("chunk_size,overlap", [(100, 10), (1000, 100), (2000, 200)])
     def test_different_sizes(self, chunk_size, overlap, sample_text_data):
         """Test různých velikostí chunků"""
-        chunker = AdaptiveChunker(
-            chunk_size=chunk_size,
-            overlap_size=overlap
-        )
+        chunker = AdaptiveChunker(chunk_size=chunk_size, overlap_size=overlap)
 
         text = sample_text_data["long_text"]
         chunks = chunker.chunk_text(text)
@@ -91,12 +80,9 @@ class TestEnhancedContextualCompressor:
     @pytest.fixture
     def compressor(self, mock_openai_client):
         """Fixture pro EnhancedContextualCompressor"""
-        with patch('src.compress.enhanced_contextual_compression.OpenAI') as mock_openai:
+        with patch("src.compress.enhanced_contextual_compression.OpenAI") as mock_openai:
             mock_openai.return_value = mock_openai_client
-            return EnhancedContextualCompressor(
-                model_name="gpt-3.5-turbo",
-                compression_ratio=0.7
-            )
+            return EnhancedContextualCompressor(model_name="gpt-3.5-turbo", compression_ratio=0.7)
 
     @pytest.mark.asyncio
     async def test_compress_documents(self, compressor, sample_documents):
@@ -105,15 +91,19 @@ class TestEnhancedContextualCompressor:
 
         # Mock AI odpověď
         compressor.ai_client.chat.completions.create.return_value = Mock(
-            choices=[Mock(message=Mock(
-                content="Compressed content: This document contains important test information."
-            ))]
+            choices=[
+                Mock(
+                    message=Mock(
+                        content="Compressed content: This document contains important test information."
+                    )
+                )
+            ]
         )
 
         compressed = await compressor.compress_documents(sample_documents, query)
 
         assert len(compressed) <= len(sample_documents)
-        assert all('content' in doc for doc in compressed)
+        assert all("content" in doc for doc in compressed)
         compressor.ai_client.chat.completions.create.assert_called()
 
     @pytest.mark.asyncio
@@ -148,14 +138,14 @@ class TestEnhancedContextualCompressor:
     @pytest.mark.asyncio
     async def test_compression_ratio(self, compressor, sample_documents):
         """Test kompresního poměru"""
-        original_length = sum(len(doc['content']) for doc in sample_documents)
+        original_length = sum(len(doc["content"]) for doc in sample_documents)
 
         compressor.ai_client.chat.completions.create.return_value = Mock(
             choices=[Mock(message=Mock(content="Short compressed content"))]
         )
 
         compressed = await compressor.compress_documents(sample_documents, "test")
-        compressed_length = sum(len(doc['content']) for doc in compressed)
+        compressed_length = sum(len(doc["content"]) for doc in compressed)
 
         # Komprese by měla snížit celkovou délku
         assert compressed_length <= original_length
@@ -167,13 +157,9 @@ class TestChunkingIntegration:
     @pytest.fixture
     def integrated_chunker(self, mock_openai_client):
         """Chunker s AI komponentami"""
-        with patch('src.compress.adaptive_chunking.OpenAI') as mock_openai:
+        with patch("src.compress.adaptive_chunking.OpenAI") as mock_openai:
             mock_openai.return_value = mock_openai_client
-            return AdaptiveChunker(
-                chunk_size=1000,
-                overlap_size=100,
-                use_ai_optimization=True
-            )
+            return AdaptiveChunker(chunk_size=1000, overlap_size=100, use_ai_optimization=True)
 
     def test_html_content_chunking(self, integrated_chunker, sample_text_data):
         """Test chunkingu HTML obsahu"""
@@ -182,7 +168,7 @@ class TestChunkingIntegration:
 
         assert len(chunks) >= 1
         # HTML by měl být očištěn
-        assert not any('<html>' in chunk for chunk in chunks)
+        assert not any("<html>" in chunk for chunk in chunks)
 
     def test_multilingual_chunking(self, integrated_chunker, sample_text_data):
         """Test chunkingu vícejazyčného obsahu"""

@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from src.core.enhanced_orchestrator import create_enhanced_orchestrator
 from src.utils.compliance import load_config
 
+
 class IntegrationTest:
     """Comprehensive integration test for all v2.0 features"""
 
@@ -26,7 +27,7 @@ class IntegrationTest:
         self.test_queries = [
             "COVID-19 vaccine effectiveness comparison mRNA vs viral vector",
             "Quantum computing error correction surface code developments",
-            "European AI Act GDPR compliance requirements for companies"
+            "European AI Act GDPR compliance requirements for companies",
         ]
 
         self.profiles = ["quick", "thorough"]
@@ -53,11 +54,11 @@ class IntegrationTest:
                 "EPIC 10: Evidence binding extensions",
                 "EPIC 11: Eval metrics and CI gate",
                 "EPIC 12: Ollama verification gating",
-                "EPIC 13: Enhanced source connectors"
+                "EPIC 13: Enhanced source connectors",
             ],
             "profile_tests": {},
             "feature_tests": {},
-            "overall_status": "running"
+            "overall_status": "running",
         }
 
         # Test each profile
@@ -81,10 +82,9 @@ class IntegrationTest:
         test_results["feature_tests"] = feature_results
 
         # Overall assessment
-        all_passed = (
-            all(r["status"] == "passed" for r in test_results["profile_tests"].values()) and
-            all(r["status"] == "passed" for r in test_results["feature_tests"].values())
-        )
+        all_passed = all(
+            r["status"] == "passed" for r in test_results["profile_tests"].values()
+        ) and all(r["status"] == "passed" for r in test_results["feature_tests"].values())
 
         test_results["overall_status"] = "passed" if all_passed else "failed"
 
@@ -111,9 +111,7 @@ class IntegrationTest:
 
             start_time = time.time()
             results = await orchestrator.execute_research_workflow(
-                query=test_query,
-                max_claims=2,
-                evidence_threshold=2
+                query=test_query, max_claims=2, evidence_threshold=2
             )
             total_time = time.time() - start_time
 
@@ -134,16 +132,18 @@ class IntegrationTest:
             time_ok = total_time <= time_limit
 
             # Check feature usage
-            compression_used = metadata.get("compression_stats", {}).get("compression_ratio", 1.0) < 1.0
+            compression_used = (
+                metadata.get("compression_stats", {}).get("compression_ratio", 1.0) < 1.0
+            )
             refinement_used = len(metadata.get("refinement_log", {}).get("iterations", [])) > 0
             contradictions_detected = metadata.get("contradiction_count", 0) >= 0
 
             success = (
-                len(claims) >= 1 and
-                valid_claims >= 1 and
-                time_ok and
-                compression_used and
-                refinement_used
+                len(claims) >= 1
+                and valid_claims >= 1
+                and time_ok
+                and compression_used
+                and refinement_used
             )
 
             return {
@@ -156,7 +156,7 @@ class IntegrationTest:
                 "compression_used": compression_used,
                 "refinement_used": refinement_used,
                 "contradictions_detected": contradictions_detected,
-                "metadata": metadata
+                "metadata": metadata,
             }
 
         except Exception as e:
@@ -166,7 +166,7 @@ class IntegrationTest:
                 "error": str(e),
                 "claims_generated": 0,
                 "valid_claims": 0,
-                "total_time": 0
+                "total_time": 0,
             }
 
     async def _test_features(self) -> dict:
@@ -191,10 +191,13 @@ class IntegrationTest:
         print("  🏗️ Testing hierarchical retrieval...")
         try:
             from src.core.hybrid_retrieval_engine import HybridRetrievalEngine
+
             config = load_config("quick")
 
             engine = HybridRetrievalEngine(config)
-            assert engine.hierarchical_enabled == config.get("retrieval", {}).get("hierarchical", {}).get("enabled", False)
+            assert engine.hierarchical_enabled == config.get("retrieval", {}).get(
+                "hierarchical", {}
+            ).get("enabled", False)
 
             feature_results["hierarchical_retrieval"] = {"status": "passed"}
             print("    ✅ Hierarchical retrieval: PASSED")
@@ -206,6 +209,7 @@ class IntegrationTest:
         print("  🔄 Testing adaptive query refinement...")
         try:
             from src.core.adaptive_query_refinement import AdaptiveQueryRefinement
+
             config = load_config("quick")
 
             refiner = AdaptiveQueryRefinement(config)
@@ -225,6 +229,7 @@ class IntegrationTest:
         print("  📦 Testing contextual compression...")
         try:
             from src.core.contextual_compression import ContextualCompression
+
             config = load_config("quick")
 
             compressor = ContextualCompression(config)
@@ -234,7 +239,10 @@ class IntegrationTest:
             compression_ratio = len(compressed) / len(test_text)
             assert compression_ratio < 0.8  # Should compress significantly
 
-            feature_results["contextual_compression"] = {"status": "passed", "compression_ratio": compression_ratio}
+            feature_results["contextual_compression"] = {
+                "status": "passed",
+                "compression_ratio": compression_ratio,
+            }
             print(f"    ✅ Contextual compression: PASSED (ratio: {compression_ratio:.2f})")
         except Exception as e:
             feature_results["contextual_compression"] = {"status": "failed", "error": str(e)}
@@ -244,6 +252,7 @@ class IntegrationTest:
         print("  🕸️ Testing claim graph...")
         try:
             from src.graph.claim_graph import ClaimGraph
+
             config = load_config("quick")
 
             graph = ClaimGraph(config)
@@ -259,7 +268,10 @@ class IntegrationTest:
             contradictions = graph.detect_contradictions()
             assert len(contradictions) > 0  # Should detect contradiction
 
-            feature_results["claim_graph"] = {"status": "passed", "contradictions": len(contradictions)}
+            feature_results["claim_graph"] = {
+                "status": "passed",
+                "contradictions": len(contradictions),
+            }
             print(f"    ✅ Claim graph: PASSED (contradictions: {len(contradictions)})")
         except Exception as e:
             feature_results["claim_graph"] = {"status": "failed", "error": str(e)}
@@ -290,6 +302,7 @@ class IntegrationTest:
         print("  🔍 Testing Qdrant integration...")
         try:
             from src.core.mcp_qdrant_integration import QdrantIntegration
+
             config = load_config("quick")
 
             qdrant = QdrantIntegration(config)
@@ -308,6 +321,7 @@ class IntegrationTest:
         print("  🦙 Testing Ollama agent...")
         try:
             from src.core.ollama_agent import OllamaAgent
+
             config = load_config("quick")
 
             agent = OllamaAgent(config)
@@ -324,6 +338,7 @@ class IntegrationTest:
         print("  🔗 Testing evidence binding...")
         try:
             from src.core.enhanced_evidence_binding import EnhancedEvidenceBinding
+
             config = load_config("quick")
 
             binder = EnhancedEvidenceBinding(config)
@@ -345,12 +360,16 @@ class IntegrationTest:
         print("  🌐 Testing source connectors...")
         try:
             from src.connectors.enhanced_specialized_sources import EnhancedSpecializedSources
+
             config = load_config("quick")
 
             sources = EnhancedSpecializedSources(config)
             assert len(sources.available_sources) > 0
 
-            feature_results["source_connectors"] = {"status": "passed", "sources": len(sources.available_sources)}
+            feature_results["source_connectors"] = {
+                "status": "passed",
+                "sources": len(sources.available_sources),
+            }
             print(f"    ✅ Source connectors: PASSED ({len(sources.available_sources)} sources)")
         except Exception as e:
             feature_results["source_connectors"] = {"status": "failed", "error": str(e)}

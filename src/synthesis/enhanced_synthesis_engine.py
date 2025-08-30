@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
-"""
-Enhanced Synthesis Engine
+"""Enhanced Synthesis Engine
 Pokročilá syntéza s explicitními citačními sloty a přesnou referencí (doc ID + char-offset)
 
 Author: Senior Python/MLOps Agent
 """
 
-import asyncio
+from dataclasses import dataclass
 import logging
-from typing import Dict, Any, List, Optional, Tuple, Set
-from dataclasses import dataclass, field
-import json
 import re
 import time
-from collections import defaultdict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CitationSlot:
     """Explicitní citační slot s přesnou referencí"""
+
     slot_id: str
     claim_text: str
     doc_id: str
@@ -35,11 +32,12 @@ class CitationSlot:
 @dataclass
 class EvidenceBinding:
     """Vazba mezi tvrzením a důkazy"""
+
     claim_id: str
     claim_text: str
-    citation_slots: List[CitationSlot]
+    citation_slots: list[CitationSlot]
     evidence_strength: float
-    contradiction_flags: List[str]
+    contradiction_flags: list[str]
     confidence_score: float
     verification_notes: str
 
@@ -47,25 +45,28 @@ class EvidenceBinding:
 @dataclass
 class SynthesisResult:
     """Výsledek syntézy s evidence binding"""
+
     synthesis_text: str
-    evidence_bindings: List[EvidenceBinding]
+    evidence_bindings: list[EvidenceBinding]
     citation_count: int
     independent_sources: int
     verification_score: float
-    quality_metrics: Dict[str, float]
-    audit_trail: List[Dict[str, Any]]
+    quality_metrics: dict[str, float]
+    audit_trail: list[dict[str, Any]]
 
 
 class EnhancedSynthesisEngine:
     """Enhanced synthesis engine s explicitními citacemi a verifikací"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.synthesis_config = config.get("synthesis", {})
 
         # Citation requirements
         self.min_citations_per_claim = self.synthesis_config.get("min_citations_per_claim", 2)
-        self.require_independent_sources = self.synthesis_config.get("require_independent_sources", True)
+        self.require_independent_sources = self.synthesis_config.get(
+            "require_independent_sources", True
+        )
 
         # Synthesis templates
         self.citation_templates = self._load_citation_templates()
@@ -73,7 +74,9 @@ class EnhancedSynthesisEngine:
         # Verification settings
         self.verification_config = self.synthesis_config.get("verification", {})
         self.enable_counter_evidence = self.verification_config.get("enable_counter_evidence", True)
-        self.adversarial_verification = self.verification_config.get("adversarial_verification", True)
+        self.adversarial_verification = self.verification_config.get(
+            "adversarial_verification", True
+        )
 
         # Quality thresholds
         self.quality_thresholds = self.synthesis_config.get("quality_thresholds", {})
@@ -83,9 +86,8 @@ class EnhancedSynthesisEngine:
         # Audit
         self.audit_trail = []
 
-    def _load_citation_templates(self) -> Dict[str, str]:
+    def _load_citation_templates(self) -> dict[str, str]:
         """Načtení šablon pro citace"""
-
         templates = self.synthesis_config.get("citation_templates", {})
 
         # Default templates
@@ -93,17 +95,15 @@ class EnhancedSynthesisEngine:
             "academic": "According to {source_title} ({doc_id}), {claim_text} [Citation: {slot_id}]",
             "evidence_based": "Research evidence shows that {claim_text}, as documented in {source_title} [Ref: {slot_id}]",
             "multi_source": "Multiple sources confirm that {claim_text} ({source_list}) [Citations: {slot_ids}]",
-            "disputed": "While {claim_text} is supported by {supporting_sources}, this finding is disputed by {counter_sources} [Mixed evidence: {slot_ids}]"
+            "disputed": "While {claim_text} is supported by {supporting_sources}, this finding is disputed by {counter_sources} [Mixed evidence: {slot_ids}]",
         }
 
         return {**defaults, **templates}
 
-    async def synthesize_with_evidence(self,
-                                     query: str,
-                                     compressed_content: str,
-                                     evidence_passages: List[Dict[str, Any]]) -> SynthesisResult:
-        """
-        Hlavní syntéza s explicitním evidence binding
+    async def synthesize_with_evidence(
+        self, query: str, compressed_content: str, evidence_passages: list[dict[str, Any]]
+    ) -> SynthesisResult:
+        """Hlavní syntéza s explicitním evidence binding
 
         Args:
             query: Výzkumný dotaz
@@ -112,8 +112,8 @@ class EnhancedSynthesisEngine:
 
         Returns:
             SynthesisResult s complete evidence binding
-        """
 
+        """
         logger.info(f"Starting enhanced synthesis for query: {query}")
 
         self.audit_trail = []
@@ -122,10 +122,7 @@ class EnhancedSynthesisEngine:
         try:
             # STEP 1: Extract claims from compressed content
             claims = await self._extract_claims(compressed_content, query)
-            self._log_audit("claim_extraction", {
-                "extracted_claims": len(claims),
-                "query": query
-            })
+            self._log_audit("claim_extraction", {"extracted_claims": len(claims), "query": query})
 
             # STEP 2: Create evidence bindings for each claim
             evidence_bindings = []
@@ -133,24 +130,29 @@ class EnhancedSynthesisEngine:
                 binding = await self._create_evidence_binding(claim, evidence_passages)
                 evidence_bindings.append(binding)
 
-            self._log_audit("evidence_binding", {
-                "bindings_created": len(evidence_bindings),
-                "total_citations": sum(len(b.citation_slots) for b in evidence_bindings)
-            })
+            self._log_audit(
+                "evidence_binding",
+                {
+                    "bindings_created": len(evidence_bindings),
+                    "total_citations": sum(len(b.citation_slots) for b in evidence_bindings),
+                },
+            )
 
             # STEP 3: Counter-evidence sweep (if enabled)
             if self.enable_counter_evidence:
-                evidence_bindings = await self._counter_evidence_sweep(evidence_bindings, evidence_passages)
-                self._log_audit("counter_evidence_sweep", {
-                    "bindings_updated": len(evidence_bindings)
-                })
+                evidence_bindings = await self._counter_evidence_sweep(
+                    evidence_bindings, evidence_passages
+                )
+                self._log_audit(
+                    "counter_evidence_sweep", {"bindings_updated": len(evidence_bindings)}
+                )
 
             # STEP 4: Adversarial verification (if enabled)
             if self.adversarial_verification:
                 evidence_bindings = await self._adversarial_verification(evidence_bindings)
-                self._log_audit("adversarial_verification", {
-                    "verifications_completed": len(evidence_bindings)
-                })
+                self._log_audit(
+                    "adversarial_verification", {"verifications_completed": len(evidence_bindings)}
+                )
 
             # STEP 5: Generate synthesis text with citations
             synthesis_text = await self._generate_synthesis_text(evidence_bindings, query)
@@ -171,11 +173,13 @@ class EnhancedSynthesisEngine:
                 independent_sources=self._count_independent_sources(evidence_bindings),
                 verification_score=quality_metrics.get("verification_score", 0.0),
                 quality_metrics=quality_metrics,
-                audit_trail=self.audit_trail.copy()
+                audit_trail=self.audit_trail.copy(),
             )
 
             logger.info(f"Enhanced synthesis completed in {processing_time:.2f}s")
-            logger.info(f"Generated {result.citation_count} citations from {result.independent_sources} independent sources")
+            logger.info(
+                f"Generated {result.citation_count} citations from {result.independent_sources} independent sources"
+            )
 
             return result
 
@@ -183,9 +187,8 @@ class EnhancedSynthesisEngine:
             logger.error(f"Enhanced synthesis failed: {e}")
             raise
 
-    async def _extract_claims(self, content: str, query: str) -> List[Dict[str, Any]]:
+    async def _extract_claims(self, content: str, query: str) -> list[dict[str, Any]]:
         """Extrakce tvrzení z komprimovaného obsahu"""
-
         # Split content into sentences for claim analysis
         sentences = self._split_into_sentences(content)
 
@@ -197,27 +200,26 @@ class EnhancedSynthesisEngine:
                     "text": sentence.strip(),
                     "position": i,
                     "confidence": self._estimate_claim_confidence(sentence, query),
-                    "evidence_required": self._estimate_evidence_required(sentence)
+                    "evidence_required": self._estimate_evidence_required(sentence),
                 }
                 claims.append(claim)
 
         return claims
 
-    def _split_into_sentences(self, text: str) -> List[str]:
+    def _split_into_sentences(self, text: str) -> list[str]:
         """Rozdělení textu na věty"""
         # Simple sentence splitting
-        sentences = re.split(r'[.!?]+\s+', text)
+        sentences = re.split(r"[.!?]+\s+", text)
         return [s.strip() for s in sentences if len(s.strip()) > 10]
 
     def _is_claim_sentence(self, sentence: str, query: str) -> bool:
         """Detekce, zda věta obsahuje tvrzení"""
-
         # Claim indicators
         claim_patterns = [
-            r'\b(shows?|indicates?|suggests?|demonstrates?|proves?|reveals?)\b',
-            r'\b(evidence|research|study|analysis|data)\s+(shows?|indicates?|suggests?)\b',
-            r'\b(according to|based on|research shows)\b',
-            r'\b(conclude|find|observe|report)\b'
+            r"\b(shows?|indicates?|suggests?|demonstrates?|proves?|reveals?)\b",
+            r"\b(evidence|research|study|analysis|data)\s+(shows?|indicates?|suggests?)\b",
+            r"\b(according to|based on|research shows)\b",
+            r"\b(conclude|find|observe|report)\b",
         ]
 
         for pattern in claim_patterns:
@@ -235,12 +237,11 @@ class EnhancedSynthesisEngine:
 
     def _estimate_claim_confidence(self, sentence: str, query: str) -> float:
         """Odhad confidence pro tvrzení"""
-
         confidence = 0.5  # Base confidence
 
         # Strong evidence indicators
-        strong_indicators = ['proves', 'demonstrates', 'shows', 'indicates', 'evidence']
-        weak_indicators = ['might', 'could', 'possibly', 'perhaps', 'maybe']
+        strong_indicators = ["proves", "demonstrates", "shows", "indicates", "evidence"]
+        weak_indicators = ["might", "could", "possibly", "perhaps", "maybe"]
 
         for indicator in strong_indicators:
             if indicator in sentence.lower():
@@ -260,18 +261,16 @@ class EnhancedSynthesisEngine:
 
     def _estimate_evidence_required(self, sentence: str) -> int:
         """Odhad počtu vyžadovaných důkazů"""
-
         # Strong claims need more evidence
-        if any(word in sentence.lower() for word in ['proves', 'demonstrates', 'conclusively']):
+        if any(word in sentence.lower() for word in ["proves", "demonstrates", "conclusively"]):
             return max(self.min_citations_per_claim, 3)
 
         return self.min_citations_per_claim
 
-    async def _create_evidence_binding(self,
-                                     claim: Dict[str, Any],
-                                     evidence_passages: List[Dict[str, Any]]) -> EvidenceBinding:
+    async def _create_evidence_binding(
+        self, claim: dict[str, Any], evidence_passages: list[dict[str, Any]]
+    ) -> EvidenceBinding:
         """Vytvoření evidence binding pro tvrzení"""
-
         claim_text = claim["text"]
         evidence_required = claim["evidence_required"]
 
@@ -294,7 +293,7 @@ class EnhancedSynthesisEngine:
                     source_text=best_segment["text"],
                     confidence=best_segment["confidence"],
                     evidence_type="primary" if i == 0 else "supporting",
-                    verification_status="unverified"
+                    verification_status="unverified",
                 )
                 citation_slots.append(slot)
 
@@ -308,16 +307,15 @@ class EnhancedSynthesisEngine:
             evidence_strength=evidence_strength,
             contradiction_flags=[],
             confidence_score=claim["confidence"],
-            verification_notes=""
+            verification_notes="",
         )
 
         return binding
 
-    def _find_relevant_passages(self,
-                              claim_text: str,
-                              evidence_passages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _find_relevant_passages(
+        self, claim_text: str, evidence_passages: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Nalezení relevantních pasáží pro tvrzení"""
-
         claim_terms = set(claim_text.lower().split())
 
         scored_passages = []
@@ -332,7 +330,7 @@ class EnhancedSynthesisEngine:
 
             # Boost for evidence indicators
             evidence_boost = 0
-            evidence_indicators = ['evidence', 'research', 'study', 'data', 'analysis']
+            evidence_indicators = ["evidence", "research", "study", "data", "analysis"]
             for indicator in evidence_indicators:
                 if indicator in content.lower():
                     evidence_boost += 0.1
@@ -347,11 +345,10 @@ class EnhancedSynthesisEngine:
 
         return [passage for score, passage in scored_passages]
 
-    def _find_best_evidence_segment(self,
-                                  claim_text: str,
-                                  passage_content: str) -> Optional[Dict[str, Any]]:
+    def _find_best_evidence_segment(
+        self, claim_text: str, passage_content: str
+    ) -> dict[str, Any] | None:
         """Nalezení nejlepšího evidence segmentu v pasáži"""
-
         # Split passage into sentences
         sentences = self._split_into_sentences(passage_content)
 
@@ -370,7 +367,10 @@ class EnhancedSynthesisEngine:
 
             # Boost for evidence language
             evidence_boost = 0
-            if any(word in sentence.lower() for word in ['shows', 'indicates', 'demonstrates', 'evidence']):
+            if any(
+                word in sentence.lower()
+                for word in ["shows", "indicates", "demonstrates", "evidence"]
+            ):
                 evidence_boost = 0.3
 
             total_score = similarity + evidence_boost
@@ -383,18 +383,17 @@ class EnhancedSynthesisEngine:
                     "text": sentence,
                     "start": start_pos,
                     "end": start_pos + len(sentence),
-                    "confidence": total_score
+                    "confidence": total_score,
                 }
 
             char_offset += len(sentence) + 1
 
         return best_segment if best_score > 0.2 else None
 
-    def _calculate_evidence_strength(self,
-                                   citation_slots: List[CitationSlot],
-                                   claim: Dict[str, Any]) -> float:
+    def _calculate_evidence_strength(
+        self, citation_slots: list[CitationSlot], claim: dict[str, Any]
+    ) -> float:
         """Výpočet síly důkazů pro tvrzení"""
-
         if not citation_slots:
             return 0.0
 
@@ -413,11 +412,10 @@ class EnhancedSynthesisEngine:
 
         return min(total_strength, 1.0)
 
-    async def _counter_evidence_sweep(self,
-                                    evidence_bindings: List[EvidenceBinding],
-                                    evidence_passages: List[Dict[str, Any]]) -> List[EvidenceBinding]:
+    async def _counter_evidence_sweep(
+        self, evidence_bindings: list[EvidenceBinding], evidence_passages: list[dict[str, Any]]
+    ) -> list[EvidenceBinding]:
         """Counter-evidence sweep pro nalezení vyvracejících důkazů"""
-
         logger.info("Performing counter-evidence sweep...")
 
         for binding in evidence_bindings:
@@ -434,25 +432,28 @@ class EnhancedSynthesisEngine:
 
                 # Adjust confidence based on contradictions
                 contradiction_penalty = len(counter_evidence) * 0.2
-                binding.confidence_score = max(0.1, binding.confidence_score - contradiction_penalty)
+                binding.confidence_score = max(
+                    0.1, binding.confidence_score - contradiction_penalty
+                )
 
-                binding.verification_notes += f" Found {len(counter_evidence)} contradictory evidence(s)."
+                binding.verification_notes += (
+                    f" Found {len(counter_evidence)} contradictory evidence(s)."
+                )
 
         return evidence_bindings
 
-    async def _find_counter_evidence(self,
-                                   claim_text: str,
-                                   evidence_passages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _find_counter_evidence(
+        self, claim_text: str, evidence_passages: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Nalezení protikladných důkazů"""
-
         counter_evidence = []
 
         # Contradiction indicators
         negation_patterns = [
-            r'\b(not|no|never|none|neither|nor)\b',
-            r'\b(however|but|although|despite|nevertheless)\b',
-            r'\b(contrary|opposite|against|refutes?|disputes?)\b',
-            r'\b(disproves?|contradicts?|challenges?)\b'
+            r"\b(not|no|never|none|neither|nor)\b",
+            r"\b(however|but|although|despite|nevertheless)\b",
+            r"\b(contrary|opposite|against|refutes?|disputes?)\b",
+            r"\b(disproves?|contradicts?|challenges?)\b",
         ]
 
         claim_terms = set(claim_text.lower().split())
@@ -461,7 +462,9 @@ class EnhancedSynthesisEngine:
             content = passage.get("content", "")
 
             # Check for negation patterns
-            has_negation = any(re.search(pattern, content, re.IGNORECASE) for pattern in negation_patterns)
+            has_negation = any(
+                re.search(pattern, content, re.IGNORECASE) for pattern in negation_patterns
+            )
 
             if has_negation:
                 # Check if content relates to the claim
@@ -472,20 +475,25 @@ class EnhancedSynthesisEngine:
                     sentences = self._split_into_sentences(content)
 
                     for sentence in sentences:
-                        if any(re.search(pattern, sentence, re.IGNORECASE) for pattern in negation_patterns):
+                        if any(
+                            re.search(pattern, sentence, re.IGNORECASE)
+                            for pattern in negation_patterns
+                        ):
                             if any(term in sentence.lower() for term in claim_terms):
-                                counter_evidence.append({
-                                    "doc_id": passage.get("doc_id", "unknown"),
-                                    "contradiction_text": sentence,
-                                    "confidence": 0.7  # Fixed confidence for counter-evidence
-                                })
+                                counter_evidence.append(
+                                    {
+                                        "doc_id": passage.get("doc_id", "unknown"),
+                                        "contradiction_text": sentence,
+                                        "confidence": 0.7,  # Fixed confidence for counter-evidence
+                                    }
+                                )
 
         return counter_evidence
 
-    async def _adversarial_verification(self,
-                                      evidence_bindings: List[EvidenceBinding]) -> List[EvidenceBinding]:
+    async def _adversarial_verification(
+        self, evidence_bindings: list[EvidenceBinding]
+    ) -> list[EvidenceBinding]:
         """Adversarial verification loop"""
-
         logger.info("Performing adversarial verification...")
 
         for binding in evidence_bindings:
@@ -499,7 +507,9 @@ class EnhancedSynthesisEngine:
                 if not answered:
                     # Reduce confidence for unanswered adversarial questions
                     binding.confidence_score *= 0.9
-                    binding.verification_notes += f" Adversarial question unanswered: {question[:50]}... "
+                    binding.verification_notes += (
+                        f" Adversarial question unanswered: {question[:50]}... "
+                    )
 
             # Update verification status based on checks
             for slot in binding.citation_slots:
@@ -512,9 +522,8 @@ class EnhancedSynthesisEngine:
 
         return evidence_bindings
 
-    def _generate_adversarial_questions(self, claim_text: str) -> List[str]:
+    def _generate_adversarial_questions(self, claim_text: str) -> list[str]:
         """Generování adversarial otázek pro tvrzení"""
-
         questions = []
 
         # Template-based adversarial questions
@@ -523,7 +532,7 @@ class EnhancedSynthesisEngine:
             f"Under what conditions might {claim_text} not be true?",
             f"What are the limitations of the evidence supporting {claim_text}?",
             f"How reliable are the sources claiming that {claim_text}?",
-            f"What alternative explanations exist for {claim_text}?"
+            f"What alternative explanations exist for {claim_text}?",
         ]
 
         # Select subset based on claim complexity
@@ -532,11 +541,10 @@ class EnhancedSynthesisEngine:
 
         return questions
 
-    def _check_adversarial_question(self,
-                                  question: str,
-                                  citation_slots: List[CitationSlot]) -> bool:
+    def _check_adversarial_question(
+        self, question: str, citation_slots: list[CitationSlot]
+    ) -> bool:
         """Kontrola, zda existující evidence odpovídá na adversarial otázku"""
-
         question_terms = set(question.lower().split())
 
         for slot in citation_slots:
@@ -549,18 +557,19 @@ class EnhancedSynthesisEngine:
 
         return False
 
-    async def _generate_synthesis_text(self,
-                                     evidence_bindings: List[EvidenceBinding],
-                                     query: str) -> str:
+    async def _generate_synthesis_text(
+        self, evidence_bindings: list[EvidenceBinding], query: str
+    ) -> str:
         """Generování synthesis textu s citacemi"""
-
         if not evidence_bindings:
             return "No evidence found to synthesize response."
 
         synthesis_parts = []
 
         # Introduction
-        synthesis_parts.append(f"Based on the available evidence, the following findings address the query: {query}")
+        synthesis_parts.append(
+            f"Based on the available evidence, the following findings address the query: {query}"
+        )
         synthesis_parts.append("")
 
         # Process each claim with evidence
@@ -570,7 +579,9 @@ class EnhancedSynthesisEngine:
 
             # Choose template based on evidence characteristics
             template_key = self._choose_citation_template(binding)
-            template = self.citation_templates.get(template_key, self.citation_templates["academic"])
+            template = self.citation_templates.get(
+                template_key, self.citation_templates["academic"]
+            )
 
             # Prepare template variables
             source_titles = [f"Source {slot.doc_id}" for slot in binding.citation_slots]
@@ -585,17 +596,19 @@ class EnhancedSynthesisEngine:
                     claim_text=binding.claim_text,
                     supporting_sources=supporting_sources,
                     counter_sources=counter_sources,
-                    slot_ids=", ".join(slot_ids)
+                    slot_ids=", ".join(slot_ids),
                 )
             else:
                 # Use standard template
                 claim_text = template.format(
                     source_title=source_titles[0] if source_titles else "Unknown",
-                    doc_id=binding.citation_slots[0].doc_id if binding.citation_slots else "unknown",
+                    doc_id=(
+                        binding.citation_slots[0].doc_id if binding.citation_slots else "unknown"
+                    ),
                     claim_text=binding.claim_text,
                     slot_id=slot_ids[0] if slot_ids else "unknown",
                     source_list=", ".join(source_titles),
-                    slot_ids=", ".join(slot_ids)
+                    slot_ids=", ".join(slot_ids),
                 )
 
             synthesis_parts.append(f"{i}. {claim_text}")
@@ -611,21 +624,18 @@ class EnhancedSynthesisEngine:
 
     def _choose_citation_template(self, binding: EvidenceBinding) -> str:
         """Výběr vhodné šablony pro citace"""
-
         if binding.contradiction_flags:
             return "disputed"
-        elif len(binding.citation_slots) > 2:
+        if len(binding.citation_slots) > 2:
             return "multi_source"
-        elif binding.evidence_strength >= 0.8:
+        if binding.evidence_strength >= 0.8:
             return "evidence_based"
-        else:
-            return "academic"
+        return "academic"
 
-    def _calculate_synthesis_quality(self,
-                                   evidence_bindings: List[EvidenceBinding],
-                                   synthesis_text: str) -> Dict[str, float]:
+    def _calculate_synthesis_quality(
+        self, evidence_bindings: list[EvidenceBinding], synthesis_text: str
+    ) -> dict[str, float]:
         """Výpočet quality metrics pro syntézu"""
-
         metrics = {}
 
         # Citation coverage
@@ -639,7 +649,9 @@ class EnhancedSynthesisEngine:
 
         # Evidence strength
         if evidence_bindings:
-            avg_evidence_strength = sum(b.evidence_strength for b in evidence_bindings) / len(evidence_bindings)
+            avg_evidence_strength = sum(b.evidence_strength for b in evidence_bindings) / len(
+                evidence_bindings
+            )
             metrics["evidence_strength"] = avg_evidence_strength
         else:
             metrics["evidence_strength"] = 0.0
@@ -649,11 +661,15 @@ class EnhancedSynthesisEngine:
             len([s for s in b.citation_slots if s.verification_status == "verified"])
             for b in evidence_bindings
         )
-        metrics["verification_score"] = verified_citations / total_citations if total_citations > 0 else 0
+        metrics["verification_score"] = (
+            verified_citations / total_citations if total_citations > 0 else 0
+        )
 
         # Independence score
         independent_sources = self._count_independent_sources(evidence_bindings)
-        metrics["source_independence"] = min(independent_sources / len(evidence_bindings), 1.0) if evidence_bindings else 0
+        metrics["source_independence"] = (
+            min(independent_sources / len(evidence_bindings), 1.0) if evidence_bindings else 0
+        )
 
         # Contradiction penalty
         total_contradictions = sum(len(b.contradiction_flags) for b in evidence_bindings)
@@ -662,18 +678,17 @@ class EnhancedSynthesisEngine:
 
         # Overall verification score
         base_score = (
-            metrics["citation_coverage"] * 0.3 +
-            metrics["evidence_strength"] * 0.3 +
-            metrics["verification_score"] * 0.2 +
-            metrics["source_independence"] * 0.2
+            metrics["citation_coverage"] * 0.3
+            + metrics["evidence_strength"] * 0.3
+            + metrics["verification_score"] * 0.2
+            + metrics["source_independence"] * 0.2
         )
         metrics["overall_verification_score"] = max(0, base_score - contradiction_penalty)
 
         return metrics
 
-    def _count_independent_sources(self, evidence_bindings: List[EvidenceBinding]) -> int:
+    def _count_independent_sources(self, evidence_bindings: list[EvidenceBinding]) -> int:
         """Počítání nezávislých zdrojů"""
-
         all_doc_ids = set()
         for binding in evidence_bindings:
             for slot in binding.citation_slots:
@@ -681,30 +696,33 @@ class EnhancedSynthesisEngine:
 
         return len(all_doc_ids)
 
-    async def _validate_synthesis_quality(self,
-                                        evidence_bindings: List[EvidenceBinding],
-                                        quality_metrics: Dict[str, float]):
+    async def _validate_synthesis_quality(
+        self, evidence_bindings: list[EvidenceBinding], quality_metrics: dict[str, float]
+    ):
         """Validace kvality syntézy - fail-hard při nesplnění"""
-
         failed_validations = []
 
         # Check minimum verification score
         verification_score = quality_metrics.get("overall_verification_score", 0)
         if verification_score < self.min_verification_score:
-            failed_validations.append({
-                "metric": "verification_score",
-                "required": self.min_verification_score,
-                "actual": verification_score
-            })
+            failed_validations.append(
+                {
+                    "metric": "verification_score",
+                    "required": self.min_verification_score,
+                    "actual": verification_score,
+                }
+            )
 
         # Check minimum evidence strength
         evidence_strength = quality_metrics.get("evidence_strength", 0)
         if evidence_strength < self.min_evidence_strength:
-            failed_validations.append({
-                "metric": "evidence_strength",
-                "required": self.min_evidence_strength,
-                "actual": evidence_strength
-            })
+            failed_validations.append(
+                {
+                    "metric": "evidence_strength",
+                    "required": self.min_evidence_strength,
+                    "actual": evidence_strength,
+                }
+            )
 
         # Check minimum citations per claim
         under_cited_claims = []
@@ -713,11 +731,13 @@ class EnhancedSynthesisEngine:
                 under_cited_claims.append(binding.claim_id)
 
         if under_cited_claims:
-            failed_validations.append({
-                "metric": "min_citations_per_claim",
-                "required": self.min_citations_per_claim,
-                "under_cited_claims": under_cited_claims
-            })
+            failed_validations.append(
+                {
+                    "metric": "min_citations_per_claim",
+                    "required": self.min_citations_per_claim,
+                    "under_cited_claims": under_cited_claims,
+                }
+            )
 
         # Check source independence (if required)
         if self.require_independent_sources:
@@ -725,18 +745,22 @@ class EnhancedSynthesisEngine:
             required_independence = len(evidence_bindings)
 
             if independent_sources < required_independence:
-                failed_validations.append({
-                    "metric": "source_independence",
-                    "required": required_independence,
-                    "actual": independent_sources
-                })
+                failed_validations.append(
+                    {
+                        "metric": "source_independence",
+                        "required": required_independence,
+                        "actual": independent_sources,
+                    }
+                )
 
         # Fail-hard if validations failed
         if failed_validations:
             error_msg = "Synthesis quality validation failed:\n"
             for failure in failed_validations:
                 if "under_cited_claims" in failure:
-                    error_msg += f"  - Claims with insufficient citations: {failure['under_cited_claims']}\n"
+                    error_msg += (
+                        f"  - Claims with insufficient citations: {failure['under_cited_claims']}\n"
+                    )
                 else:
                     error_msg += f"  - {failure['metric']}: {failure['actual']:.3f} < {failure['required']:.3f}\n"
 
@@ -745,34 +769,27 @@ class EnhancedSynthesisEngine:
             fail_hard = self.synthesis_config.get("fail_hard_on_quality", True)
             if fail_hard:
                 raise ValueError(f"Synthesis quality validation failed: {error_msg}")
-            else:
-                logger.warning("Synthesis quality validation failed but fail-hard disabled")
+            logger.warning("Synthesis quality validation failed but fail-hard disabled")
 
-    def _log_audit(self, step: str, data: Dict[str, Any]):
+    def _log_audit(self, step: str, data: dict[str, Any]):
         """Logování audit trail"""
-
-        log_entry = {
-            "step": step,
-            "timestamp": time.time(),
-            "data": data
-        }
+        log_entry = {"step": step, "timestamp": time.time(), "data": data}
 
         self.audit_trail.append(log_entry)
         logger.info(f"Synthesis step {step}: {data}")
 
-    def get_synthesis_report(self, result: SynthesisResult) -> Dict[str, Any]:
+    def get_synthesis_report(self, result: SynthesisResult) -> dict[str, Any]:
         """Generování synthesis report pro audit"""
-
         report = {
             "synthesis_summary": {
                 "citation_count": result.citation_count,
                 "independent_sources": result.independent_sources,
                 "verification_score": f"{result.verification_score:.3f}",
-                "evidence_bindings": len(result.evidence_bindings)
+                "evidence_bindings": len(result.evidence_bindings),
             },
             "quality_metrics": result.quality_metrics,
             "evidence_details": [],
-            "audit_trail": result.audit_trail
+            "audit_trail": result.audit_trail,
         }
 
         # Add evidence binding details
@@ -790,10 +807,10 @@ class EnhancedSynthesisEngine:
                         "doc_id": slot.doc_id,
                         "char_range": f"{slot.char_start}-{slot.char_end}",
                         "verification_status": slot.verification_status,
-                        "confidence": slot.confidence
+                        "confidence": slot.confidence,
                     }
                     for slot in binding.citation_slots
-                ]
+                ],
             }
             report["evidence_details"].append(detail)
 

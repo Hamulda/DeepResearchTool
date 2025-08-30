@@ -21,9 +21,9 @@ class TestRAGPipelineIntegration:
     @pytest.fixture
     async def rag_pipeline(self, mock_openai_client, mock_qdrant_client, mock_redis_client):
         """Mock RAG pipeline s všemi závislostmi"""
-        with patch('src.retrieval.enhanced_rrf.OpenAI') as mock_openai, \
-             patch('src.storage.vector_store.QdrantClient') as mock_qdrant, \
-             patch('src.storage.cache.RedisClient') as mock_redis:
+        with patch("src.retrieval.enhanced_rrf.OpenAI") as mock_openai, patch(
+            "src.storage.vector_store.QdrantClient"
+        ) as mock_qdrant, patch("src.storage.cache.RedisClient") as mock_redis:
 
             mock_openai.return_value = mock_openai_client
             mock_qdrant.return_value = mock_qdrant_client
@@ -46,7 +46,7 @@ class TestRAGPipelineIntegration:
         expected_response = {
             "answer": "The test documents contain important information for testing.",
             "sources": ["doc1", "doc2"],
-            "confidence": 0.85
+            "confidence": 0.85,
         }
         rag_pipeline.process_query.return_value = expected_response
 
@@ -65,7 +65,7 @@ class TestRAGPipelineIntegration:
         rag_pipeline.add_documents.return_value = {
             "added_count": len(sample_documents),
             "failed_count": 0,
-            "processing_time": 1.5
+            "processing_time": 1.5,
         }
 
         result = await rag_pipeline.add_documents(sample_documents)
@@ -82,7 +82,7 @@ class TestRAGPipelineIntegration:
         # Mock search results
         search_results = [
             {"id": "doc1", "score": 0.9, "content": "Relevant content"},
-            {"id": "doc2", "score": 0.7, "content": "Related information"}
+            {"id": "doc2", "score": 0.7, "content": "Related information"},
         ]
         rag_pipeline.search_documents.return_value = search_results
 
@@ -110,15 +110,11 @@ class TestAPIIntegration:
         """Test API autentifikace"""
         # Mock úspěšné autentifikace
         mock_api_client.post.return_value = Mock(
-            status_code=200,
-            json=Mock(return_value={"token": "test-token", "expires_in": 3600})
+            status_code=200, json=Mock(return_value={"token": "test-token", "expires_in": 3600})
         )
 
         # Simulace login request
-        response = await mock_api_client.post(
-            "/auth/login",
-            json={"api_key": "test-key"}
-        )
+        response = await mock_api_client.post("/auth/login", json={"api_key": "test-key"})
 
         assert response.status_code == 200
         token_data = response.json()
@@ -132,7 +128,7 @@ class TestAPIIntegration:
         mock_api_client.post.side_effect = [
             Mock(status_code=200),  # První request OK
             Mock(status_code=200),  # Druhý request OK
-            Mock(status_code=429)   # Třetí request rate limited
+            Mock(status_code=429),  # Třetí request rate limited
         ]
 
         responses = []
@@ -150,7 +146,7 @@ class TestAPIIntegration:
         mock_api_client.post.side_effect = [
             Mock(status_code=400, json=Mock(return_value={"error": "Bad Request"})),
             Mock(status_code=500, json=Mock(return_value={"error": "Internal Server Error"})),
-            Exception("Network error")
+            Exception("Network error"),
         ]
 
         # Test 400 error
@@ -201,14 +197,12 @@ class TestDatabaseIntegration:
         # Mock vector operations
         mock_qdrant_client.search.return_value = [
             Mock(id="doc1", score=0.9, payload={"content": "test"}),
-            Mock(id="doc2", score=0.7, payload={"content": "content"})
+            Mock(id="doc2", score=0.7, payload={"content": "content"}),
         ]
 
         # Test search
         results = mock_qdrant_client.search(
-            collection_name=collection_name,
-            query_vector=[0.1] * 1536,
-            limit=10
+            collection_name=collection_name, query_vector=[0.1] * 1536, limit=10
         )
 
         assert len(results) == 2
@@ -222,13 +216,12 @@ class TestDatabaseIntegration:
         mock_postgres_client.execute.return_value = None
         mock_postgres_client.fetch.return_value = [
             {"id": 1, "document_id": "doc1", "title": "Test Doc 1"},
-            {"id": 2, "document_id": "doc2", "title": "Test Doc 2"}
+            {"id": 2, "document_id": "doc2", "title": "Test Doc 2"},
         ]
 
         # Test insert
         await mock_postgres_client.execute(
-            "INSERT INTO documents (document_id, title) VALUES ($1, $2)",
-            "doc3", "Test Doc 3"
+            "INSERT INTO documents (document_id, title) VALUES ($1, $2)", "doc3", "Test Doc 3"
         )
         mock_postgres_client.execute.assert_called()
 
@@ -260,7 +253,7 @@ class TestScrapingIntegration:
             "url": url,
             "title": "Test Page",
             "content": "This is test content from the page.",
-            "metadata": {"scraped_at": "2024-01-01T00:00:00Z"}
+            "metadata": {"scraped_at": "2024-01-01T00:00:00Z"},
         }
 
         result = await mock_scraper.scrape_url(url)
@@ -277,8 +270,7 @@ class TestScrapingIntegration:
 
         # Mock batch results
         mock_scraper.scrape_multiple_urls.return_value = [
-            {"url": url, "content": f"Content for {url}", "success": True}
-            for url in urls
+            {"url": url, "content": f"Content for {url}", "success": True} for url in urls
         ]
 
         results = await mock_scraper.scrape_multiple_urls(urls)
@@ -295,7 +287,7 @@ class TestScrapingIntegration:
         # Mock error results
         mock_scraper.scrape_multiple_urls.return_value = [
             {"url": problematic_urls[0], "error": "Invalid URL", "success": False},
-            {"url": problematic_urls[1], "error": "404 Not Found", "success": False}
+            {"url": problematic_urls[1], "error": "404 Not Found", "success": False},
         ]
 
         results = await mock_scraper.scrape_multiple_urls(problematic_urls)

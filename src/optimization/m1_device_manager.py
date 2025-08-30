@@ -1,512 +1,655 @@
 #!/usr/bin/env python3
-"""
-M1 Device Manager s Metal/MPS optimalizacemi
-FP16/AMP, batch sizing, streaming, early-exit optimalizace
+"""M1 Device Manager - Dynamická Správa GPU/CPU Zdrojů pro Apple Silicon
+Optimální alokace úkolů mezi Metal GPU a ARM CPU podle priority a dostupnosti zdrojů
 
 Author: Senior Python/MLOps Agent
 """
 
-import json
-import time
-import psutil
-import platform
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
-import asyncio
+from enum import Enum
 import logging
+import platform
+import subprocess
+import threading
+import time
+from typing import Any
+
+import psutil
+
+logger = logging.getLogger(__name__)
+
+
+class Priority(Enum):
+    """Priority úkolů pro alokaci zdrojů"""
+
+    LOW = "low"          # Běžné úkoly - preferuj CPU
+    MEDIUM = "medium"    # Standardní úkoly - vyváženě
+    HIGH = "high"        # Kritické úkoly - preferuj GPU
+    CRITICAL = "critical" # Nejdůležitější - maximum GPU
+
+
+class DeviceType(Enum):
+    """Typy zařízení"""
+
+    CPU = "cpu"
+    MPS = "mps"          # Metal Performance Shaders (Apple GPU)
+    CUDA = "cuda"        # NVIDIA GPU (fallback)
 
 
 @dataclass
-class DeviceProfile:
-    """Profil zařízení a jeho schopností"""
-    device_type: str  # "mps", "cpu", "cuda"
-    device_name: str
-    total_memory_gb: float
-    available_memory_gb: float
-    supports_fp16: bool
-    supports_metal: bool
-    optimal_batch_size: int
-    recommended_context_length: int
+class ResourceInfo:
+    """Informace o zdrojích zařízení"""
+
+    device_type: DeviceType
+    memory_total_mb: float
+    memory_used_mb: float
+    memory_available_mb: float
+    utilization_percent: float
+    temperature_celsius: float | None = None
+    power_draw_watts: float | None = None
 
 
 @dataclass
-class PerformanceMetrics:
-    """Výkonnostní metriky"""
-    tokens_per_second: float
-    memory_usage_gb: float
-    memory_peak_gb: float
-    cpu_usage_percent: float
-    gpu_usage_percent: float
-    temperature_celsius: Optional[float]
-    power_usage_watts: Optional[float]
-    inference_latency_ms: float
-    throughput_queries_per_minute: float
+class InferenceParams:
+    """Parametry pro inference optimalizované pro M1"""
+
+    device: str
+    n_gpu_layers: int
+    n_threads: int
+    batch_size: int
+    context_length: int
+
+    # M1 specifické optimalizace
+    use_metal: bool = True
+    memory_lock: bool = True
+    numa_affinity: bool = True
 
 
-class M1DeviceManager:
-    """M1 optimalizovaný device manager"""
+class ResourceManager:
+    """M1 Resource Manager pro optimální využití Apple Silicon architektury
+    
+    KLÍČOVÉ FUNKCE:
+    - Dynamické rozhodování CPU vs GPU na základě priority a zátěže
+    - Monitoring unified memory systému M1
+    - Optimalizace pro Metal Performance Shaders
+    - Tepelný management pro sustained performance
+    """
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.logger = logging.getLogger(__name__)
+    def __init__(self):
+        """Inicializace Resource Manager s M1 optimalizacemi"""
+        self.is_m1 = self._detect_m1_architecture()
+        self.device_info = self._detect_available_devices()
 
-        # Detekce zařízení
-        self.device_profile = self._detect_device_capabilities()
-        self.current_metrics = None
+        # Resource monitoring
+        self.monitoring_enabled = True
+        self.monitoring_thread: threading.Thread | None = None
+        self.resource_history: list[dict[str, Any]] = []
 
-        # Optimalizační nastavení
-        self.fp16_enabled = config.get("fp16_enabled", True)
-        self.metal_enabled = config.get("metal_enabled", True)
-        self.adaptive_batching = config.get("adaptive_batching", True)
-        self.streaming_enabled = config.get("streaming_enabled", True)
-
-        print(f"🚀 M1 Device Manager initialized: {self.device_profile.device_name}")
-        print(f"   Device: {self.device_profile.device_type}")
-        print(f"   Memory: {self.device_profile.available_memory_gb:.1f}GB available")
-        print(f"   FP16: {self.device_profile.supports_fp16}")
-        print(f"   Metal: {self.device_profile.supports_metal}")
-
-    def _detect_device_capabilities(self) -> DeviceProfile:
-        """Detekuje schopnosti zařízení"""
-        system_info = platform.uname()
-        is_apple_silicon = system_info.machine in ["arm64", "aarch64"] and system_info.system == "Darwin"
-
-        # Memory detection
-        memory_info = psutil.virtual_memory()
-        total_memory_gb = memory_info.total / (1024**3)
-        available_memory_gb = memory_info.available / (1024**3)
-
-        if is_apple_silicon:
-            # Apple Silicon M1/M2/M3
-            device_type = "mps"
-            device_name = self._get_apple_silicon_model()
-            supports_fp16 = True
-            supports_metal = True
-
-            # M1/M2 specific optimizations
-            if "M1" in device_name:
-                optimal_batch_size = 4
-                recommended_context_length = 4096
-            elif "M2" in device_name:
-                optimal_batch_size = 8
-                recommended_context_length = 6144
-            elif "M3" in device_name:
-                optimal_batch_size = 12
-                recommended_context_length = 8192
-            else:
-                optimal_batch_size = 4
-                recommended_context_length = 4096
-
-        else:
-            # Fallback to CPU
-            device_type = "cpu"
-            device_name = f"{system_info.processor} ({psutil.cpu_count()} cores)"
-            supports_fp16 = False
-            supports_metal = False
-            optimal_batch_size = 1
-            recommended_context_length = 2048
-
-        return DeviceProfile(
-            device_type=device_type,
-            device_name=device_name,
-            total_memory_gb=total_memory_gb,
-            available_memory_gb=available_memory_gb,
-            supports_fp16=supports_fp16,
-            supports_metal=supports_metal,
-            optimal_batch_size=optimal_batch_size,
-            recommended_context_length=recommended_context_length
-        )
-
-    def _get_apple_silicon_model(self) -> str:
-        """Detekuje konkrétní model Apple Silicon"""
-        try:
-            import subprocess
-            result = subprocess.run(
-                ["system_profiler", "SPHardwareDataType"],
-                capture_output=True, text=True
-            )
-            output = result.stdout
-
-            if "Apple M1" in output:
-                if "Pro" in output:
-                    return "Apple M1 Pro"
-                elif "Max" in output:
-                    return "Apple M1 Max"
-                elif "Ultra" in output:
-                    return "Apple M1 Ultra"
-                else:
-                    return "Apple M1"
-            elif "Apple M2" in output:
-                if "Pro" in output:
-                    return "Apple M2 Pro"
-                elif "Max" in output:
-                    return "Apple M2 Max"
-                elif "Ultra" in output:
-                    return "Apple M2 Ultra"
-                else:
-                    return "Apple M2"
-            elif "Apple M3" in output:
-                if "Pro" in output:
-                    return "Apple M3 Pro"
-                elif "Max" in output:
-                    return "Apple M3 Max"
-                else:
-                    return "Apple M3"
-            else:
-                return "Apple Silicon (Unknown)"
-
-        except Exception:
-            return "Apple Silicon"
-
-    def get_optimal_model_config(self, model_size: str = "3b") -> Dict[str, Any]:
-        """Vrátí optimální konfiguraci pro daný model"""
-        base_config = {
-            "device": self.device_profile.device_type,
-            "fp16": self.fp16_enabled and self.device_profile.supports_fp16,
-            "use_metal": self.metal_enabled and self.device_profile.supports_metal,
-            "batch_size": self.device_profile.optimal_batch_size,
-            "max_context_length": self.device_profile.recommended_context_length
+        # Performance tracking
+        self.allocation_stats = {
+            "total_allocations": 0,
+            "gpu_allocations": 0,
+            "cpu_allocations": 0,
+            "avg_gpu_utilization": 0.0,
+            "memory_pressure_events": 0
         }
 
-        # Model-specific optimizations
-        if model_size == "3b":
-            # Llama 3.2 3B optimizations
-            base_config.update({
-                "num_threads": min(8, psutil.cpu_count()),
-                "memory_budget_gb": min(4, self.device_profile.available_memory_gb * 0.6),
-                "quantization": "q4_k_m",
-                "context_length": 4096,
-                "rope_freq_base": 500000  # Extended context
-            })
-        elif model_size == "8b":
-            # Llama 3.1 8B optimizations
-            base_config.update({
-                "num_threads": min(10, psutil.cpu_count()),
-                "memory_budget_gb": min(8, self.device_profile.available_memory_gb * 0.7),
-                "quantization": "q4_k_m",
-                "context_length": 8192,
-                "rope_freq_base": 500000
-            })
+        # Thermal management
+        self.thermal_throttling_threshold = 85.0  # °C
+        self.thermal_throttling_active = False
+
+        # Start monitoring
+        self._start_resource_monitoring()
+
+        logger.info(f"✅ Resource Manager inicializován pro {'Apple Silicon M1' if self.is_m1 else 'jinou architekturu'}")
+        logger.info(f"📱 Dostupná zařízení: {list(self.device_info.keys())}")
+
+    def _detect_m1_architecture(self) -> bool:
+        """Detekce Apple Silicon M1 architektury"""
+        try:
+            # Kontrola procesoru
+            processor = platform.processor()
+            machine = platform.machine()
+
+            is_arm64 = machine == 'arm64'
+            is_apple = processor == 'arm'
+
+            if is_arm64 and is_apple:
+                # Dodatečná kontrola na M1 chip
+                try:
+                    result = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'],
+                                          check=False, capture_output=True, text=True)
+                    cpu_brand = result.stdout.strip()
+                    is_m_series = 'Apple' in cpu_brand and ('M1' in cpu_brand or 'M2' in cpu_brand or 'M3' in cpu_brand)
+
+                    if is_m_series:
+                        logger.info(f"🍎 Detekován Apple Silicon: {cpu_brand}")
+                        return True
+
+                except Exception:
+                    pass
+
+            return False
+
+        except Exception as e:
+            logger.warning(f"Chyba při detekci M1: {e}")
+            return False
+
+    def _detect_available_devices(self) -> dict[str, DeviceType]:
+        """Detekce dostupných compute zařízení"""
+        devices = {}
+
+        # CPU je vždy dostupný
+        devices["cpu"] = DeviceType.CPU
+
+        if self.is_m1:
+            # M1 má integrovaný GPU přístupný přes Metal Performance Shaders
+            devices["mps"] = DeviceType.MPS
+            logger.info("🔧 Metal Performance Shaders (MPS) dostupné")
+
+        # Zkus detekovat CUDA (unlikely na M1, ale pro completeness)
+        try:
+            import torch
+            if torch.cuda.is_available():
+                devices["cuda"] = DeviceType.CUDA
+                logger.info("🟢 CUDA GPU detekováno")
+        except ImportError:
+            pass
+
+        return devices
+
+    def get_inference_params(self, priority: str = "medium") -> InferenceParams:
+        """HLAVNÍ METODA: Získání optimálních inference parametrů podle priority
+        
+        Args:
+            priority: Priorita úkolu (low, medium, high, critical)
+            
+        Returns:
+            Optimalizované inference parametry pro M1
+
+        """
+        try:
+            priority_enum = Priority(priority)
+        except ValueError:
+            logger.warning(f"Neznámá priorita: {priority}, použiji medium")
+            priority_enum = Priority.MEDIUM
+
+        # Získání aktuálního stavu zdrojů
+        cpu_info = self._get_cpu_info()
+        gpu_info = self._get_gpu_info() if "mps" in self.device_info else None
+
+        # Rozhodování na základě priority a dostupnosti zdrojů
+        if priority_enum == Priority.CRITICAL:
+            return self._get_critical_priority_params(cpu_info, gpu_info)
+        if priority_enum == Priority.HIGH:
+            return self._get_high_priority_params(cpu_info, gpu_info)
+        if priority_enum == Priority.MEDIUM:
+            return self._get_medium_priority_params(cpu_info, gpu_info)
+        # LOW
+        return self._get_low_priority_params(cpu_info, gpu_info)
+
+    def _get_critical_priority_params(self, cpu_info: ResourceInfo, gpu_info: ResourceInfo | None) -> InferenceParams:
+        """Parametry pro kritickou prioritu - maximum GPU"""
+        if gpu_info and gpu_info.memory_available_mb > 1000 and not self.thermal_throttling_active:
+            # Plné využití GPU
+            params = InferenceParams(
+                device="mps",
+                n_gpu_layers=-1,           # Všechny vrstvy na GPU
+                n_threads=2,               # Minimum CPU threads
+                batch_size=8,              # Větší batch pro GPU
+                context_length=8192,       # Maximum context
+                use_metal=True,
+                memory_lock=True,
+                numa_affinity=False        # GPU nepotřebuje NUMA
+            )
+            self.allocation_stats["gpu_allocations"] += 1
         else:
-            # Conservative defaults
-            base_config.update({
-                "num_threads": min(6, psutil.cpu_count()),
-                "memory_budget_gb": min(3, self.device_profile.available_memory_gb * 0.5),
-                "quantization": "q4_k_m",
-                "context_length": 2048
-            })
+            # Fallback na výkonný CPU setup
+            params = InferenceParams(
+                device="cpu",
+                n_gpu_layers=0,
+                n_threads=8,               # Maximum CPU threads pro M1
+                batch_size=4,
+                context_length=8192,
+                use_metal=False,
+                memory_lock=True,
+                numa_affinity=True
+            )
+            self.allocation_stats["cpu_allocations"] += 1
 
-        return base_config
+        self.allocation_stats["total_allocations"] += 1
+        logger.debug(f"🔴 Critical priority: {params.device} (layers: {params.n_gpu_layers})")
 
-    async def adaptive_batch_sizing(self,
-                                  initial_batch_size: int,
-                                  target_memory_usage: float = 0.8) -> int:
-        """Adaptivní batch sizing podle dostupné paměti"""
-        if not self.adaptive_batching:
-            return initial_batch_size
+        return params
 
-        current_memory = psutil.virtual_memory()
-        memory_usage_ratio = 1 - (current_memory.available / current_memory.total)
+    def _get_high_priority_params(self, cpu_info: ResourceInfo, gpu_info: ResourceInfo | None) -> InferenceParams:
+        """Parametry pro vysokou prioritu - preferuj GPU"""
+        if gpu_info and gpu_info.memory_available_mb > 2000 and gpu_info.utilization_percent < 80:
+            # GPU s většinou vrstev
+            params = InferenceParams(
+                device="mps",
+                n_gpu_layers=32,           # Většina vrstev na GPU
+                n_threads=4,
+                batch_size=6,
+                context_length=6144,
+                use_metal=True,
+                memory_lock=True,
+                numa_affinity=False
+            )
+            self.allocation_stats["gpu_allocations"] += 1
+        # Hybrid CPU/GPU nebo plný CPU
+        elif gpu_info and gpu_info.memory_available_mb > 500:
+            params = InferenceParams(
+                device="mps",
+                n_gpu_layers=16,       # Polovina vrstev na GPU
+                n_threads=6,
+                batch_size=4,
+                context_length=4096,
+                use_metal=True,
+                memory_lock=True,
+                numa_affinity=False
+            )
+            self.allocation_stats["gpu_allocations"] += 1
+        else:
+            params = InferenceParams(
+                device="cpu",
+                n_gpu_layers=0,
+                n_threads=6,
+                batch_size=4,
+                context_length=4096,
+                use_metal=False,
+                memory_lock=True,
+                numa_affinity=True
+            )
+            self.allocation_stats["cpu_allocations"] += 1
 
-        if memory_usage_ratio > target_memory_usage:
-            # Snížit batch size
-            new_batch_size = max(1, initial_batch_size // 2)
-            self.logger.info(f"🔽 Reducing batch size: {initial_batch_size} → {new_batch_size}")
-            return new_batch_size
-        elif memory_usage_ratio < target_memory_usage * 0.6:
-            # Zvýšit batch size (opatrně)
-            new_batch_size = min(initial_batch_size * 2, self.device_profile.optimal_batch_size * 2)
-            self.logger.info(f"🔼 Increasing batch size: {initial_batch_size} → {new_batch_size}")
-            return new_batch_size
+        self.allocation_stats["total_allocations"] += 1
+        logger.debug(f"🟠 High priority: {params.device} (layers: {params.n_gpu_layers})")
 
-        return initial_batch_size
+        return params
 
-    def monitor_performance(self) -> PerformanceMetrics:
-        """Monitoruj výkonnostní metriky"""
-        # CPU metrics
-        cpu_usage = psutil.cpu_percent(interval=0.1)
+    def _get_medium_priority_params(self, cpu_info: ResourceInfo, gpu_info: ResourceInfo | None) -> InferenceParams:
+        """Parametry pro střední prioritu - vyvážené využití"""
+        # Rozhodování na základě aktuální zátěže
+        if gpu_info and gpu_info.utilization_percent < 50 and gpu_info.memory_available_mb > 1500:
+            # Mírné využití GPU
+            params = InferenceParams(
+                device="mps",
+                n_gpu_layers=8,            # Část vrstev na GPU
+                n_threads=4,
+                batch_size=4,
+                context_length=4096,
+                use_metal=True,
+                memory_lock=True,
+                numa_affinity=False
+            )
+            self.allocation_stats["gpu_allocations"] += 1
+        else:
+            # Preferuj CPU pro stability
+            params = InferenceParams(
+                device="cpu",
+                n_gpu_layers=0,
+                n_threads=4,
+                batch_size=2,
+                context_length=4096,
+                use_metal=False,
+                memory_lock=True,
+                numa_affinity=True
+            )
+            self.allocation_stats["cpu_allocations"] += 1
 
-        # Memory metrics
-        memory_info = psutil.virtual_memory()
-        memory_usage_gb = (memory_info.total - memory_info.available) / (1024**3)
+        self.allocation_stats["total_allocations"] += 1
+        logger.debug(f"🟡 Medium priority: {params.device} (layers: {params.n_gpu_layers})")
 
-        # Temperature (Apple Silicon specific)
-        temperature = self._get_cpu_temperature()
+        return params
 
-        # Power usage estimate
-        power_usage = self._estimate_power_usage(cpu_usage)
-
-        metrics = PerformanceMetrics(
-            tokens_per_second=0.0,  # Would be calculated during inference
-            memory_usage_gb=memory_usage_gb,
-            memory_peak_gb=memory_usage_gb,  # Would track peak during session
-            cpu_usage_percent=cpu_usage,
-            gpu_usage_percent=0.0,  # MPS doesn't expose GPU usage easily
-            temperature_celsius=temperature,
-            power_usage_watts=power_usage,
-            inference_latency_ms=0.0,  # Would be measured during actual inference
-            throughput_queries_per_minute=0.0  # Would be calculated from query times
+    def _get_low_priority_params(self, cpu_info: ResourceInfo, gpu_info: ResourceInfo | None) -> InferenceParams:
+        """Parametry pro nízkou prioritu - šetři zdroje"""
+        # Vždy CPU pro nízkou prioritu (šetříme GPU pro důležitější úkoly)
+        params = InferenceParams(
+            device="cpu",
+            n_gpu_layers=0,
+            n_threads=2,                   # Minimum threads
+            batch_size=1,                  # Malý batch
+            context_length=2048,           # Kratší context
+            use_metal=False,
+            memory_lock=False,             # Neblokuj memory
+            numa_affinity=True
         )
 
-        self.current_metrics = metrics
-        return metrics
+        self.allocation_stats["cpu_allocations"] += 1
+        self.allocation_stats["total_allocations"] += 1
+        logger.debug("🟢 Low priority: CPU only")
 
-    def _get_cpu_temperature(self) -> Optional[float]:
-        """Získá teplotu CPU (Apple Silicon)"""
+        return params
+
+    def _get_cpu_info(self) -> ResourceInfo:
+        """Získání informací o CPU"""
         try:
-            import subprocess
-            result = subprocess.run(
-                ["sudo", "powermetrics", "--samplers", "smc", "-n", "1", "-i", "1000"],
-                capture_output=True, text=True, timeout=5
+            # Memory info
+            memory = psutil.virtual_memory()
+
+            # CPU utilization
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+
+            # Temperature (M1 specific)
+            temperature = self._get_cpu_temperature() if self.is_m1 else None
+
+            return ResourceInfo(
+                device_type=DeviceType.CPU,
+                memory_total_mb=memory.total / (1024 * 1024),
+                memory_used_mb=memory.used / (1024 * 1024),
+                memory_available_mb=memory.available / (1024 * 1024),
+                utilization_percent=cpu_percent,
+                temperature_celsius=temperature
             )
 
-            # Parse temperature from powermetrics output
-            for line in result.stdout.split('\n'):
-                if "CPU die temperature" in line:
-                    temp_str = line.split(':')[-1].strip()
-                    temp_value = float(temp_str.replace('C', '').strip())
-                    return temp_value
+        except Exception as e:
+            logger.warning(f"Chyba při získávání CPU info: {e}")
+            return ResourceInfo(
+                device_type=DeviceType.CPU,
+                memory_total_mb=8192,  # Default pro M1
+                memory_used_mb=4096,
+                memory_available_mb=4096,
+                utilization_percent=50.0
+            )
+
+    def _get_gpu_info(self) -> ResourceInfo | None:
+        """Získání informací o GPU (MPS)"""
+        if not self.is_m1 or "mps" not in self.device_info:
+            return None
+
+        try:
+            # Na M1 je GPU integrovaný, používá unified memory
+            memory = psutil.virtual_memory()
+
+            # Odhad GPU utilizace (simplified)
+            # V reálné implementaci by se použil Metal API
+            gpu_utilization = self._estimate_gpu_utilization()
+
+            # M1 GPU používá část unified memory
+            estimated_gpu_memory = memory.total * 0.6  # ~60% pro GPU na M1
+            estimated_gpu_used = estimated_gpu_memory * (gpu_utilization / 100.0)
+
+            return ResourceInfo(
+                device_type=DeviceType.MPS,
+                memory_total_mb=estimated_gpu_memory / (1024 * 1024),
+                memory_used_mb=estimated_gpu_used / (1024 * 1024),
+                memory_available_mb=(estimated_gpu_memory - estimated_gpu_used) / (1024 * 1024),
+                utilization_percent=gpu_utilization,
+                temperature_celsius=self._get_gpu_temperature()
+            )
+
+        except Exception as e:
+            logger.warning(f"Chyba při získávání GPU info: {e}")
+            return None
+
+    def _get_cpu_temperature(self) -> float | None:
+        """Získání teploty CPU (M1 specific)"""
+        try:
+            # M1 temperature monitoring
+            result = subprocess.run(['sudo', 'powermetrics', '--samplers', 'smc', '-n', '1', '--show-process-coalition'],
+                                  check=False, capture_output=True, text=True, timeout=2)
+
+            if result.returncode == 0:
+                # Parse temperature from powermetrics output
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    if 'CPU die temperature' in line:
+                        # Extract temperature value
+                        import re
+                        temp_match = re.search(r'(\d+\.?\d*)', line)
+                        if temp_match:
+                            return float(temp_match.group(1))
 
         except Exception:
             pass
 
         return None
 
-    def _estimate_power_usage(self, cpu_usage: float) -> Optional[float]:
-        """Odhadne spotřebu energie"""
-        if self.device_profile.device_type == "mps":
-            # Apple Silicon power estimates
-            if "M1" in self.device_profile.device_name:
-                base_power = 10  # Watts
-                max_power = 40
-            elif "M2" in self.device_profile.device_name:
-                base_power = 12
-                max_power = 45
-            elif "M3" in self.device_profile.device_name:
-                base_power = 15
-                max_power = 50
-            else:
-                base_power = 10
-                max_power = 40
-
-            # Linear interpolation based on CPU usage
-            estimated_power = base_power + (cpu_usage / 100.0) * (max_power - base_power)
-            return estimated_power
+    def _get_gpu_temperature(self) -> float | None:
+        """Získání teploty GPU (M1 integrated)"""
+        # Na M1 je GPU integrovaný, má podobnou teplotu jako CPU
+        cpu_temp = self._get_cpu_temperature()
+        if cpu_temp:
+            return cpu_temp + 5.0  # GPU je typicky o něco teplejší
 
         return None
 
-    def check_thermal_throttling(self) -> Dict[str, Any]:
-        """Kontrola thermal throttling"""
-        temperature = self._get_cpu_temperature()
-        cpu_usage = psutil.cpu_percent(interval=0.5)
+    def _estimate_gpu_utilization(self) -> float:
+        """Odhad GPU utilizace (simplified pro M1)"""
+        try:
+            # Použij aktivitu Graphics procesů jako proxy
+            result = subprocess.run(['top', '-l', '1', '-n', '0'],
+                                  check=False, capture_output=True, text=True, timeout=2)
 
-        throttling_status = {
-            "is_throttling": False,
-            "temperature_celsius": temperature,
-            "cpu_usage_percent": cpu_usage,
-            "recommendation": "normal_operation"
-        }
+            if result.returncode == 0:
+                # Hledej procesy s vysokou GPU aktivitou
+                lines = result.stdout.split('\n')
+                gpu_activity = 0.0
 
-        if temperature and temperature > 80:
-            throttling_status["is_throttling"] = True
-            if temperature > 90:
-                throttling_status["recommendation"] = "reduce_workload_immediately"
-            else:
-                throttling_status["recommendation"] = "reduce_workload_gradually"
+                for line in lines:
+                    if 'WindowServer' in line or 'Metal' in line:
+                        # Extract CPU usage as proxy for GPU usage
+                        import re
+                        cpu_match = re.search(r'(\d+\.?\d*)%', line)
+                        if cpu_match:
+                            gpu_activity = max(gpu_activity, float(cpu_match.group(1)))
 
-        return throttling_status
+                return min(gpu_activity * 1.5, 100.0)  # Scale up a bit
 
-    def suggest_performance_profile(self, workload_type: str = "thorough") -> Dict[str, Any]:
-        """Navrhne výkonnostní profil"""
-        current_metrics = self.monitor_performance()
-        thermal_status = self.check_thermal_throttling()
+        except Exception:
+            pass
 
-        if workload_type == "quick":
-            # Rychlý profil (25-45s)
-            profile = {
-                "name": "quick",
-                "target_time_seconds": 35,
-                "context_length": 4096,
-                "max_iterations": 3,
-                "batch_size": self.device_profile.optimal_batch_size,
-                "use_streaming": True,
-                "early_exit_threshold": 0.85
-            }
-        elif workload_type == "thorough":
-            # Důkladný profil (90-180s)
-            profile = {
-                "name": "thorough",
-                "target_time_seconds": 120,
-                "context_length": 8192,
-                "max_iterations": 8,
-                "batch_size": self.device_profile.optimal_batch_size,
-                "use_streaming": True,
-                "early_exit_threshold": 0.95
-            }
-        else:
-            # Balanced profil
-            profile = {
-                "name": "balanced",
-                "target_time_seconds": 60,
-                "context_length": 6144,
-                "max_iterations": 5,
-                "batch_size": self.device_profile.optimal_batch_size,
-                "use_streaming": True,
-                "early_exit_threshold": 0.90
-            }
+        return 30.0  # Conservative default
 
-        # Thermal adjustments
-        if thermal_status["is_throttling"]:
-            profile["batch_size"] = max(1, profile["batch_size"] // 2)
-            profile["context_length"] = min(profile["context_length"], 4096)
-            profile["max_iterations"] = max(1, profile["max_iterations"] // 2)
+    def _start_resource_monitoring(self):
+        """Spuštění background monitoringu zdrojů"""
+        if not self.monitoring_enabled:
+            return
 
-        # Memory adjustments
-        if current_metrics.memory_usage_gb > self.device_profile.total_memory_gb * 0.8:
-            profile["context_length"] = min(profile["context_length"], 4096)
-            profile["batch_size"] = max(1, profile["batch_size"] // 2)
+        def monitor_resources():
+            while self.monitoring_enabled:
+                try:
+                    cpu_info = self._get_cpu_info()
+                    gpu_info = self._get_gpu_info()
 
-        return profile
+                    # Check thermal throttling
+                    if cpu_info.temperature_celsius and cpu_info.temperature_celsius > self.thermal_throttling_threshold:
+                        if not self.thermal_throttling_active:
+                            logger.warning(f"🌡️ Thermal throttling aktivní: {cpu_info.temperature_celsius:.1f}°C")
+                            self.thermal_throttling_active = True
+                    elif self.thermal_throttling_active:
+                        logger.info("🌡️ Thermal throttling deaktivován")
+                        self.thermal_throttling_active = False
 
-    def optimize_for_streaming(self) -> Dict[str, Any]:
-        """Optimalizace pro streaming"""
+                    # Check memory pressure
+                    if cpu_info.memory_available_mb < 1000:  # Less than 1GB available
+                        self.allocation_stats["memory_pressure_events"] += 1
+                        logger.warning(f"⚠️ Memory pressure: {cpu_info.memory_available_mb:.0f}MB dostupných")
+
+                    # Store history
+                    self.resource_history.append({
+                        "timestamp": time.time(),
+                        "cpu": cpu_info,
+                        "gpu": gpu_info,
+                        "thermal_throttling": self.thermal_throttling_active
+                    })
+
+                    # Keep only last 100 measurements
+                    if len(self.resource_history) > 100:
+                        self.resource_history.pop(0)
+
+                    # Update average GPU utilization
+                    if gpu_info:
+                        current_avg = self.allocation_stats["avg_gpu_utilization"]
+                        measurements = len([h for h in self.resource_history if h["gpu"]])
+                        if measurements > 0:
+                            self.allocation_stats["avg_gpu_utilization"] = (
+                                (current_avg * (measurements - 1) + gpu_info.utilization_percent) / measurements
+                            )
+
+                    time.sleep(5)  # Monitor every 5 seconds
+
+                except Exception as e:
+                    logger.error(f"Chyba v resource monitoring: {e}")
+                    time.sleep(10)
+
+        self.monitoring_thread = threading.Thread(target=monitor_resources, daemon=True)
+        self.monitoring_thread.start()
+        logger.info("📊 Resource monitoring spuštěn")
+
+    def stop_monitoring(self):
+        """Zastavení resource monitoringu"""
+        self.monitoring_enabled = False
+        if self.monitoring_thread:
+            self.monitoring_thread.join(timeout=5)
+        logger.info("📊 Resource monitoring zastaven")
+
+    def get_resource_report(self) -> dict[str, Any]:
+        """Získání kompletního reportu o zdrojích"""
+        current_cpu = self._get_cpu_info()
+        current_gpu = self._get_gpu_info()
+
+        total_allocations = self.allocation_stats["total_allocations"]
+
+        gpu_usage_percent = 0.0
+        if total_allocations > 0:
+            gpu_usage_percent = (self.allocation_stats["gpu_allocations"] / total_allocations) * 100
+
         return {
-            "chunk_size": 512,  # Tokens per chunk
-            "buffer_size": 2048,  # Token buffer
-            "progressive_context": True,
-            "early_yield": True,
-            "stream_threshold": 0.7  # Confidence threshold for streaming
+            "system_info": {
+                "is_apple_silicon": self.is_m1,
+                "available_devices": list(self.device_info.keys()),
+                "thermal_throttling_active": self.thermal_throttling_active
+            },
+            "current_resources": {
+                "cpu": {
+                    "memory_available_mb": round(current_cpu.memory_available_mb, 0),
+                    "utilization_percent": round(current_cpu.utilization_percent, 1),
+                    "temperature_celsius": current_cpu.temperature_celsius
+                },
+                "gpu": {
+                    "memory_available_mb": round(current_gpu.memory_available_mb, 0) if current_gpu else None,
+                    "utilization_percent": round(current_gpu.utilization_percent, 1) if current_gpu else None,
+                    "temperature_celsius": current_gpu.temperature_celsius if current_gpu else None
+                } if current_gpu else None
+            },
+            "allocation_statistics": {
+                "total_allocations": total_allocations,
+                "gpu_usage_percent": round(gpu_usage_percent, 1),
+                "cpu_usage_percent": round(100 - gpu_usage_percent, 1),
+                "avg_gpu_utilization": round(self.allocation_stats["avg_gpu_utilization"], 1),
+                "memory_pressure_events": self.allocation_stats["memory_pressure_events"]
+            },
+            "optimization_recommendations": self._generate_optimization_recommendations(current_cpu, current_gpu)
         }
 
-    def get_device_status_report(self) -> Dict[str, Any]:
-        """Kompletní status report zařízení"""
-        current_metrics = self.monitor_performance()
-        thermal_status = self.check_thermal_throttling()
+    def _generate_optimization_recommendations(self, cpu_info: ResourceInfo, gpu_info: ResourceInfo | None) -> list[str]:
+        """Generování doporučení pro optimalizaci"""
+        recommendations = []
 
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "device_profile": {
-                "device_type": self.device_profile.device_type,
-                "device_name": self.device_profile.device_name,
-                "total_memory_gb": self.device_profile.total_memory_gb,
-                "available_memory_gb": self.device_profile.available_memory_gb,
-                "supports_fp16": self.device_profile.supports_fp16,
-                "supports_metal": self.device_profile.supports_metal
-            },
-            "current_metrics": {
-                "memory_usage_gb": current_metrics.memory_usage_gb,
-                "cpu_usage_percent": current_metrics.cpu_usage_percent,
-                "temperature_celsius": current_metrics.temperature_celsius,
-                "power_usage_watts": current_metrics.power_usage_watts
-            },
-            "thermal_status": thermal_status,
-            "optimization_settings": {
-                "fp16_enabled": self.fp16_enabled,
-                "metal_enabled": self.metal_enabled,
-                "adaptive_batching": self.adaptive_batching,
-                "streaming_enabled": self.streaming_enabled
-            },
-            "recommended_profiles": {
-                "quick": self.suggest_performance_profile("quick"),
-                "balanced": self.suggest_performance_profile("balanced"),
-                "thorough": self.suggest_performance_profile("thorough")
-            }
-        }
+        # Memory recommendations
+        if cpu_info.memory_available_mb < 2000:
+            recommendations.append("⚠️ Nízká dostupná paměť - zvažte ukončení nepotřebných aplikací")
 
-    async def benchmark_device(self, duration_seconds: int = 30) -> Dict[str, Any]:
-        """Benchmark zařízení"""
-        print(f"🏃 Running device benchmark for {duration_seconds}s...")
+        # CPU utilization
+        if cpu_info.utilization_percent > 80:
+            recommendations.append("🔥 Vysoká CPU zátěž - snižte prioritu nekriti  ckých úkolů")
 
-        start_time = time.time()
-        metrics_history = []
+        # GPU recommendations
+        if gpu_info:
+            if gpu_info.utilization_percent < 30 and self.allocation_stats["gpu_allocations"] < self.allocation_stats["cpu_allocations"]:
+                recommendations.append("💡 GPU je nedostatečně využíván - zvažte přesun úkolů na GPU")
+            elif gpu_info.utilization_percent > 90:
+                recommendations.append("🔥 GPU přetížen - přesuňte některé úkoly na CPU")
 
-        # Simulate workload
-        while time.time() - start_time < duration_seconds:
-            metrics = self.monitor_performance()
-            metrics_history.append({
-                "timestamp": time.time() - start_time,
-                "cpu_usage": metrics.cpu_usage_percent,
-                "memory_usage_gb": metrics.memory_usage_gb,
-                "temperature": metrics.temperature_celsius
-            })
+        # Thermal recommendations
+        if self.thermal_throttling_active:
+            recommendations.append("🌡️ Aktivní thermal throttling - snižte zátěž nebo vyčkejte na ochlazení")
 
-            # Simulate CPU load
-            await asyncio.sleep(0.5)
+        if not recommendations:
+            recommendations.append("✅ Systém běží optimálně")
 
-        # Calculate benchmark results
-        if metrics_history:
-            avg_cpu = sum(m["cpu_usage"] for m in metrics_history) / len(metrics_history)
-            avg_memory = sum(m["memory_usage_gb"] for m in metrics_history) / len(metrics_history)
-            max_temp = max((m["temperature"] for m in metrics_history if m["temperature"]), default=0)
+        return recommendations
 
-            benchmark_results = {
-                "duration_seconds": duration_seconds,
-                "average_cpu_usage": avg_cpu,
-                "average_memory_usage_gb": avg_memory,
-                "peak_temperature_celsius": max_temp,
-                "thermal_throttling_detected": max_temp > 85 if max_temp else False,
-                "stability_score": self._calculate_stability_score(metrics_history),
-                "device_rating": self._calculate_device_rating(avg_cpu, avg_memory, max_temp)
-            }
-        else:
-            benchmark_results = {"error": "No metrics collected"}
 
-        print(f"✅ Benchmark completed: stability={benchmark_results.get('stability_score', 0):.2f}")
-        return benchmark_results
+# Globální instance resource manageru
+_resource_manager: ResourceManager | None = None
 
-    def _calculate_stability_score(self, metrics_history: List[Dict]) -> float:
-        """Vypočítá skóre stability"""
-        if len(metrics_history) < 2:
-            return 0.0
 
-        cpu_values = [m["cpu_usage"] for m in metrics_history]
-        memory_values = [m["memory_usage_gb"] for m in metrics_history]
+def get_resource_manager() -> ResourceManager:
+    """Získání globální instance resource manageru"""
+    global _resource_manager
 
-        # Calculate coefficient of variation (stability measure)
-        import statistics
+    if _resource_manager is None:
+        _resource_manager = ResourceManager()
 
-        cpu_cv = statistics.stdev(cpu_values) / statistics.mean(cpu_values) if statistics.mean(cpu_values) > 0 else 1
-        memory_cv = statistics.stdev(memory_values) / statistics.mean(memory_values) if statistics.mean(memory_values) > 0 else 1
+    return _resource_manager
 
-        # Lower CV = higher stability
-        stability_score = max(0, 1 - (cpu_cv + memory_cv) / 2)
-        return stability_score
 
-    def _calculate_device_rating(self, avg_cpu: float, avg_memory: float, max_temp: float) -> str:
-        """Vypočítá celkové hodnocení zařízení"""
-        score = 0
+def reset_resource_manager():
+    """Reset globální instance (pro testování)"""
+    global _resource_manager
+    if _resource_manager:
+        _resource_manager.stop_monitoring()
+    _resource_manager = None
 
-        # CPU performance
-        if avg_cpu < 50:
-            score += 3
-        elif avg_cpu < 70:
-            score += 2
-        else:
-            score += 1
 
-        # Memory efficiency
-        if avg_memory < self.device_profile.total_memory_gb * 0.6:
-            score += 3
-        elif avg_memory < self.device_profile.total_memory_gb * 0.8:
-            score += 2
-        else:
-            score += 1
+# Convenience funkce
+def get_inference_params_for_priority(priority: str = "medium") -> InferenceParams:
+    """Rychlá funkce pro získání inference parametrů
+    
+    Args:
+        priority: Priorita úkolu (low, medium, high, critical)
+        
+    Returns:
+        Optimalizované inference parametry
 
-        # Thermal performance
-        if max_temp and max_temp < 70:
-            score += 3
-        elif max_temp and max_temp < 85:
-            score += 2
-        else:
-            score += 1
+    """
+    manager = get_resource_manager()
+    return manager.get_inference_params(priority)
 
-        # Rating scale
-        if score >= 8:
-            return "excellent"
-        elif score >= 6:
-            return "good"
-        elif score >= 4:
-            return "fair"
-        else:
-            return "poor"
+
+if __name__ == "__main__":
+    # Test functionality
+    import time
+
+    # Vytvoření resource manageru
+    rm = ResourceManager()
+
+    # Test různých priorit
+    priorities = ["low", "medium", "high", "critical"]
+
+    print("🧪 Test inference parametrů pro různé priority:\n")
+
+    for priority in priorities:
+        params = rm.get_inference_params(priority)
+        print(f"Priority: {priority}")
+        print(f"  Device: {params.device}")
+        print(f"  GPU layers: {params.n_gpu_layers}")
+        print(f"  Threads: {params.n_threads}")
+        print(f"  Batch size: {params.batch_size}")
+        print(f"  Use Metal: {params.use_metal}")
+        print()
+
+    # Počkej na několik monitoring cyklů
+    print("⏳ Čekám na monitoring data...")
+    time.sleep(12)
+
+    # Zobraz report
+    report = rm.get_resource_report()
+    print("📊 Resource Report:")
+    print(f"  Apple Silicon: {report['system_info']['is_apple_silicon']}")
+    print(f"  GPU allocations: {report['allocation_statistics']['gpu_usage_percent']:.1f}%")
+    print(f"  Memory available: {report['current_resources']['cpu']['memory_available_mb']:.0f}MB")
+
+    if report['current_resources']['gpu']:
+        print(f"  GPU utilization: {report['current_resources']['gpu']['utilization_percent']:.1f}%")
+
+    print("\n💡 Recommendations:")
+    for rec in report['optimization_recommendations']:
+        print(f"  {rec}")
+
+    # Cleanup
+    rm.stop_monitoring()

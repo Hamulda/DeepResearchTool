@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
-"""
-Contradiction Verification Engine
+"""Contradiction Verification Engine
 Advanced verification with conflict detection and evidence cross-checking
 
 Author: Senior IT Specialist
 """
 
-import asyncio
-import logging
-from typing import List, Dict, Any, Set, Tuple, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
-import json
+import logging
 import re
+from typing import Any
 
 
 @dataclass
 class ConflictEvidence:
     """Evidence that contradicts a claim"""
+
     source_id: str
     snippet: str
     reasoning: str
@@ -28,14 +26,15 @@ class ConflictEvidence:
 @dataclass
 class ClaimVerification:
     """Verification result for a single claim"""
+
     claim_id: str
     claim_text: str
     confidence_score: float
     is_disputed: bool
-    supporting_evidence: List[Dict[str, Any]]
-    conflicting_evidence: List[ConflictEvidence]
+    supporting_evidence: list[dict[str, Any]]
+    conflicting_evidence: list[ConflictEvidence]
     verification_method: str
-    cross_check_results: Dict[str, Any]
+    cross_check_results: dict[str, Any]
 
 
 class ContraQueryGenerator:
@@ -53,17 +52,17 @@ class ContraQueryGenerator:
             "alternative views on {claim}",
             "debunking {claim}",
             "false claims about {topic}",
-            "misconceptions about {topic}"
+            "misconceptions about {topic}",
         ]
 
         # Patterns to extract key topics from claims
         self.topic_patterns = [
             r"(\w+(?:\s+\w+){0,2})\s+(?:is|are|has|have|shows|demonstrates)",
             r"(?:the|a)\s+(\w+(?:\s+\w+){0,2})\s+(?:effect|impact|benefit|risk)",
-            r"(\w+(?:\s+\w+){0,2})\s+(?:increases|decreases|improves|reduces)"
+            r"(\w+(?:\s+\w+){0,2})\s+(?:increases|decreases|improves|reduces)",
         ]
 
-    def extract_key_topics(self, claim: str) -> List[str]:
+    def extract_key_topics(self, claim: str) -> list[str]:
         """Extract key topics from claim text"""
         topics = []
 
@@ -75,8 +74,17 @@ class ContraQueryGenerator:
         # Fallback: extract important nouns (simplified)
         words = claim.split()
         for word in words:
-            if (len(word) > 4 and
-                word.lower() not in ['that', 'this', 'with', 'from', 'they', 'were', 'been', 'have', 'said']):
+            if len(word) > 4 and word.lower() not in [
+                "that",
+                "this",
+                "with",
+                "from",
+                "they",
+                "were",
+                "been",
+                "have",
+                "said",
+            ]:
                 topics.append(word)
 
         # Remove duplicates and return top 3
@@ -85,7 +93,7 @@ class ContraQueryGenerator:
 
         return unique_topics
 
-    def generate_counter_queries(self, claim: str) -> List[str]:
+    def generate_counter_queries(self, claim: str) -> list[str]:
         """Generate queries to find contradictory evidence"""
         topics = self.extract_key_topics(claim)
         counter_queries = []
@@ -110,7 +118,7 @@ class ContraQueryGenerator:
                 f"evidence that {primary_topic} is ineffective",
                 f"studies showing {primary_topic} does not work",
                 f"research questioning {primary_topic}",
-                f"limitations of {primary_topic}"
+                f"limitations of {primary_topic}",
             ]
             counter_queries.extend(specific_queries)
 
@@ -127,9 +135,23 @@ class ConflictDetector:
 
         # Conflict indicators
         self.conflict_keywords = [
-            "however", "but", "although", "contrary", "opposite", "contradicts",
-            "refutes", "disproves", "challenges", "questions", "disputes",
-            "false", "incorrect", "wrong", "misleading", "myth", "debunked"
+            "however",
+            "but",
+            "although",
+            "contrary",
+            "opposite",
+            "contradicts",
+            "refutes",
+            "disproves",
+            "challenges",
+            "questions",
+            "disputes",
+            "false",
+            "incorrect",
+            "wrong",
+            "misleading",
+            "myth",
+            "debunked",
         ]
 
     def _check_lexical_conflicts(self, support_text: str, contra_text: str) -> float:
@@ -156,15 +178,16 @@ class ConflictDetector:
 
         return min(conflict_score, 1.0)
 
-    async def detect_conflict(self, claim: str, supporting_evidence: List[str],
-                            contradicting_evidence: List[str]) -> Tuple[bool, float, str]:
-        """
-        Detect if there's a conflict between supporting and contradicting evidence
+    async def detect_conflict(
+        self, claim: str, supporting_evidence: list[str], contradicting_evidence: list[str]
+    ) -> tuple[bool, float, str]:
+        """Detect if there's a conflict between supporting and contradicting evidence
 
         Returns:
             - is_conflict: Whether conflict was detected
             - confidence: Confidence in conflict detection (0-1)
             - reasoning: Explanation of the conflict
+
         """
         if not contradicting_evidence:
             return False, 0.0, "No contradicting evidence found"
@@ -179,14 +202,17 @@ class ConflictDetector:
 
                 if lexical_score > max_conflict_score:
                     max_conflict_score = lexical_score
-                    conflict_reasoning = f"Potential conflict detected between supporting and contradicting evidence"
+                    conflict_reasoning = (
+                        "Potential conflict detected between supporting and contradicting evidence"
+                    )
 
         # Use LLM for deeper conflict analysis if available
         if self.llm_client and max_conflict_score > 0.3:
             try:
                 llm_conflict_score, llm_reasoning = await self._llm_conflict_analysis(
-                    claim, supporting_evidence[0] if supporting_evidence else "",
-                    contradicting_evidence[0]
+                    claim,
+                    supporting_evidence[0] if supporting_evidence else "",
+                    contradicting_evidence[0],
                 )
 
                 # Combine lexical and LLM scores
@@ -201,7 +227,9 @@ class ConflictDetector:
         is_conflict = max_conflict_score > 0.4
         return is_conflict, max_conflict_score, conflict_reasoning
 
-    async def _llm_conflict_analysis(self, claim: str, support: str, contra: str) -> Tuple[float, str]:
+    async def _llm_conflict_analysis(
+        self, claim: str, support: str, contra: str
+    ) -> tuple[float, str]:
         """Use LLM to analyze potential conflicts"""
         prompt = f"""Analyze if there is a contradiction between the following:
 
@@ -225,7 +253,9 @@ REASONING: Brief explanation"""
             reasoning_match = re.search(r"REASONING:\s*(.+)", response, re.DOTALL)
 
             score = float(score_match.group(1)) if score_match else 0.5
-            reasoning = reasoning_match.group(1).strip() if reasoning_match else "LLM analysis completed"
+            reasoning = (
+                reasoning_match.group(1).strip() if reasoning_match else "LLM analysis completed"
+            )
 
             return score, reasoning
 
@@ -237,7 +267,7 @@ REASONING: Brief explanation"""
 class ContradictionVerifier:
     """Main contradiction verification engine"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
 
@@ -253,9 +283,8 @@ class ContradictionVerifier:
         # State
         self.verification_cache = {}
 
-    async def verify_claim(self, claim: Dict[str, Any], retriever=None) -> ClaimVerification:
-        """
-        Comprehensive verification of a single claim with contradiction checking
+    async def verify_claim(self, claim: dict[str, Any], retriever=None) -> ClaimVerification:
+        """Comprehensive verification of a single claim with contradiction checking
 
         Args:
             claim: Claim object with text and supporting evidence
@@ -263,6 +292,7 @@ class ContradictionVerifier:
 
         Returns:
             ClaimVerification object with detailed results
+
         """
         claim_id = claim.get("id", f"claim_{hash(claim['text'])}")
         claim_text = claim["text"]
@@ -271,9 +301,7 @@ class ContradictionVerifier:
         self.logger.info(f"Verifying claim: {claim_text[:100]}...")
 
         # Extract supporting evidence text
-        support_texts = [
-            ev.get("snippet", "") for ev in supporting_evidence
-        ]
+        support_texts = [ev.get("snippet", "") for ev in supporting_evidence]
 
         # Generate counter-queries
         counter_queries = self.query_generator.generate_counter_queries(claim_text)
@@ -281,7 +309,7 @@ class ContradictionVerifier:
         # Search for contradicting evidence
         conflicting_evidence = []
         if retriever:
-            for query in counter_queries[:self.max_counter_queries]:
+            for query in counter_queries[: self.max_counter_queries]:
                 try:
                     contra_results = await retriever.retrieve(query, top_k=3)
 
@@ -290,7 +318,7 @@ class ContradictionVerifier:
                             source_id=result.get("doc_id", "unknown"),
                             snippet=result.get("content", "")[:500],
                             reasoning=f"Found via counter-query: '{query}'",
-                            confidence=result.get("score", 0.5)
+                            confidence=result.get("score", 0.5),
                         )
                         conflicting_evidence.append(conflict_ev)
 
@@ -299,8 +327,8 @@ class ContradictionVerifier:
 
         # Detect conflicts
         contra_texts = [ce.snippet for ce in conflicting_evidence]
-        is_conflict, conflict_confidence, conflict_reasoning = await self.conflict_detector.detect_conflict(
-            claim_text, support_texts, contra_texts
+        is_conflict, conflict_confidence, conflict_reasoning = (
+            await self.conflict_detector.detect_conflict(claim_text, support_texts, contra_texts)
         )
 
         # Calculate overall confidence score
@@ -314,11 +342,7 @@ class ContradictionVerifier:
             final_confidence = base_confidence
 
         # Determine if claim is disputed
-        is_disputed = (
-            is_conflict and
-            conflict_confidence > 0.5 and
-            len(conflicting_evidence) >= 2
-        )
+        is_disputed = is_conflict and conflict_confidence > 0.5 and len(conflicting_evidence) >= 2
 
         # Cross-check results
         cross_check = {
@@ -326,7 +350,7 @@ class ContradictionVerifier:
             "contradicting_sources_found": len(conflicting_evidence),
             "conflict_detected": is_conflict,
             "conflict_confidence": conflict_confidence,
-            "conflict_reasoning": conflict_reasoning
+            "conflict_reasoning": conflict_reasoning,
         }
 
         verification = ClaimVerification(
@@ -337,18 +361,18 @@ class ContradictionVerifier:
             supporting_evidence=supporting_evidence,
             conflicting_evidence=conflicting_evidence,
             verification_method="contradiction_verification",
-            cross_check_results=cross_check
+            cross_check_results=cross_check,
         )
 
         # Log results
-        self.logger.info(f"Claim verification complete:")
+        self.logger.info("Claim verification complete:")
         self.logger.info(f"  Confidence: {final_confidence:.3f}")
         self.logger.info(f"  Disputed: {is_disputed}")
         self.logger.info(f"  Conflicts found: {len(conflicting_evidence)}")
 
         return verification
 
-    def _calculate_base_confidence(self, supporting_evidence: List[Dict[str, Any]]) -> float:
+    def _calculate_base_confidence(self, supporting_evidence: list[dict[str, Any]]) -> float:
         """Calculate base confidence from supporting evidence quality"""
         if not supporting_evidence:
             return 0.1
@@ -379,11 +403,13 @@ class ContradictionVerifier:
 
         # Combine factors
         evidence_factor = min(evidence_count / 3.0, 1.0)  # Max at 3 pieces of evidence
-        base_confidence = (evidence_factor * 0.4 + source_diversity * 0.3 + avg_quality * 0.3)
+        base_confidence = evidence_factor * 0.4 + source_diversity * 0.3 + avg_quality * 0.3
 
         return max(0.1, min(base_confidence, 0.9))
 
-    async def verify_claims_batch(self, claims: List[Dict[str, Any]], retriever=None) -> List[ClaimVerification]:
+    async def verify_claims_batch(
+        self, claims: list[dict[str, Any]], retriever=None
+    ) -> list[ClaimVerification]:
         """Verify multiple claims with contradiction checking"""
         self.logger.info(f"Starting batch verification of {len(claims)} claims")
 
@@ -410,6 +436,6 @@ class ContradictionVerifier:
         return verifications
 
 
-def create_contradiction_verifier(config: Dict[str, Any]) -> ContradictionVerifier:
+def create_contradiction_verifier(config: dict[str, Any]) -> ContradictionVerifier:
     """Factory function for contradiction verifier"""
     return ContradictionVerifier(config)

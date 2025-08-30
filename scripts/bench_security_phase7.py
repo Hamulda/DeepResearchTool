@@ -10,9 +10,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any
 
-from src.security.security_integration import (
-    SecurityConfig, create_security_orchestrator
-)
+from src.security.security_integration import SecurityConfig, create_security_orchestrator
 from src.security.robots_compliance import DomainPolicy
 from src.security.rate_limiting import RateLimitConfig
 from src.security.security_policies import SecurityRule, PolicyType, PolicySeverity, PolicyAction
@@ -41,7 +39,7 @@ class SecurityBenchmark:
             enable_rate_limiting=True,
             enable_policy_enforcement=True,
             enable_pii_protection=True,
-            enable_secrets_management=True
+            enable_secrets_management=True,
         )
 
         self.orchestrator = create_security_orchestrator(config)
@@ -73,7 +71,7 @@ class SecurityBenchmark:
             "component": "robots_compliance",
             "tests": [],
             "performance": {},
-            "compliance_features": []
+            "compliance_features": [],
         }
 
         # Test URLs
@@ -81,7 +79,7 @@ class SecurityBenchmark:
             "https://wikipedia.org/wiki/Test",
             "https://github.com/user/repo",
             "https://example.com/api/data",
-            "https://malware-site.com/payload"
+            "https://malware-site.com/payload",
         ]
 
         # Configure domain policies
@@ -90,13 +88,9 @@ class SecurityBenchmark:
                 domain="wikipedia.org",
                 allowed=True,
                 max_requests_per_minute=60,
-                respect_robots=True
+                respect_robots=True,
             ),
-            DomainPolicy(
-                domain="malware-site.com",
-                allowed=False,
-                respect_robots=True
-            )
+            DomainPolicy(domain="malware-site.com", allowed=False, respect_robots=True),
         ]
 
         await self.orchestrator.configure_domain_policies(policies)
@@ -118,23 +112,19 @@ class SecurityBenchmark:
                         "reason": reason,
                         "crawl_delay": crawl_delay,
                         "processing_time_ms": (time.time() - test_start) * 1000,
-                        "success": True
+                        "success": True,
                     }
                 else:
                     test_result = {
                         "url": url,
                         "success": False,
-                        "error": "Robots engine not available"
+                        "error": "Robots engine not available",
                     }
 
                 results["tests"].append(test_result)
 
             except Exception as e:
-                results["tests"].append({
-                    "url": url,
-                    "success": False,
-                    "error": str(e)
-                })
+                results["tests"].append({"url": url, "success": False, "error": str(e)})
 
         # Performance metrics
         total_time = time.time() - start_time
@@ -142,7 +132,7 @@ class SecurityBenchmark:
             "total_time_s": total_time,
             "urls_processed": len(test_urls),
             "avg_time_per_url_ms": (total_time / len(test_urls)) * 1000,
-            "throughput_urls_per_second": len(test_urls) / total_time
+            "throughput_urls_per_second": len(test_urls) / total_time,
         }
 
         # Compliance features
@@ -151,14 +141,16 @@ class SecurityBenchmark:
             "domain-specific policies",
             "crawl delay enforcement",
             "allow/deny lists",
-            "fallback strategies"
+            "fallback strategies",
         ]
 
         # Statistics
         if self.orchestrator.robots_engine:
             results["stats"] = self.orchestrator.robots_engine.get_compliance_stats()
 
-        print(f"✅ Robots compliance: {len([t for t in results['tests'] if t.get('success')])} / {len(test_urls)} tests passed")
+        print(
+            f"✅ Robots compliance: {len([t for t in results['tests'] if t.get('success')])} / {len(test_urls)} tests passed"
+        )
 
         return results
 
@@ -171,21 +163,13 @@ class SecurityBenchmark:
             "component": "rate_limiting",
             "tests": [],
             "performance": {},
-            "rate_limiting_features": []
+            "rate_limiting_features": [],
         }
 
         # Configure rate limits
         rate_configs = [
-            RateLimitConfig(
-                domain="example.com",
-                requests_per_minute=10,
-                burst_allowance=3
-            ),
-            RateLimitConfig(
-                domain="fast-api.com",
-                requests_per_minute=60,
-                burst_allowance=10
-            )
+            RateLimitConfig(domain="example.com", requests_per_minute=10, burst_allowance=3),
+            RateLimitConfig(domain="fast-api.com", requests_per_minute=60, burst_allowance=10),
         ]
 
         await self.orchestrator.configure_rate_limits(rate_configs)
@@ -207,7 +191,7 @@ class SecurityBenchmark:
                         "wait_time": rate_result.wait_time,
                         "reason": rate_result.reason,
                         "processing_time_ms": (time.time() - test_start) * 1000,
-                        "success": True
+                        "success": True,
                     }
 
                     # Simulate success/failure for backoff testing
@@ -220,7 +204,7 @@ class SecurityBenchmark:
                     test_result = {
                         "request_number": i + 1,
                         "success": False,
-                        "error": "Rate limiter not available"
+                        "error": "Rate limiter not available",
                     }
 
                 results["tests"].append(test_result)
@@ -229,11 +213,9 @@ class SecurityBenchmark:
                 await asyncio.sleep(0.1)
 
             except Exception as e:
-                results["tests"].append({
-                    "request_number": i + 1,
-                    "success": False,
-                    "error": str(e)
-                })
+                results["tests"].append(
+                    {"request_number": i + 1, "success": False, "error": str(e)}
+                )
 
         # Performance metrics
         total_time = time.time() - start_time
@@ -246,7 +228,8 @@ class SecurityBenchmark:
             "successful_checks": len(successful_tests),
             "blocked_requests": len(blocked_requests),
             "blocking_rate": len(blocked_requests) / max(len(successful_tests), 1),
-            "avg_processing_time_ms": sum(t.get("processing_time_ms", 0) for t in successful_tests) / max(len(successful_tests), 1)
+            "avg_processing_time_ms": sum(t.get("processing_time_ms", 0) for t in successful_tests)
+            / max(len(successful_tests), 1),
         }
 
         # Rate limiting features
@@ -256,7 +239,7 @@ class SecurityBenchmark:
             "exponential backoff",
             "burst allowance",
             "automatic cleanup",
-            "success/failure tracking"
+            "success/failure tracking",
         ]
 
         # Statistics
@@ -264,7 +247,9 @@ class SecurityBenchmark:
             results["stats"] = self.orchestrator.rate_limiter.get_global_stats()
             results["domain_stats"] = self.orchestrator.rate_limiter.get_domain_stats("example.com")
 
-        print(f"✅ Rate limiting: {len(successful_tests)} tests completed, {len(blocked_requests)} requests blocked")
+        print(
+            f"✅ Rate limiting: {len(successful_tests)} tests completed, {len(blocked_requests)} requests blocked"
+        )
 
         return results
 
@@ -277,7 +262,7 @@ class SecurityBenchmark:
             "component": "pii_protection",
             "tests": [],
             "performance": {},
-            "pii_features": []
+            "pii_features": [],
         }
 
         # Test texts with various PII types
@@ -287,7 +272,7 @@ class SecurityBenchmark:
             "IP: 192.168.1.1, MAC: 00:1B:44:11:3A:B7",
             "Czech phone: +420 123 456 789, Birth number: 123456/7890",
             "IBAN: GB29 NWBK 6016 1331 9268 19",
-            "No PII in this text, just regular content"
+            "No PII in this text, just regular content",
         ]
 
         # Test each text
@@ -311,23 +296,19 @@ class SecurityBenchmark:
                         "confidence_scores": [m.confidence for m in redaction_result.matches],
                         "processing_time_ms": (time.time() - test_start) * 1000,
                         "redaction_stats": stats,
-                        "success": True
+                        "success": True,
                     }
                 else:
                     test_result = {
                         "test_number": i + 1,
                         "success": False,
-                        "error": "PII redactor not available"
+                        "error": "PII redactor not available",
                     }
 
                 results["tests"].append(test_result)
 
             except Exception as e:
-                results["tests"].append({
-                    "test_number": i + 1,
-                    "success": False,
-                    "error": str(e)
-                })
+                results["tests"].append({"test_number": i + 1, "success": False, "error": str(e)})
 
         # Performance metrics
         total_time = time.time() - start_time
@@ -339,8 +320,9 @@ class SecurityBenchmark:
             "texts_processed": len(test_texts),
             "successful_tests": len(successful_tests),
             "total_pii_instances": total_pii_found,
-            "avg_processing_time_ms": sum(t.get("processing_time_ms", 0) for t in successful_tests) / max(len(successful_tests), 1),
-            "pii_detection_rate": total_pii_found / len(test_texts)
+            "avg_processing_time_ms": sum(t.get("processing_time_ms", 0) for t in successful_tests)
+            / max(len(successful_tests), 1),
+            "pii_detection_rate": total_pii_found / len(test_texts),
         }
 
         # PII protection features
@@ -351,10 +333,12 @@ class SecurityBenchmark:
             "JSON structure redaction",
             "compliance logging",
             "configurable validation patterns",
-            "Czech-specific patterns"
+            "Czech-specific patterns",
         ]
 
-        print(f"✅ PII protection: {len(successful_tests)} texts processed, {total_pii_found} PII instances found")
+        print(
+            f"✅ PII protection: {len(successful_tests)} texts processed, {total_pii_found} PII instances found"
+        )
 
         return results
 
@@ -367,7 +351,7 @@ class SecurityBenchmark:
             "component": "security_policies",
             "tests": [],
             "performance": {},
-            "policy_features": []
+            "policy_features": [],
         }
 
         # Add custom security rule
@@ -378,41 +362,33 @@ class SecurityBenchmark:
             policy_type=PolicyType.SIZE_LIMITS,
             severity=PolicySeverity.MEDIUM,
             action=PolicyAction.WARN,
-            conditions={"max_content_size_mb": 1}
+            conditions={"max_content_size_mb": 1},
         )
 
         self.orchestrator.add_security_rule(custom_rule)
 
         # Test URLs
         test_cases = [
-            {
-                "type": "url",
-                "data": "https://wikipedia.org/safe-page",
-                "expected": "allowed"
-            },
-            {
-                "type": "url",
-                "data": "https://malware-site.com/payload",
-                "expected": "blocked"
-            },
+            {"type": "url", "data": "https://wikipedia.org/safe-page", "expected": "allowed"},
+            {"type": "url", "data": "https://malware-site.com/payload", "expected": "blocked"},
             {
                 "type": "content",
                 "data": "Safe content without issues",
                 "metadata": {"file_type": ".txt"},
-                "expected": "allowed"
+                "expected": "allowed",
             },
             {
                 "type": "content",
                 "data": "Content with SSN: 123-45-6789 and email: test@example.com",
                 "metadata": {"file_type": ".txt"},
-                "expected": "pii_detected"
+                "expected": "pii_detected",
             },
             {
                 "type": "content",
                 "data": "X" * (2 * 1024 * 1024),  # 2MB content
                 "metadata": {"file_type": ".txt"},
-                "expected": "size_violation"
-            }
+                "expected": "size_violation",
+            },
         ]
 
         # Test each case
@@ -424,8 +400,7 @@ class SecurityBenchmark:
                     result = await self.orchestrator.check_url_security(test_case["data"])
                 else:
                     result = await self.orchestrator.check_content_security(
-                        test_case["data"],
-                        test_case.get("metadata")
+                        test_case["data"], test_case.get("metadata")
                     )
 
                 test_result = {
@@ -437,18 +412,20 @@ class SecurityBenchmark:
                     "warnings": len(result.warnings),
                     "confidence": result.overall_confidence,
                     "processing_time_ms": result.processing_time_ms,
-                    "success": True
+                    "success": True,
                 }
 
                 results["tests"].append(test_result)
 
             except Exception as e:
-                results["tests"].append({
-                    "test_number": i + 1,
-                    "test_type": test_case["type"],
-                    "success": False,
-                    "error": str(e)
-                })
+                results["tests"].append(
+                    {
+                        "test_number": i + 1,
+                        "test_type": test_case["type"],
+                        "success": False,
+                        "error": str(e),
+                    }
+                )
 
         # Performance metrics
         total_time = time.time() - start_time
@@ -460,8 +437,10 @@ class SecurityBenchmark:
             "test_cases_processed": len(test_cases),
             "successful_tests": len(successful_tests),
             "blocked_tests": len(blocked_tests),
-            "avg_processing_time_ms": sum(t.get("processing_time_ms", 0) for t in successful_tests) / max(len(successful_tests), 1),
-            "avg_confidence": sum(t.get("confidence", 0) for t in successful_tests) / max(len(successful_tests), 1)
+            "avg_processing_time_ms": sum(t.get("processing_time_ms", 0) for t in successful_tests)
+            / max(len(successful_tests), 1),
+            "avg_confidence": sum(t.get("confidence", 0) for t in successful_tests)
+            / max(len(successful_tests), 1),
         }
 
         # Policy features
@@ -473,14 +452,16 @@ class SecurityBenchmark:
             "file type validation",
             "content size limits",
             "PII protection integration",
-            "confidence scoring"
+            "confidence scoring",
         ]
 
         # Statistics
         if self.orchestrator.policy_engine:
             results["stats"] = self.orchestrator.policy_engine.get_policy_stats()
 
-        print(f"✅ Security policies: {len(successful_tests)} tests completed, {len(blocked_tests)} violations detected")
+        print(
+            f"✅ Security policies: {len(successful_tests)} tests completed, {len(blocked_tests)} violations detected"
+        )
 
         return results
 
@@ -493,14 +474,14 @@ class SecurityBenchmark:
             "component": "secrets_management",
             "tests": [],
             "performance": {},
-            "secrets_features": []
+            "secrets_features": [],
         }
 
         # Test secret operations
         test_secrets = [
             ("test_api_key", "sk-1234567890abcdef"),
             ("test_password", "secure_password_123"),
-            ("test_token", "jwt_token_xyz789")
+            ("test_token", "jwt_token_xyz789"),
         ]
 
         # Test setting and getting secrets
@@ -522,29 +503,20 @@ class SecurityBenchmark:
                     "retrieval_success": retrieved_value == secret_value,
                     "value_matches": retrieved_value == secret_value,
                     "processing_time_ms": (time.time() - test_start) * 1000,
-                    "success": set_success and (retrieved_value == secret_value)
+                    "success": set_success and (retrieved_value == secret_value),
                 }
 
                 results["tests"].append(test_result)
 
             except Exception as e:
-                results["tests"].append({
-                    "secret_name": secret_name,
-                    "success": False,
-                    "error": str(e)
-                })
+                results["tests"].append(
+                    {"secret_name": secret_name, "success": False, "error": str(e)}
+                )
 
         # Test config scanning
         test_config = {
-            "database": {
-                "host": "localhost",
-                "password": "secret123",
-                "api_key": "sensitive_key"
-            },
-            "features": {
-                "enabled": True,
-                "webhook_secret": "webhook123"
-            }
+            "database": {"host": "localhost", "password": "secret123", "api_key": "sensitive_key"},
+            "features": {"enabled": True, "webhook_secret": "webhook123"},
         }
 
         if self.orchestrator.secrets_manager:
@@ -559,7 +531,7 @@ class SecurityBenchmark:
                 "secrets_found": len(found_secrets),
                 "secrets_list": found_secrets,
                 "sanitization_applied": "password" not in str(sanitized_config),
-                "success": True
+                "success": True,
             }
 
             results["tests"].append(config_test)
@@ -572,7 +544,12 @@ class SecurityBenchmark:
             "total_time_s": total_time,
             "secrets_tested": len(test_secrets),
             "successful_operations": len(successful_tests),
-            "avg_processing_time_ms": sum(t.get("processing_time_ms", 0) for t in successful_tests if "processing_time_ms" in t) / max(len([t for t in successful_tests if "processing_time_ms" in t]), 1)
+            "avg_processing_time_ms": sum(
+                t.get("processing_time_ms", 0)
+                for t in successful_tests
+                if "processing_time_ms" in t
+            )
+            / max(len([t for t in successful_tests if "processing_time_ms" in t]), 1),
         }
 
         # Secrets management features
@@ -584,7 +561,7 @@ class SecurityBenchmark:
             "config scanning and sanitization",
             "secret rotation",
             "multiple source support",
-            "automatic cleanup"
+            "automatic cleanup",
         ]
 
         # Statistics
@@ -604,7 +581,7 @@ class SecurityBenchmark:
             "component": "integration",
             "tests": [],
             "performance": {},
-            "integration_features": []
+            "integration_features": [],
         }
 
         # Test complete workflow
@@ -613,20 +590,20 @@ class SecurityBenchmark:
                 "name": "safe_research_workflow",
                 "url": "https://wikipedia.org/research-page",
                 "content": "This is safe research content about science.",
-                "expected_outcome": "allowed"
+                "expected_outcome": "allowed",
             },
             {
                 "name": "pii_content_workflow",
                 "url": "https://example.com/user-data",
                 "content": "User data: john.doe@example.com, phone: +1-555-123-4567",
-                "expected_outcome": "pii_redaction_required"
+                "expected_outcome": "pii_redaction_required",
             },
             {
                 "name": "malicious_site_workflow",
                 "url": "https://malware-site.com/payload",
                 "content": "Potentially malicious content",
-                "expected_outcome": "blocked"
-            }
+                "expected_outcome": "blocked",
+            },
         ]
 
         # Test each scenario
@@ -653,21 +630,21 @@ class SecurityBenchmark:
                     "content_allowed": content_result.allowed,
                     "rate_limit_passed": rate_limit_allowed,
                     "pii_redacted": len(redacted_content) != len(scenario["content"]),
-                    "overall_allowed": url_result.allowed and content_result.allowed and rate_limit_allowed,
+                    "overall_allowed": url_result.allowed
+                    and content_result.allowed
+                    and rate_limit_allowed,
                     "total_violations": len(url_result.violations) + len(content_result.violations),
                     "total_warnings": len(url_result.warnings) + len(content_result.warnings),
                     "processing_time_ms": (time.time() - test_start) * 1000,
-                    "success": True
+                    "success": True,
                 }
 
                 results["tests"].append(test_result)
 
             except Exception as e:
-                results["tests"].append({
-                    "scenario": scenario["name"],
-                    "success": False,
-                    "error": str(e)
-                })
+                results["tests"].append(
+                    {"scenario": scenario["name"], "success": False, "error": str(e)}
+                )
 
         # Performance metrics
         total_time = time.time() - start_time
@@ -677,9 +654,10 @@ class SecurityBenchmark:
             "total_time_s": total_time,
             "scenarios_tested": len(test_scenarios),
             "successful_tests": len(successful_tests),
-            "avg_processing_time_ms": sum(t.get("processing_time_ms", 0) for t in successful_tests) / max(len(successful_tests), 1),
+            "avg_processing_time_ms": sum(t.get("processing_time_ms", 0) for t in successful_tests)
+            / max(len(successful_tests), 1),
             "total_violations": sum(t.get("total_violations", 0) for t in successful_tests),
-            "total_warnings": sum(t.get("total_warnings", 0) for t in successful_tests)
+            "total_warnings": sum(t.get("total_warnings", 0) for t in successful_tests),
         }
 
         # Integration features
@@ -691,7 +669,7 @@ class SecurityBenchmark:
             "graceful error handling",
             "configurable components",
             "real-time monitoring",
-            "compliance dashboard"
+            "compliance dashboard",
         ]
 
         # Get overall security dashboard
@@ -710,7 +688,7 @@ class SecurityBenchmark:
             "component_scores": {},
             "performance_overview": {},
             "compliance_status": {},
-            "recommendations": []
+            "recommendations": [],
         }
 
         # Analyze each component
@@ -719,7 +697,9 @@ class SecurityBenchmark:
                 continue
 
             if isinstance(component_results, dict) and "tests" in component_results:
-                successful_tests = [t for t in component_results["tests"] if t.get("success", False)]
+                successful_tests = [
+                    t for t in component_results["tests"] if t.get("success", False)
+                ]
                 total_tests = len(component_results["tests"])
 
                 success_rate = len(successful_tests) / max(total_tests, 1)
@@ -727,7 +707,11 @@ class SecurityBenchmark:
                     "success_rate": success_rate,
                     "tests_passed": len(successful_tests),
                     "total_tests": total_tests,
-                    "status": "✅ PASSED" if success_rate >= 0.8 else "⚠️  PARTIAL" if success_rate >= 0.5 else "❌ FAILED"
+                    "status": (
+                        "✅ PASSED"
+                        if success_rate >= 0.8
+                        else "⚠️  PARTIAL" if success_rate >= 0.5 else "❌ FAILED"
+                    ),
                 }
 
                 if success_rate < 0.8:
@@ -737,8 +721,12 @@ class SecurityBenchmark:
                 if "performance" in component_results:
                     perf = component_results["performance"]
                     summary["performance_overview"][component_name] = {
-                        "avg_time_ms": perf.get("avg_processing_time_ms", perf.get("avg_time_per_url_ms", 0)),
-                        "throughput": perf.get("throughput_urls_per_second", perf.get("requests_processed", 0))
+                        "avg_time_ms": perf.get(
+                            "avg_processing_time_ms", perf.get("avg_time_per_url_ms", 0)
+                        ),
+                        "throughput": perf.get(
+                            "throughput_urls_per_second", perf.get("requests_processed", 0)
+                        ),
                     }
 
         # Compliance status
@@ -749,7 +737,7 @@ class SecurityBenchmark:
             "security_policies": "✅ IMPLEMENTED",
             "secrets_management": "✅ IMPLEMENTED",
             "gdpr_compliance": "✅ READY",
-            "audit_logging": "✅ ACTIVE"
+            "audit_logging": "✅ ACTIVE",
         }
 
         # Recommendations
@@ -758,7 +746,7 @@ class SecurityBenchmark:
             "Monitorujte performance metrics pro optimalizaci",
             "Proveďte penetration testing pro validaci bezpečnosti",
             "Implementujte automated secret rotation",
-            "Rozšiřte PII detection o další jazyky podle potřeby"
+            "Rozšiřte PII detection o další jazyky podle potřeby",
         ]
 
         return summary
@@ -769,7 +757,7 @@ class SecurityBenchmark:
             output_file = Path("security_benchmark_results.json")
 
         try:
-            with open(output_file, 'w', encoding='utf-8') as f:
+            with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(self.results, f, indent=2, ensure_ascii=False, default=str)
 
             print(f"\n📊 Benchmark results saved to: {output_file}")
@@ -783,8 +771,7 @@ async def main():
 
     # Setup logging
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     benchmark = SecurityBenchmark()
@@ -800,12 +787,16 @@ async def main():
 
         summary = results["summary"]
 
-        print(f"\n📊 Overall Status: {'✅ SUCCESS' if summary['overall_success'] else '⚠️  NEEDS ATTENTION'}")
+        print(
+            f"\n📊 Overall Status: {'✅ SUCCESS' if summary['overall_success'] else '⚠️  NEEDS ATTENTION'}"
+        )
         print(f"📈 Components Tested: {summary['total_components_tested']}")
 
         print("\n🏆 Component Scores:")
         for component, score in summary["component_scores"].items():
-            print(f"  {component:20s}: {score['status']} ({score['tests_passed']}/{score['total_tests']})")
+            print(
+                f"  {component:20s}: {score['status']} ({score['tests_passed']}/{score['total_tests']})"
+            )
 
         print("\n⚡ Performance Overview:")
         for component, perf in summary["performance_overview"].items():

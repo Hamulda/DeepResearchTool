@@ -1,36 +1,34 @@
 #!/usr/bin/env python3
-"""
-Wayback Machine Scraper for Deep Research Tool
+"""Wayback Machine Scraper for Deep Research Tool
 Advanced Internet Archive integration for historical web research
 
 Author: Advanced IT Specialist
 """
 
 import asyncio
+from datetime import datetime
 import logging
-import time
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
-import requests
-import aiohttp
-from waybackpy import WaybackMachine
-from bs4 import BeautifulSoup
 import re
-from urllib.parse import urljoin, urlparse
+from typing import Any
+
+import aiohttp
+from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
+from waybackpy import WaybackMachine
 
 logger = logging.getLogger(__name__)
+
 
 class WaybackMachineScraper:
     """Advanced scraper for Internet Archive Wayback Machine"""
 
     def __init__(self, rate_limit: float = 1.0, max_snapshots: int = 10):
-        """
-        Initialize Wayback Machine scraper
+        """Initialize Wayback Machine scraper
 
         Args:
             rate_limit: Requests per second limit
             max_snapshots: Maximum snapshots to retrieve per URL
+
         """
         self.rate_limit = rate_limit
         self.max_snapshots = max_snapshots
@@ -42,9 +40,10 @@ class WaybackMachineScraper:
         self.cdx_api = "http://web.archive.org/cdx/search/cdx"
         self.wayback_api = "http://archive.org/wayback/available"
 
-    async def search_async(self, topic: str, time_range: Optional[Tuple[datetime, datetime]] = None) -> List[Dict[str, Any]]:
-        """
-        Asynchronous search for historical web content
+    async def search_async(
+        self, topic: str, time_range: tuple[datetime, datetime] | None = None
+    ) -> list[dict[str, Any]]:
+        """Asynchronous search for historical web content
 
         Args:
             topic: Search topic
@@ -52,6 +51,7 @@ class WaybackMachineScraper:
 
         Returns:
             List of historical documents
+
         """
         results = []
 
@@ -64,7 +64,7 @@ class WaybackMachineScraper:
             for url in search_urls:
                 try:
                     snapshots = await self._get_url_snapshots(url, time_range)
-                    for snapshot in snapshots[:self.max_snapshots]:
+                    for snapshot in snapshots[: self.max_snapshots]:
                         content = await self._fetch_snapshot_content(snapshot)
                         if content:
                             results.append(content)
@@ -79,9 +79,10 @@ class WaybackMachineScraper:
         logger.info(f"Wayback Machine search found {len(results)} historical documents")
         return results
 
-    def search(self, topic: str, time_range: Optional[Tuple[datetime, datetime]] = None) -> List[Dict[str, Any]]:
-        """
-        Synchronous search method for compatibility
+    def search(
+        self, topic: str, time_range: tuple[datetime, datetime] | None = None
+    ) -> list[dict[str, Any]]:
+        """Synchronous search method for compatibility
 
         Args:
             topic: Search topic
@@ -89,47 +90,59 @@ class WaybackMachineScraper:
 
         Returns:
             List of historical documents
+
         """
         return asyncio.run(self.search_async(topic, time_range))
 
-    def _generate_search_urls(self, topic: str) -> List[str]:
+    def _generate_search_urls(self, topic: str) -> list[str]:
         """Generate potential URLs to search in Wayback Machine"""
         # Common domains that might have historical content about the topic
         domains = [
-            "cnn.com", "bbc.com", "nytimes.com", "washingtonpost.com",
-            "reuters.com", "ap.org", "npr.org", "time.com",
-            "newsweek.com", "guardian.co.uk", "independent.co.uk",
-            "wikipedia.org", "britannica.com"
+            "cnn.com",
+            "bbc.com",
+            "nytimes.com",
+            "washingtonpost.com",
+            "reuters.com",
+            "ap.org",
+            "npr.org",
+            "time.com",
+            "newsweek.com",
+            "guardian.co.uk",
+            "independent.co.uk",
+            "wikipedia.org",
+            "britannica.com",
         ]
 
         urls = []
-        topic_slug = re.sub(r'[^a-zA-Z0-9\-]', '-', topic.lower()).strip('-')
+        topic_slug = re.sub(r"[^a-zA-Z0-9\-]", "-", topic.lower()).strip("-")
 
         for domain in domains:
             # Different URL patterns to try
             patterns = [
                 f"https://{domain}/*{topic_slug}*",
-                f"https://{domain}/*/search?q={topic.replace(' ', '+')}"
+                f"https://{domain}/*/search?q={topic.replace(' ', '+')}",
             ]
             urls.extend(patterns)
 
         return urls[:20]  # Limit to prevent excessive requests
 
-    async def _get_url_snapshots(self, url_pattern: str, time_range: Optional[Tuple[datetime, datetime]]) -> List[Dict[str, Any]]:
+    async def _get_url_snapshots(
+        self, url_pattern: str, time_range: tuple[datetime, datetime] | None
+    ) -> list[dict[str, Any]]:
         """Get snapshots for a URL pattern from CDX API"""
         params = {
-            'url': url_pattern,
-            'output': 'json',
-            'limit': self.max_snapshots,
-            'filter': 'statuscode:200'
+            "url": url_pattern,
+            "output": "json",
+            "limit": self.max_snapshots,
+            "filter": "statuscode:200",
         }
 
         # Add time range filters if provided
         if time_range:
-            start_date = time_range[0].strftime('%Y%m%d')
-            end_date = time_range[1].strftime('%Y%m%d')
-            params['from'] = start_date
-            params['to'] = end_date
+            start_date = time_range[0].strftime("%Y%m%d")
+            end_date = time_range[1].strftime("%Y%m%d")
+            params["from"] = start_date
+            params["to"] = end_date
 
         try:
             async with self.session.get(self.cdx_api, params=params) as response:
@@ -141,15 +154,17 @@ class WaybackMachineScraper:
                     if data and len(data) > 1:  # First row is headers
                         headers = data[0]
                         for row in data[1:]:
-                            snapshot = dict(zip(headers, row))
-                            snapshots.append({
-                                'timestamp': snapshot.get('timestamp'),
-                                'original_url': snapshot.get('original'),
-                                'wayback_url': f"http://web.archive.org/web/{snapshot.get('timestamp')}/{snapshot.get('original')}",
-                                'status_code': snapshot.get('statuscode'),
-                                'mime_type': snapshot.get('mimetype'),
-                                'length': snapshot.get('length')
-                            })
+                            snapshot = dict(zip(headers, row, strict=False))
+                            snapshots.append(
+                                {
+                                    "timestamp": snapshot.get("timestamp"),
+                                    "original_url": snapshot.get("original"),
+                                    "wayback_url": f"http://web.archive.org/web/{snapshot.get('timestamp')}/{snapshot.get('original')}",
+                                    "status_code": snapshot.get("statuscode"),
+                                    "mime_type": snapshot.get("mimetype"),
+                                    "length": snapshot.get("length"),
+                                }
+                            )
 
                     return snapshots
 
@@ -158,14 +173,14 @@ class WaybackMachineScraper:
 
         return []
 
-    async def _fetch_snapshot_content(self, snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def _fetch_snapshot_content(self, snapshot: dict[str, Any]) -> dict[str, Any] | None:
         """Fetch and parse content from a Wayback Machine snapshot"""
-        wayback_url = snapshot['wayback_url']
+        wayback_url = snapshot["wayback_url"]
 
         try:
             headers = {
-                'User-Agent': self.ua.random,
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                "User-Agent": self.ua.random,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             }
 
             async with self.session.get(wayback_url, headers=headers, timeout=30) as response:
@@ -173,7 +188,7 @@ class WaybackMachineScraper:
                     content = await response.text()
 
                     # Parse content with BeautifulSoup
-                    soup = BeautifulSoup(content, 'html.parser')
+                    soup = BeautifulSoup(content, "html.parser")
 
                     # Remove Wayback Machine toolbar and scripts
                     self._clean_wayback_content(soup)
@@ -186,23 +201,23 @@ class WaybackMachineScraper:
 
                     # Extract metadata
                     title = self._extract_title(soup)
-                    date = self._parse_wayback_timestamp(snapshot['timestamp'])
+                    date = self._parse_wayback_timestamp(snapshot["timestamp"])
 
                     return {
-                        'title': title,
-                        'content': text_content,
-                        'url': snapshot['original_url'],
-                        'wayback_url': wayback_url,
-                        'date': date,
-                        'source': 'wayback_machine',
-                        'source_type': 'archive',
-                        'metadata': {
-                            'timestamp': snapshot['timestamp'],
-                            'status_code': snapshot['status_code'],
-                            'mime_type': snapshot['mime_type'],
-                            'content_length': len(text_content),
-                            'original_length': snapshot.get('length')
-                        }
+                        "title": title,
+                        "content": text_content,
+                        "url": snapshot["original_url"],
+                        "wayback_url": wayback_url,
+                        "date": date,
+                        "source": "wayback_machine",
+                        "source_type": "archive",
+                        "metadata": {
+                            "timestamp": snapshot["timestamp"],
+                            "status_code": snapshot["status_code"],
+                            "mime_type": snapshot["mime_type"],
+                            "content_length": len(text_content),
+                            "original_length": snapshot.get("length"),
+                        },
                     }
 
         except Exception as e:
@@ -213,46 +228,48 @@ class WaybackMachineScraper:
     def _clean_wayback_content(self, soup: BeautifulSoup):
         """Remove Wayback Machine specific elements"""
         # Remove Wayback Machine toolbar and overlays
-        wayback_elements = soup.find_all(['div', 'script', 'iframe'],
-                                       attrs={'id': re.compile(r'wm-|wayback|archive')})
+        wayback_elements = soup.find_all(
+            ["div", "script", "iframe"], attrs={"id": re.compile(r"wm-|wayback|archive")}
+        )
         for element in wayback_elements:
             element.decompose()
 
         # Remove common ad and tracking elements
-        ad_elements = soup.find_all(['div', 'script'],
-                                  attrs={'class': re.compile(r'ad|advertisement|tracking|analytics')})
+        ad_elements = soup.find_all(
+            ["div", "script"], attrs={"class": re.compile(r"ad|advertisement|tracking|analytics")}
+        )
         for element in ad_elements:
             element.decompose()
 
     def _extract_text_content(self, soup: BeautifulSoup) -> str:
         """Extract clean text content from HTML"""
         # Remove unwanted elements
-        for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+        for element in soup(["script", "style", "nav", "header", "footer", "aside"]):
             element.decompose()
 
         # Focus on main content
-        main_content = soup.find(['main', 'article', 'div']) or soup
+        main_content = soup.find(["main", "article", "div"]) or soup
 
         # Extract text
-        text = main_content.get_text(separator=' ', strip=True)
+        text = main_content.get_text(separator=" ", strip=True)
 
         # Clean up whitespace
-        text = re.sub(r'\s+', ' ', text)
-        text = re.sub(r'\n\s*\n', '\n\n', text)
+        text = re.sub(r"\s+", " ", text)
+        text = re.sub(r"\n\s*\n", "\n\n", text)
 
         return text.strip()
 
     def _extract_title(self, soup: BeautifulSoup) -> str:
         """Extract page title"""
-        title_elem = soup.find('title')
+        title_elem = soup.find("title")
         if title_elem:
             title = title_elem.get_text().strip()
             # Remove common Wayback Machine additions
-            title = re.sub(r'\s*-\s*Wayback Machine.*$', '', title, flags=re.IGNORECASE)
+            title = re.sub(r"\s*-\s*Wayback Machine.*$", "", title, flags=re.IGNORECASE)
             return title
 
         # Fallback to h1
-        h1_elem = soup.find('h1')
+        h1_elem = soup.find("h1")
         if h1_elem:
             return h1_elem.get_text().strip()
 
@@ -276,10 +293,10 @@ class WaybackMachineScraper:
 
         return datetime.now()
 
-    async def search_specific_urls(self, urls: List[str],
-                                  time_range: Optional[Tuple[datetime, datetime]] = None) -> List[Dict[str, Any]]:
-        """
-        Search for specific URLs in Wayback Machine
+    async def search_specific_urls(
+        self, urls: list[str], time_range: tuple[datetime, datetime] | None = None
+    ) -> list[dict[str, Any]]:
+        """Search for specific URLs in Wayback Machine
 
         Args:
             urls: List of specific URLs to search
@@ -287,6 +304,7 @@ class WaybackMachineScraper:
 
         Returns:
             List of historical documents
+
         """
         results = []
 
@@ -308,10 +326,10 @@ class WaybackMachineScraper:
 
         return results
 
-    async def find_changes_over_time(self, url: str,
-                                   time_range: Tuple[datetime, datetime]) -> List[Dict[str, Any]]:
-        """
-        Find how a specific URL changed over time
+    async def find_changes_over_time(
+        self, url: str, time_range: tuple[datetime, datetime]
+    ) -> list[dict[str, Any]]:
+        """Find how a specific URL changed over time
 
         Args:
             url: Specific URL to track
@@ -319,6 +337,7 @@ class WaybackMachineScraper:
 
         Returns:
             List of changes with analysis
+
         """
         snapshots = await self._get_url_snapshots(url, time_range)
         changes = []
@@ -329,20 +348,22 @@ class WaybackMachineScraper:
             if not content_data:
                 continue
 
-            current_content = content_data['content']
+            current_content = content_data["content"]
 
             if previous_content:
                 # Simple change detection
                 similarity = self._calculate_text_similarity(previous_content, current_content)
                 if similarity < 0.9:  # Significant change detected
-                    changes.append({
-                        'timestamp': snapshot['timestamp'],
-                        'date': content_data['date'],
-                        'similarity_to_previous': similarity,
-                        'content_length': len(current_content),
-                        'wayback_url': snapshot['wayback_url'],
-                        'changes_detected': True
-                    })
+                    changes.append(
+                        {
+                            "timestamp": snapshot["timestamp"],
+                            "date": content_data["date"],
+                            "similarity_to_previous": similarity,
+                            "content_length": len(current_content),
+                            "wayback_url": snapshot["wayback_url"],
+                            "changes_detected": True,
+                        }
+                    )
 
             previous_content = current_content
 
@@ -351,9 +372,10 @@ class WaybackMachineScraper:
     def _calculate_text_similarity(self, text1: str, text2: str) -> float:
         """Calculate similarity between two texts"""
         from difflib import SequenceMatcher
+
         return SequenceMatcher(None, text1, text2).ratio()
 
-    def get_available_years(self, url: str) -> List[int]:
+    def get_available_years(self, url: str) -> list[int]:
         """Get years when snapshots are available for a URL"""
         try:
             wayback_machine = WaybackMachine(url)

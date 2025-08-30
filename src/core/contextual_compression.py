@@ -1,444 +1,404 @@
-#!/usr/bin/env python3
-"""
-Contextual Compression Engine
-Selective passage filtering with salience, novelty, and deduplication before LLM processing
+"""Contextual Compression Engine
+Implementuje salience + novelty + redundancy filtering pro M1 s kvantizovaným LLM
 
-Author: Senior IT Specialist
+Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Set, Tuple
 from dataclasses import dataclass
-import json
-import re
-from datetime import datetime
-import numpy as np
-from collections import defaultdict
-import hashlib
+import logging
+from typing import Any
 
-import structlog
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import torch
+import spacy
 
-logger = structlog.get_logger(__name__)
+from ..optimization.m1_performance import cleanup_memory, get_optimal_device, optimize_for_m1
 
-@dataclass
-class PassageScore:
-    """Scoring components for passage filtering"""
-    salience: float
-    novelty: float
-    redundancy: float
-    final_score: float
-    reason: str
+logger = logging.getLogger(__name__)
+
 
 @dataclass
-class CompressedContext:
-    """Result of contextual compression"""
-    passages: List[Dict[str, Any]]
-    original_token_count: int
-    compressed_token_count: int
-    compression_ratio: float
-    filtering_stats: Dict[str, int]
-    budget_used: float
+class CompressionConfig:
+    """Konfigurace pro contextual compression"""
 
-class SalienceCalculator:
-    """Calculate passage relevance/salience to query"""
+    budget_tokens: int = 2000
+    salience_weight: float = 0.4
+    novelty_weight: float = 0.3
+    redundancy_weight: float = 0.3
+    min_relevance_threshold: float = 0.5
+    use_llm_rater: bool = True
+    source_priority_weights: dict[str, float] = None
 
-    def __init__(self, config: Dict[str, Any]):
+
+@dataclass
+class DocumentChunk:
+    """Chunk dokumentu s metadaty"""
+
+    id: str
+    content: str
+    source: str
+    url: str
+    tokens: int
+    salience_score: float = 0.0
+    novelty_score: float = 0.0
+    redundancy_penalty: float = 0.0
+    final_score: float = 0.0
+    metadata: dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.metadata is None:
+            self.metadata = {}
+
+
+class ContextualCompressor:
+    """Contextual Compression Engine pro M1 8GB
+    Implementuje salience + novelty + redundancy bez cross-encoderu
+    """
+
+    def __init__(self, config: CompressionConfig):
         self.config = config
         self.embedding_model = None
+        self.tfidf_vectorizer = None
+        self.nlp = None
+        self.logger = logging.getLogger(__name__)
+
+    async def initialize(self):
+        """Inicializace kompresního enginu"""
+        self.logger.info("🚀 Inicializuji Contextual Compressor pro M1...")
+
+        # Lightweight embedding model pro M1
+        model_name = "all-MiniLM-L6-v2"  # Pouze 80MB
+        self.embedding_model = SentenceTransformer(model_name)
+        self.embedding_model = optimize_for_m1(self.embedding_model, "sentence_transformer")
+
+        # TF-IDF vectorizer
         self.tfidf_vectorizer = TfidfVectorizer(
-            max_features=1000,
+            max_features=5000,  # Omezeno pro M1
             stop_words='english',
             ngram_range=(1, 2)
         )
 
-    async def initialize(self):
-        """Initialize salience calculator"""
-        model_name = self.config.get("embedding_model", "all-MiniLM-L6-v2")
-        self.embedding_model = SentenceTransformer(model_name)
-        logger.info("Salience calculator initialized")
-
-    def calculate_salience_scores(self, query: str, passages: List[str]) -> List[float]:
-        """Calculate salience scores using multiple methods"""
-
-        # Method 1: Semantic similarity via embeddings
-        semantic_scores = self._calculate_semantic_salience(query, passages)
-
-        # Method 2: TF-IDF based relevance
-        tfidf_scores = self._calculate_tfidf_salience(query, passages)
-
-        # Method 3: Keyword overlap
-        keyword_scores = self._calculate_keyword_salience(query, passages)
-
-        # Combine scores with weights
-        weights = self.config.get("salience_weights", {
-            "semantic": 0.5,
-            "tfidf": 0.3,
-            "keyword": 0.2
-        })
-
-        final_scores = []
-        for i in range(len(passages)):
-            combined_score = (
-                weights["semantic"] * semantic_scores[i] +
-                weights["tfidf"] * tfidf_scores[i] +
-                weights["keyword"] * keyword_scores[i]
-            )
-            final_scores.append(combined_score)
-
-        return final_scores
-
-    def _calculate_semantic_salience(self, query: str, passages: List[str]) -> List[float]:
-        """Calculate semantic similarity scores"""
-
-        # Generate embeddings
-        query_embedding = self.embedding_model.encode([query])
-        passage_embeddings = self.embedding_model.encode(passages)
-
-        # Calculate cosine similarities
-        similarities = cosine_similarity(query_embedding, passage_embeddings)[0]
-
-        return similarities.tolist()
-
-    def _calculate_tfidf_salience(self, query: str, passages: List[str]) -> List[float]:
-        """Calculate TF-IDF based relevance scores"""
-
-        # Combine query and passages for TF-IDF fitting
-        all_texts = [query] + passages
-
+        # Lightweight spaCy model
         try:
-            tfidf_matrix = self.tfidf_vectorizer.fit_transform(all_texts)
+            self.nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            self.logger.warning("spaCy model not found, using simple tokenization")
+            self.nlp = None
 
-            # Calculate similarities
-            query_vector = tfidf_matrix[0]
-            passage_vectors = tfidf_matrix[1:]
+        self.logger.info("✅ Contextual Compressor inicializován")
 
-            similarities = cosine_similarity(query_vector, passage_vectors)[0]
-            return similarities.tolist()
+    async def compress_context(
+        self,
+        documents: list[dict[str, Any]],
+        query: str,
+        budget_tokens: int | None = None
+    ) -> list[DocumentChunk]:
+        """Hlavní funkce pro kompresi kontextu
 
-        except Exception as e:
-            logger.warning(f"TF-IDF calculation failed: {e}")
-            return [0.5] * len(passages)  # Fallback to neutral scores
+        Args:
+            documents: Seznam dokumentů k kompresi
+            query: Původní dotaz pro relevance scoring
+            budget_tokens: Token budget (optional override)
 
-    def _calculate_keyword_salience(self, query: str, passages: List[str]) -> List[float]:
-        """Calculate keyword overlap scores"""
+        Returns:
+            Komprimovaný seznam document chunků
 
-        # Extract keywords from query
-        query_words = set(re.findall(r'\b\w{3,}\b', query.lower()))
+        """
+        if not documents:
+            return []
 
-        scores = []
-        for passage in passages:
-            passage_words = set(re.findall(r'\b\w{3,}\b', passage.lower()))
+        budget = budget_tokens or self.config.budget_tokens
+        self.logger.info(f"🗜️ Začínám kompresi {len(documents)} dokumentů, budget: {budget} tokenů")
 
-            # Calculate Jaccard similarity
-            intersection = len(query_words & passage_words)
-            union = len(query_words | passage_words)
+        # 1. Převod na DocumentChunk objekty
+        chunks = self._prepare_chunks(documents)
 
-            jaccard_score = intersection / union if union > 0 else 0
-            scores.append(jaccard_score)
+        # 2. Výpočet salience scores
+        await self._calculate_salience_scores(chunks, query)
 
-        return scores
+        # 3. Výpočet novelty scores
+        await self._calculate_novelty_scores(chunks)
 
-class NoveltyDetector:
-    """Detect novel information in passages"""
+        # 4. Výpočet redundancy penalties
+        await self._calculate_redundancy_penalties(chunks)
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.novelty_threshold = config.get("novelty_threshold", 0.7)
-        self.embedding_model = None
+        # 5. Finální scoring a selekce
+        selected_chunks = self._select_chunks_by_budget(chunks, budget)
 
-    async def initialize(self):
-        """Initialize novelty detector"""
-        model_name = self.config.get("embedding_model", "all-MiniLM-L6-v2")
-        self.embedding_model = SentenceTransformer(model_name)
-        logger.info("Novelty detector initialized")
+        # 6. Memory cleanup
+        cleanup_memory()
 
-    def calculate_novelty_scores(self, passages: List[str]) -> List[float]:
-        """Calculate novelty scores for each passage"""
+        self.logger.info(f"✅ Komprese dokončena: {len(selected_chunks)}/{len(chunks)} chunků vybráno")
+        return selected_chunks
 
-        if len(passages) <= 1:
-            return [1.0] * len(passages)
+    def _prepare_chunks(self, documents: list[dict[str, Any]]) -> list[DocumentChunk]:
+        """Připraví DocumentChunk objekty"""
+        chunks = []
 
-        # Generate embeddings
-        embeddings = self.embedding_model.encode(passages)
+        for i, doc in enumerate(documents):
+            # Odhad počtu tokenů (1 token ≈ 4 znaky)
+            content = doc.get('content', '')
+            estimated_tokens = len(content) // 4
 
-        novelty_scores = []
+            chunk = DocumentChunk(
+                id=f"chunk_{i}",
+                content=content,
+                source=doc.get('source', 'unknown'),
+                url=doc.get('url', ''),
+                tokens=estimated_tokens,
+                metadata=doc.get('metadata', {})
+            )
+            chunks.append(chunk)
 
-        for i, current_embedding in enumerate(embeddings):
-            # Calculate similarity to all previous passages
-            if i == 0:
-                novelty_scores.append(1.0)  # First passage is always novel
-                continue
+        return chunks
 
-            previous_embeddings = embeddings[:i]
-            similarities = cosine_similarity([current_embedding], previous_embeddings)[0]
+    async def _calculate_salience_scores(self, chunks: list[DocumentChunk], query: str):
+        """Výpočet salience scores (relevance k dotazu)"""
+        self.logger.debug("📊 Počítám salience scores...")
 
-            # Novelty is inverse of maximum similarity to previous passages
-            max_similarity = np.max(similarities)
-            novelty_score = 1.0 - max_similarity
+        # Semantic similarity pomocí embeddings
+        query_embedding = self.embedding_model.encode([query])
+        content_embeddings = self.embedding_model.encode([chunk.content for chunk in chunks])
 
-            novelty_scores.append(novelty_score)
+        semantic_similarities = cosine_similarity(query_embedding, content_embeddings)[0]
 
-        return novelty_scores
+        # TF-IDF similarity
+        all_texts = [query] + [chunk.content for chunk in chunks]
+        tfidf_matrix = self.tfidf_vectorizer.fit_transform(all_texts)
+        tfidf_similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])[0]
 
-class RedundancyFilter:
-    """Remove redundant passages using content hashing and similarity"""
+        # Entity/keyword matching
+        query_keywords = self._extract_keywords(query)
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.similarity_threshold = config.get("redundancy_threshold", 0.85)
-        self.hash_threshold = config.get("hash_threshold", 0.9)
+        for i, chunk in enumerate(chunks):
+            # Kombinace semantic + TF-IDF + keywords
+            semantic_score = semantic_similarities[i]
+            tfidf_score = tfidf_similarities[i]
+            keyword_score = self._calculate_keyword_overlap(chunk.content, query_keywords)
 
-    def detect_redundancy(self, passages: List[str]) -> List[bool]:
-        """Detect redundant passages (True = redundant, should be filtered)"""
+            # Source priority weighting
+            source_weight = self._get_source_priority(chunk.source)
 
-        redundant = [False] * len(passages)
+            # Finální salience score
+            salience = (
+                0.4 * semantic_score +
+                0.3 * tfidf_score +
+                0.3 * keyword_score
+            ) * source_weight
 
-        # Method 1: Exact and near-exact duplicates via hashing
-        content_hashes = []
-        for passage in passages:
-            # Create normalized hash
-            normalized = re.sub(r'\s+', ' ', passage.lower().strip())
-            content_hash = hashlib.md5(normalized.encode()).hexdigest()
-            content_hashes.append(content_hash)
+            chunk.salience_score = salience
 
-        # Mark exact duplicates
-        seen_hashes = set()
-        for i, content_hash in enumerate(content_hashes):
-            if content_hash in seen_hashes:
-                redundant[i] = True
-            else:
-                seen_hashes.add(content_hash)
+    async def _calculate_novelty_scores(self, chunks: list[DocumentChunk]):
+        """Výpočet novelty scores (odlišnost od ostatních dokumentů)"""
+        self.logger.debug("🆕 Počítám novelty scores...")
 
-        # Method 2: High similarity detection
-        # Calculate pairwise similarities for non-redundant passages
-        non_redundant_indices = [i for i, is_redundant in enumerate(redundant) if not is_redundant]
-
-        if len(non_redundant_indices) > 1:
-            # Use simple text similarity for efficiency
-            for i in range(len(non_redundant_indices)):
-                if redundant[non_redundant_indices[i]]:
-                    continue
-
-                for j in range(i + 1, len(non_redundant_indices)):
-                    idx1, idx2 = non_redundant_indices[i], non_redundant_indices[j]
-
-                    if redundant[idx2]:
-                        continue
-
-                    similarity = self._calculate_text_similarity(passages[idx1], passages[idx2])
-
-                    if similarity > self.similarity_threshold:
-                        # Keep the longer passage (more information)
-                        if len(passages[idx1]) >= len(passages[idx2]):
-                            redundant[idx2] = True
-                        else:
-                            redundant[idx1] = True
-                            break
-
-        return redundant
-
-    def _calculate_text_similarity(self, text1: str, text2: str) -> float:
-        """Calculate simple text similarity using character n-grams"""
-
-        def get_ngrams(text: str, n: int = 3) -> Set[str]:
-            text = re.sub(r'\s+', '', text.lower())
-            return set(text[i:i+n] for i in range(len(text) - n + 1))
-
-        ngrams1 = get_ngrams(text1)
-        ngrams2 = get_ngrams(text2)
-
-        if not ngrams1 or not ngrams2:
-            return 0.0
-
-        intersection = len(ngrams1 & ngrams2)
-        union = len(ngrams1 | ngrams2)
-
-        return intersection / union if union > 0 else 0.0
-
-class ContextualCompressionEngine:
-    """Main compression engine coordinating all filtering strategies"""
-
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.compression_config = config.get("compression", {})
-
-        # Compression settings
-        self.enabled = self.compression_config.get("enabled", False)
-        self.budget_tokens = self.compression_config.get("budget_tokens", 2000)
-        self.strategy = self.compression_config.get("strategy", "salience")
-
-        # Strategy weights
-        self.strategy_weights = {
-            "salience": 0.6,
-            "novelty": 0.3,
-            "redundancy": 0.1
-        }
-
-        # Parse strategy string
-        if "+" in self.strategy:
-            strategies = self.strategy.split("+")
-            if "salience" in strategies and "novelty" in strategies:
-                self.strategy_weights = {"salience": 0.5, "novelty": 0.4, "redundancy": 0.1}
-
-        # Components
-        self.salience_calculator = SalienceCalculator(config)
-        self.novelty_detector = NoveltyDetector(config)
-        self.redundancy_filter = RedundancyFilter(config)
-
-        # Token counting (simple approximation)
-        self.avg_tokens_per_char = 0.25  # Rough approximation
-
-        self.logger = structlog.get_logger(__name__)
-
-    async def initialize(self):
-        """Initialize compression engine"""
-        if not self.enabled:
-            self.logger.info("Contextual compression disabled")
+        if len(chunks) <= 1:
+            for chunk in chunks:
+                chunk.novelty_score = 1.0
             return
 
-        await self.salience_calculator.initialize()
-        await self.novelty_detector.initialize()
+        # Embeddings pro všechny chunky
+        embeddings = self.embedding_model.encode([chunk.content for chunk in chunks])
 
-        self.logger.info(f"Contextual compression initialized: {self.strategy} strategy, {self.budget_tokens} token budget")
+        # Výpočet průměrné podobnosti s ostatními chunky
+        similarity_matrix = cosine_similarity(embeddings)
 
-    async def compress_context(self, query: str, passages: List[Dict[str, Any]]) -> CompressedContext:
-        """Main compression method"""
+        for i, chunk in enumerate(chunks):
+            # Průměrná podobnost s ostatními (kromě sebe)
+            similarities = similarity_matrix[i]
+            avg_similarity = (similarities.sum() - similarities[i]) / (len(similarities) - 1)
 
-        if not self.enabled or not passages:
-            return self._create_uncompressed_result(passages)
+            # Novelty = 1 - průměrná podobnost
+            chunk.novelty_score = 1.0 - avg_similarity
 
-        self.logger.info(f"Compressing {len(passages)} passages with {self.strategy} strategy")
+    async def _calculate_redundancy_penalties(self, chunks: list[DocumentChunk]):
+        """Výpočet redundancy penalties"""
+        self.logger.debug("🔄 Počítám redundancy penalties...")
 
-        # Extract passage texts
-        passage_texts = [p.get("content", "") for p in passages]
+        # Seřazení podle salience score (sestupně)
+        sorted_chunks = sorted(chunks, key=lambda x: x.salience_score, reverse=True)
 
-        # Calculate original token count
-        original_tokens = self._estimate_token_count(passage_texts)
+        selected_contents = []
 
-        # Phase 1: Remove redundant passages
-        redundant_flags = self.redundancy_filter.detect_redundancy(passage_texts)
-        filtered_passages = []
-        filtered_texts = []
+        for chunk in sorted_chunks:
+            if not selected_contents:
+                chunk.redundancy_penalty = 0.0
+                selected_contents.append(chunk.content)
+                continue
 
-        for i, (passage, is_redundant) in enumerate(zip(passages, redundant_flags)):
-            if not is_redundant:
-                filtered_passages.append(passage)
-                filtered_texts.append(passage_texts[i])
+            # Výpočet podobnosti s již vybranými chunky
+            chunk_embedding = self.embedding_model.encode([chunk.content])
+            selected_embeddings = self.embedding_model.encode(selected_contents)
 
-        redundancy_removed = len(passages) - len(filtered_passages)
+            similarities = cosine_similarity(chunk_embedding, selected_embeddings)[0]
+            max_similarity = similarities.max()
 
-        # Phase 2: Calculate scores for remaining passages
-        passage_scores = []
+            # Redundancy penalty na základě max podobnosti
+            if max_similarity > 0.85:
+                chunk.redundancy_penalty = 0.8  # Vysoká penalizace
+            elif max_similarity > 0.70:
+                chunk.redundancy_penalty = 0.5  # Střední penalizace
+            elif max_similarity > 0.55:
+                chunk.redundancy_penalty = 0.2  # Nízká penalizace
+            else:
+                chunk.redundancy_penalty = 0.0  # Žádná penalizace
+                selected_contents.append(chunk.content)
 
-        if filtered_texts:
-            # Calculate component scores
-            salience_scores = self.salience_calculator.calculate_salience_scores(query, filtered_texts)
-            novelty_scores = self.novelty_detector.calculate_novelty_scores(filtered_texts)
+    def _select_chunks_by_budget(self, chunks: list[DocumentChunk], budget: int) -> list[DocumentChunk]:
+        """Selekce chunků podle token budget"""
+        self.logger.debug(f"💰 Vybírám chunky pro budget {budget} tokenů...")
 
-            # Combine scores
-            for i, (salience, novelty) in enumerate(zip(salience_scores, novelty_scores)):
-                final_score = (
-                    self.strategy_weights["salience"] * salience +
-                    self.strategy_weights["novelty"] * novelty
-                )
+        # Výpočet finálních scores
+        for chunk in chunks:
+            chunk.final_score = (
+                self.config.salience_weight * chunk.salience_score +
+                self.config.novelty_weight * chunk.novelty_score -
+                self.config.redundancy_weight * chunk.redundancy_penalty
+            )
 
-                score = PassageScore(
-                    salience=salience,
-                    novelty=novelty,
-                    redundancy=1.0,  # Already filtered
-                    final_score=final_score,
-                    reason=f"salience:{salience:.2f} novelty:{novelty:.2f}"
-                )
-                passage_scores.append(score)
+        # Seřazení podle finálního score
+        sorted_chunks = sorted(chunks, key=lambda x: x.final_score, reverse=True)
 
-        # Phase 3: Select passages within token budget
-        selected_passages = self._select_passages_by_budget(
-            filtered_passages, filtered_texts, passage_scores
-        )
-
-        # Calculate final metrics
-        compressed_tokens = self._estimate_token_count([p.get("content", "") for p in selected_passages])
-        compression_ratio = compressed_tokens / original_tokens if original_tokens > 0 else 1.0
-        budget_used = compressed_tokens / self.budget_tokens if self.budget_tokens > 0 else 1.0
-
-        filtering_stats = {
-            "original_count": len(passages),
-            "redundancy_removed": redundancy_removed,
-            "salience_filtered": len(filtered_passages) - len(selected_passages),
-            "final_count": len(selected_passages)
-        }
-
-        self.logger.info(f"Compression completed: {len(passages)} → {len(selected_passages)} passages, "
-                        f"ratio: {compression_ratio:.2f}, budget used: {budget_used:.2f}")
-
-        return CompressedContext(
-            passages=selected_passages,
-            original_token_count=original_tokens,
-            compressed_token_count=compressed_tokens,
-            compression_ratio=compression_ratio,
-            filtering_stats=filtering_stats,
-            budget_used=budget_used
-        )
-
-    def _select_passages_by_budget(self, passages: List[Dict[str, Any]],
-                                 texts: List[str], scores: List[PassageScore]) -> List[Dict[str, Any]]:
-        """Select passages within token budget, prioritizing by score"""
-
-        # Create passage-score pairs and sort by score
-        passage_score_pairs = list(zip(passages, texts, scores))
-        passage_score_pairs.sort(key=lambda x: x[2].final_score, reverse=True)
-
+        # Greedy selection podle budget
         selected = []
         current_tokens = 0
 
-        for passage, text, score in passage_score_pairs:
-            passage_tokens = self._estimate_token_count([text])
+        for chunk in sorted_chunks:
+            if current_tokens + chunk.tokens <= budget:
+                selected.append(chunk)
+                current_tokens += chunk.tokens
 
-            if current_tokens + passage_tokens <= self.budget_tokens:
-                selected.append(passage)
-                current_tokens += passage_tokens
-            else:
-                # Check if we can fit a truncated version
-                remaining_budget = self.budget_tokens - current_tokens
-                if remaining_budget > 100:  # Minimum meaningful size
-                    # Truncate passage to fit budget
-                    chars_budget = int(remaining_budget / self.avg_tokens_per_char)
-                    truncated_text = text[:chars_budget] + "..."
-
-                    # Create truncated passage
-                    truncated_passage = passage.copy()
-                    truncated_passage["content"] = truncated_text
-                    truncated_passage["truncated"] = True
-
-                    selected.append(truncated_passage)
-                    break
+            if current_tokens >= budget * 0.95:  # 95% budget využití
+                break
 
         return selected
 
-    def _estimate_token_count(self, texts: List[str]) -> int:
-        """Estimate token count for list of texts"""
-        total_chars = sum(len(text) for text in texts)
-        return int(total_chars * self.avg_tokens_per_char)
+    def _extract_keywords(self, text: str) -> list[str]:
+        """Extrakce klíčových slov z textu"""
+        if self.nlp:
+            doc = self.nlp(text)
+            keywords = [
+                token.lemma_.lower()
+                for token in doc
+                if not token.is_stop and not token.is_punct and len(token.text) > 2
+            ]
+        else:
+            # Fallback - simple word extraction
+            import re
+            words = re.findall(r'\b\w{3,}\b', text.lower())
+            keywords = list(set(words))
 
-    def _create_uncompressed_result(self, passages: List[Dict[str, Any]]) -> CompressedContext:
-        """Create result when compression is disabled"""
-        passage_texts = [p.get("content", "") for p in passages]
-        token_count = self._estimate_token_count(passage_texts)
+        return keywords
 
-        return CompressedContext(
-            passages=passages,
-            original_token_count=token_count,
-            compressed_token_count=token_count,
-            compression_ratio=1.0,
-            filtering_stats={"original_count": len(passages), "final_count": len(passages)},
-            budget_used=token_count / self.budget_tokens if self.budget_tokens > 0 else 1.0
-        )
+    def _calculate_keyword_overlap(self, content: str, query_keywords: list[str]) -> float:
+        """Výpočet keyword overlap"""
+        if not query_keywords:
+            return 0.0
 
-def create_contextual_compression_engine(config: Dict[str, Any]) -> ContextualCompressionEngine:
-    """Factory function for contextual compression engine"""
-    return ContextualCompressionEngine(config)
+        content_keywords = self._extract_keywords(content)
+        if not content_keywords:
+            return 0.0
+
+        overlap = len(set(query_keywords) & set(content_keywords))
+        return overlap / len(query_keywords)
+
+    def _get_source_priority(self, source: str) -> float:
+        """Získá prioritu zdroje"""
+        if not self.config.source_priority_weights:
+            return 1.0
+
+        # Normalizace source name
+        source_normalized = source.lower()
+
+        for source_type, weight in self.config.source_priority_weights.items():
+            if source_type in source_normalized:
+                return weight
+
+        return self.config.source_priority_weights.get('unknown', 0.5)
+
+    async def get_compression_stats(self, chunks: list[DocumentChunk]) -> dict[str, Any]:
+        """Získá statistiky komprese"""
+        if not chunks:
+            return {}
+
+        total_tokens = sum(chunk.tokens for chunk in chunks)
+        avg_salience = sum(chunk.salience_score for chunk in chunks) / len(chunks)
+        avg_novelty = sum(chunk.novelty_score for chunk in chunks) / len(chunks)
+        avg_redundancy = sum(chunk.redundancy_penalty for chunk in chunks) / len(chunks)
+
+        return {
+            "total_chunks": len(chunks),
+            "total_tokens": total_tokens,
+            "avg_salience_score": round(avg_salience, 3),
+            "avg_novelty_score": round(avg_novelty, 3),
+            "avg_redundancy_penalty": round(avg_redundancy, 3),
+            "compression_ratio": round(total_tokens / self.config.budget_tokens, 2),
+            "device": get_optimal_device()
+        }
+
+
+# Utilita pro rychlé použití
+async def compress_documents(
+    documents: list[dict[str, Any]],
+    query: str,
+    budget_tokens: int = 2000
+) -> tuple[list[DocumentChunk], dict[str, Any]]:
+    """Convenience funkce pro rychlou kompresi dokumentů
+
+    Returns:
+        Tuple[compressed_chunks, compression_stats]
+
+    """
+    config = CompressionConfig(budget_tokens=budget_tokens)
+    compressor = ContextualCompressor(config)
+
+    await compressor.initialize()
+
+    compressed = await compressor.compress_context(documents, query, budget_tokens)
+    stats = await compressor.get_compression_stats(compressed)
+
+    return compressed, stats
+
+
+# Příklad použití
+async def example_compression():
+    """Příklad použití contextual compression"""
+    # Testovací dokumenty
+    documents = [
+        {
+            "content": "Artificial intelligence is transforming healthcare through machine learning algorithms.",
+            "source": "academic",
+            "url": "https://example.com/ai-healthcare"
+        },
+        {
+            "content": "Machine learning models can predict patient outcomes with high accuracy.",
+            "source": "medical",
+            "url": "https://example.com/ml-prediction"
+        },
+        {
+            "content": "Social media platforms use AI for content recommendation systems.",
+            "source": "news",
+            "url": "https://example.com/social-ai"
+        }
+    ]
+
+    query = "How is AI being used in healthcare?"
+
+    # Komprese
+    compressed, stats = await compress_documents(documents, query, budget_tokens=500)
+
+    print("Komprese dokončena:")
+    print(f"Původní dokumenty: {len(documents)}")
+    print(f"Komprimované chunks: {len(compressed)}")
+    print(f"Statistiky: {stats}")
+
+    for i, chunk in enumerate(compressed):
+        print(f"\nChunk {i+1}:")
+        print(f"  Score: {chunk.final_score:.3f}")
+        print(f"  Content: {chunk.content[:100]}...")
+
+
+if __name__ == "__main__":
+    asyncio.run(example_compression())

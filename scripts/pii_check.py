@@ -24,27 +24,24 @@ class PIIDetector:
     def __init__(self):
         self.pii_patterns = [
             # Email adresy
-            (r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', "Email address detected"),
-
+            (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "Email address detected"),
             # Telefonní čísla
-            (r'\b\+?1?\d{9,15}\b', "Phone number detected"),
-            (r'\b\d{3}-\d{3}-\d{4}\b', "US phone number detected"),
-
+            (r"\b\+?1?\d{9,15}\b", "Phone number detected"),
+            (r"\b\d{3}-\d{3}-\d{4}\b", "US phone number detected"),
             # IP adresy (externí)
-            (r'\b(?!127\.|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', "External IP address detected"),
-
+            (
+                r"\b(?!127\.|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",
+                "External IP address detected",
+            ),
             # Kreditní karty (základní pattern)
-            (r'\b4\d{15}\b', "Potential Visa credit card detected"),
-            (r'\b5[1-5]\d{14}\b', "Potential MasterCard detected"),
-
+            (r"\b4\d{15}\b", "Potential Visa credit card detected"),
+            (r"\b5[1-5]\d{14}\b", "Potential MasterCard detected"),
             # Rodná čísla (české)
-            (r'\b\d{6}/\d{3,4}\b', "Czech birth number detected"),
-
+            (r"\b\d{6}/\d{3,4}\b", "Czech birth number detected"),
             # API klíče a tokeny
-            (r'[A-Za-z0-9]{32,}', "Potential API key or token detected"),
-
+            (r"[A-Za-z0-9]{32,}", "Potential API key or token detected"),
             # Jména a příjmení (heuristika)
-            (r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', "Potential full name detected"),
+            (r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", "Potential full name detected"),
         ]
 
         # Výjimky - běžné technické termíny
@@ -57,7 +54,7 @@ class PIIDetector:
             "John Doe",
             "Jane Smith",
             "Test User",
-            "Example Example"
+            "Example Example",
         ]
 
     def is_exception(self, text: str) -> bool:
@@ -69,10 +66,10 @@ class PIIDetector:
         issues = []
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            for line_num, line in enumerate(content.split('\n'), 1):
+            for line_num, line in enumerate(content.split("\n"), 1):
                 for pattern, message in self.pii_patterns:
                     matches = re.finditer(pattern, line)
                     for match in matches:
@@ -89,14 +86,20 @@ class PIIDetector:
                         if "IP address" in message and matched_text.startswith("127."):
                             continue  # Localhost
 
-                        issues.append({
-                            "file": str(file_path),
-                            "line": line_num,
-                            "issue": message,
-                            "content": line.strip()[:50] + "...",
-                            "matched": matched_text[:20] + "..." if len(matched_text) > 20 else matched_text,
-                            "severity": "HIGH"
-                        })
+                        issues.append(
+                            {
+                                "file": str(file_path),
+                                "line": line_num,
+                                "issue": message,
+                                "content": line.strip()[:50] + "...",
+                                "matched": (
+                                    matched_text[:20] + "..."
+                                    if len(matched_text) > 20
+                                    else matched_text
+                                ),
+                                "severity": "HIGH",
+                            }
+                        )
 
         except Exception as e:
             logger.warning(f"Could not check file {file_path}: {e}")
@@ -152,7 +155,7 @@ class PIIDetector:
             "total_issues": len(all_issues),
             "high_issues": high_count,
             "issues": all_issues,
-            "passed": len(all_issues) == 0
+            "passed": len(all_issues) == 0,
         }
 
 
@@ -165,13 +168,13 @@ def main():
     print(f"Total potential leaks: {results['total_issues']}")
     print(f"High severity: {results['high_issues']}")
 
-    if results['issues']:
+    if results["issues"]:
         print("\nPotential PII leaks found:")
-        for issue in results['issues']:
+        for issue in results["issues"]:
             print(f"  {issue['severity']}: {issue['file']}:{issue['line']} - {issue['issue']}")
             print(f"    Matched: {issue['matched']}")
 
-    if not results['passed']:
+    if not results["passed"]:
         print("\n❌ PII leak check failed!")
         sys.exit(1)
     else:

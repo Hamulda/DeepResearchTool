@@ -26,7 +26,7 @@ structlog.configure(
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.dev.ConsoleRenderer()
+        structlog.dev.ConsoleRenderer(),
     ],
     wrapper_class=structlog.stdlib.BoundLogger,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -46,7 +46,7 @@ class Phase1Validator:
             "phase": "1",
             "description": "Základní Architektura a Bezpečnost",
             "tests": {},
-            "overall_status": "pending"
+            "overall_status": "pending",
         }
 
     async def run_all_validations(self) -> Dict[str, Any]:
@@ -62,7 +62,7 @@ class Phase1Validator:
             ("rag_system", self._validate_rag_system),
             ("local_llm", self._validate_local_llm),
             ("autonomous_server", self._validate_autonomous_server),
-            ("integration", self._validate_integration)
+            ("integration", self._validate_integration),
         ]
 
         for test_name, test_func in validations:
@@ -81,7 +81,7 @@ class Phase1Validator:
                 self.test_results["tests"][test_name] = {
                     "status": "error",
                     "message": str(e),
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
 
         # Vyhodnocení celkového stavu
@@ -101,16 +101,10 @@ class Phase1Validator:
             "src/core/local_llm.py",
             "src/core/autonomous_server.py",
             "monitoring/prometheus.yml",
-            "configs/tor_legal_whitelist.json"
+            "configs/tor_legal_whitelist.json",
         ]
 
-        required_dirs = [
-            "src/core",
-            "monitoring",
-            "configs",
-            "data",
-            "models"
-        ]
+        required_dirs = ["src/core", "monitoring", "configs", "data", "models"]
 
         missing_files = []
         missing_dirs = []
@@ -134,7 +128,7 @@ class Phase1Validator:
             "missing_files": missing_files,
             "missing_directories": missing_dirs,
             "message": "Project structure validation",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
     async def _validate_dependencies(self) -> Dict[str, Any]:
@@ -145,7 +139,7 @@ class Phase1Validator:
             return {
                 "status": "failed",
                 "message": "requirements.txt not found",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
         required_packages = [
@@ -161,7 +155,7 @@ class Phase1Validator:
             "prometheus-client",
             "docker",
             "cryptography",
-            "ggshield"
+            "ggshield",
         ]
 
         content = requirements_file.read_text()
@@ -177,7 +171,7 @@ class Phase1Validator:
             "status": status,
             "missing_packages": missing_packages,
             "message": "Dependencies validation",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
     async def _validate_docker_setup(self) -> Dict[str, Any]:
@@ -189,7 +183,7 @@ class Phase1Validator:
                 return {
                     "status": "failed",
                     "message": "docker-compose.autonomous.yml not found",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
 
             # Kontrola Docker client
@@ -201,28 +195,28 @@ class Phase1Validator:
                 ["docker-compose", "-f", str(compose_file), "config"],
                 capture_output=True,
                 text=True,
-                cwd=self.project_root
+                cwd=self.project_root,
             )
 
             if result.returncode != 0:
                 return {
                     "status": "failed",
                     "message": f"Docker Compose validation failed: {result.stderr}",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
 
             return {
                 "status": "passed",
                 "message": "Docker setup validation successful",
                 "docker_version": client.version()["Version"],
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
         except Exception as e:
             return {
                 "status": "failed",
                 "message": f"Docker validation error: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
     async def _validate_security_config(self) -> Dict[str, Any]:
@@ -266,7 +260,7 @@ class Phase1Validator:
             "failed_checks": failed_checks,
             "all_checks": dict(checks),
             "message": "Security configuration validation",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
     async def _validate_elt_pipeline(self) -> Dict[str, Any]:
@@ -286,9 +280,7 @@ class Phase1Validator:
                         yield {"id": i, "content": f"test content {i}"}
 
                 # Test extract & load
-                await pipeline.extract_and_load(
-                    mock_stream(), "test_table", "test_source"
-                )
+                await pipeline.extract_and_load(mock_stream(), "test_table", "test_source")
 
                 # Test analyze
                 stats = await pipeline.transform_and_analyze("test_table")
@@ -301,14 +293,14 @@ class Phase1Validator:
                 "status": "passed" if has_stats else "failed",
                 "message": "ELT pipeline validation successful",
                 "test_stats": stats if has_stats else None,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
         except Exception as e:
             return {
                 "status": "failed",
                 "message": f"ELT pipeline validation failed: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
     async def _validate_rag_system(self) -> Dict[str, Any]:
@@ -332,14 +324,14 @@ class Phase1Validator:
                 "message": "RAG system validation successful",
                 "embedding_dimension": embedding_gen.embedding_dimension,
                 "device": embedding_gen.device,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
         except Exception as e:
             return {
                 "status": "failed",
                 "message": f"RAG system validation failed: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
     async def _validate_local_llm(self) -> Dict[str, Any]:
@@ -350,11 +342,7 @@ class Phase1Validator:
             from src.core.local_llm import LLMConfig, ModelDownloader
 
             # Test konfigurace
-            config = LLMConfig(
-                model_path="/fake/path/model.gguf",
-                n_ctx=2048,
-                metal=True
-            )
+            config = LLMConfig(model_path="/fake/path/model.gguf", n_ctx=2048, metal=True)
 
             # Test model downloader
             available_models = ModelDownloader.list_available_models()
@@ -365,14 +353,14 @@ class Phase1Validator:
                 "message": "Local LLM validation successful",
                 "available_models": list(available_models.keys()),
                 "config_valid": True,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
         except Exception as e:
             return {
                 "status": "failed",
                 "message": f"Local LLM validation failed: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
     async def _validate_autonomous_server(self) -> Dict[str, Any]:
@@ -396,14 +384,14 @@ class Phase1Validator:
                 "message": "Autonomous server validation successful",
                 "available_routes": routes,
                 "missing_routes": missing_routes,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
         except Exception as e:
             return {
                 "status": "failed",
                 "message": f"Autonomous server validation failed: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
     async def _validate_integration(self) -> Dict[str, Any]:
@@ -417,24 +405,28 @@ class Phase1Validator:
 
             try:
                 from src.core.elt_pipeline import ELTPipeline
+
                 integration_checks.append(("elt_import", True))
             except ImportError:
                 integration_checks.append(("elt_import", False))
 
             try:
                 from src.core.rag_system import LocalRAGSystem
+
                 integration_checks.append(("rag_import", True))
             except ImportError:
                 integration_checks.append(("rag_import", False))
 
             try:
                 from src.core.local_llm import RAGLLMPipeline
+
                 integration_checks.append(("llm_import", True))
             except ImportError:
                 integration_checks.append(("llm_import", False))
 
             try:
                 from src.core.autonomous_server import create_app
+
                 integration_checks.append(("server_import", True))
             except ImportError:
                 integration_checks.append(("server_import", False))
@@ -446,14 +438,14 @@ class Phase1Validator:
                 "message": "Integration validation",
                 "failed_integrations": failed_integrations,
                 "all_integrations": dict(integration_checks),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
         except Exception as e:
             return {
                 "status": "failed",
                 "message": f"Integration validation failed: {str(e)}",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
     def _calculate_overall_status(self) -> None:
@@ -478,14 +470,14 @@ class Phase1Validator:
             "total_tests": len(statuses),
             "passed": statuses.count("passed"),
             "failed": statuses.count("failed"),
-            "errors": statuses.count("error")
+            "errors": statuses.count("error"),
         }
 
     def save_results(self, output_path: Path) -> None:
         """Uloží výsledky validace."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             json.dump(self.test_results, f, indent=2)
 
         logger.info(f"Validation results saved to: {output_path}")
@@ -503,9 +495,9 @@ async def main():
     validator.save_results(output_path)
 
     # Výpis výsledků
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("FÁZE 1 VALIDACE - VÝSLEDKY")
-    print("="*50)
+    print("=" * 50)
 
     print(f"Celkový stav: {results['overall_status'].upper()}")
     print(f"Testů celkem: {results['summary']['total_tests']}")

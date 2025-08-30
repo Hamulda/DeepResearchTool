@@ -1,49 +1,78 @@
-"""
-Paměťově efektivní ELT (Extract, Load, Transform) pipeline pro Fázi 1.
+"""Paměťově efektivní ELT (Extract, Load, Transform) pipeline pro Fázi 1.
 Implementuje streaming processing s minimální využitím RAM.
 """
 
 import asyncio
-import logging
-from pathlib import Path
-from typing import Dict, List, Optional, AsyncGenerator, Any
-from datetime import datetime
-import pyarrow as pa
-import pyarrow.parquet as pq
-import polars as pl
-import duckdb
-import structlog
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-# Konfigurace strukturovaného logování
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.dev.ConsoleRenderer()
-    ],
-    wrapper_class=structlog.stdlib.BoundLogger,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    cache_logger_on_first_use=True,
-)
+# Optional imports with fallbacks
+try:
+    import duckdb
+    HAS_DUCKDB = True
+except ImportError:
+    HAS_DUCKDB = False
+    duckdb = None
 
-logger = structlog.get_logger(__name__)
+try:
+    import polars as pl
+    HAS_POLARS = True
+except ImportError:
+    HAS_POLARS = False
+    pl = None
+
+try:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    HAS_PYARROW = True
+except ImportError:
+    HAS_PYARROW = False
+    pa = None
+    pq = None
+
+try:
+    import structlog
+    HAS_STRUCTLOG = True
+except ImportError:
+    HAS_STRUCTLOG = False
+    structlog = None
+
+# Fallback logging
+if HAS_STRUCTLOG:
+    # Konfigurace strukturovaného logování
+    structlog.configure(
+        processors=[
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.dev.ConsoleRenderer(),
+        ],
+        wrapper_class=structlog.stdlib.BoundLogger,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+    logger = structlog.get_logger(__name__)
+else:
+    import logging
+    logger = logging.getLogger(__name__)
 
 
 @dataclass
 class DataChunk:
     """Reprezentuje jeden chunk dat pro streaming processing."""
-    data: Dict[str, Any]
+
+    data: dict[str, Any]
     timestamp: datetime
     source: str
     chunk_id: str
 
 
 class ParquetStreamWriter:
-    """
-    Paměťově efektivní writer pro Apache Parquet soubory.
+    """Paměťově efektivní writer pro Apache Parquet soubory.
     Zapisuje data v malých chuncích přímo na disk.
     """
 
@@ -51,8 +80,8 @@ class ParquetStreamWriter:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.compression = compression
-        self.writers: Dict[str, pq.ParquetWriter] = {}
-        self.schemas: Dict[str, pa.Schema] = {}
+        self.writers: dict[str, pq.ParquetWriter] = {}
+        self.schemas: dict[str, pa.Schema] = {}
 
     async def write_chunk(self, table_name: str, chunk: DataChunk) -> None:
         """Zapíše jeden chunk dat do Parquet souboru."""
@@ -72,15 +101,12 @@ class ParquetStreamWriter:
                 "Chunk written to Parquet",
                 table=table_name,
                 chunk_id=chunk.chunk_id,
-                source=chunk.source
+                source=chunk.source,
             )
 
         except Exception as e:
             logger.error(
-                "Failed to write chunk",
-                table=table_name,
-                chunk_id=chunk.chunk_id,
-                error=str(e)
+                "Failed to write chunk", table=table_name, chunk_id=chunk.chunk_id, error=str(e)
             )
             raise
 
@@ -93,7 +119,7 @@ class ParquetStreamWriter:
             schema,
             compression=self.compression,
             use_dictionary=True,
-            row_group_size=10000  # Optimalizace pro čtení
+            row_group_size=10000,  # Optimalizace pro čtení
         )
 
         self.schemas[table_name] = schema
@@ -110,20 +136,29 @@ class ParquetStreamWriter:
 
 
 class DuckDBProcessor:
-    """
-    DuckDB procesor pro analýzu Parquet souborů bez načítání do paměti.
+    """DuckDB procesor pro analýzu Parquet souborů bez načítání do paměti.
     """
 
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir)
+
+        if not HAS_DUCKDB:
+            logger.warning("DuckDB not available, processor disabled")
+            self.conn = None
+            return
+
         self.conn = duckdb.connect(":memory:")
 
         # Optimalizace pro Apple Silicon
         self.conn.execute("SET threads=8")
         self.conn.execute("SET memory_limit='4GB'")
 
-    async def analyze_table(self, table_name: str) -> Dict[str, Any]:
+    async def analyze_table(self, table_name: str) -> dict[str, Any]:
         """Provede základní analýzu Parquet tabulky."""
+        if not self.conn:
+            logger.error("DuckDB not available for table analysis")
+            return {"error": "DuckDB not available"}
+
         parquet_path = self.data_dir / f"{table_name}.parquet"
 
         if not parquet_path.exists():
@@ -148,32 +183,25 @@ class DuckDBProcessor:
                 "unique_sources": result[1],
                 "earliest_timestamp": result[2],
                 "latest_timestamp": result[3],
-                "file_size_mb": parquet_path.stat().st_size / (1024 * 1024)
+                "file_size_mb": parquet_path.stat().st_size / (1024 * 1024),
             }
 
         except Exception as e:
-            logger.error(
-                "Failed to analyze table",
-                table=table_name,
-                error=str(e)
-            )
+            logger.error("Failed to analyze table", table=table_name, error=str(e))
             raise
 
-    async def query_data(self, query: str) -> List[Dict[str, Any]]:
+    async def query_data(self, query: str) -> list[dict[str, Any]]:
         """Spustí SQL dotaz nad Parquet soubory."""
         try:
             # Nahrazení placeholder s cestami k Parquet souborům
             for parquet_file in self.data_dir.glob("*.parquet"):
                 table_name = parquet_file.stem
-                query = query.replace(
-                    f"{table_name}",
-                    f"read_parquet('{parquet_file}')"
-                )
+                query = query.replace(f"{table_name}", f"read_parquet('{parquet_file}')")
 
             result = self.conn.execute(query).fetchall()
             columns = [desc[0] for desc in self.conn.description]
 
-            return [dict(zip(columns, row)) for row in result]
+            return [dict(zip(columns, row, strict=False)) for row in result]
 
         except Exception as e:
             logger.error("Failed to execute query", query=query, error=str(e))
@@ -185,8 +213,7 @@ class DuckDBProcessor:
 
 
 class ELTPipeline:
-    """
-    Hlavní ELT pipeline třída pro paměťově efektivní zpracování dat.
+    """Hlavní ELT pipeline třída pro paměťově efektivní zpracování dat.
     """
 
     def __init__(self, data_dir: Path, chunk_size: int = 1000):
@@ -197,20 +224,12 @@ class ELTPipeline:
         self.parquet_writer = ParquetStreamWriter(data_dir)
         self.duckdb_processor = DuckDBProcessor(data_dir)
 
-        logger.info(
-            "ELT Pipeline initialized",
-            data_dir=str(data_dir),
-            chunk_size=chunk_size
-        )
+        logger.info("ELT Pipeline initialized", data_dir=str(data_dir), chunk_size=chunk_size)
 
     async def extract_and_load(
-        self,
-        data_stream: AsyncGenerator[Dict[str, Any], None],
-        table_name: str,
-        source: str
+        self, data_stream: AsyncGenerator[dict[str, Any], None], table_name: str, source: str
     ) -> None:
-        """
-        Extrahuje data ze streamu a okamžitě je ukládá do Parquet.
+        """Extrahuje data ze streamu a okamžitě je ukládá do Parquet.
         """
         chunk_buffer = []
         chunk_counter = 0
@@ -220,24 +239,16 @@ class ELTPipeline:
 
             # Flush buffer když dosáhne chunk_size
             if len(chunk_buffer) >= self.chunk_size:
-                await self._flush_chunk_buffer(
-                    chunk_buffer, table_name, source, chunk_counter
-                )
+                await self._flush_chunk_buffer(chunk_buffer, table_name, source, chunk_counter)
                 chunk_buffer = []
                 chunk_counter += 1
 
         # Flush posledního chunku
         if chunk_buffer:
-            await self._flush_chunk_buffer(
-                chunk_buffer, table_name, source, chunk_counter
-            )
+            await self._flush_chunk_buffer(chunk_buffer, table_name, source, chunk_counter)
 
     async def _flush_chunk_buffer(
-        self,
-        buffer: List[Dict[str, Any]],
-        table_name: str,
-        source: str,
-        chunk_counter: int
+        self, buffer: list[dict[str, Any]], table_name: str, source: str, chunk_counter: int
     ) -> None:
         """Vyprázdní buffer do Parquet souboru."""
         for i, item in enumerate(buffer):
@@ -245,16 +256,16 @@ class ELTPipeline:
                 data=item,
                 timestamp=datetime.now(),
                 source=source,
-                chunk_id=f"{table_name}_{chunk_counter}_{i}"
+                chunk_id=f"{table_name}_{chunk_counter}_{i}",
             )
 
             await self.parquet_writer.write_chunk(table_name, chunk)
 
-    async def transform_and_analyze(self, table_name: str) -> Dict[str, Any]:
+    async def transform_and_analyze(self, table_name: str) -> dict[str, Any]:
         """Provede transformaci a analýzu dat."""
         return await self.duckdb_processor.analyze_table(table_name)
 
-    async def execute_query(self, query: str) -> List[Dict[str, Any]]:
+    async def execute_query(self, query: str) -> list[dict[str, Any]]:
         """Spustí SQL dotaz nad uloženými daty."""
         return await self.duckdb_processor.query_data(query)
 
@@ -277,7 +288,7 @@ async def example_usage():
                 "title": f"Document {i}",
                 "content": f"This is content for document {i}",
                 "url": f"https://example.com/doc/{i}",
-                "scraped_at": datetime.now().isoformat()
+                "scraped_at": datetime.now().isoformat(),
             }
 
     # Inicializace pipeline
@@ -285,23 +296,21 @@ async def example_usage():
 
     try:
         # Extract & Load
-        await pipeline.extract_and_load(
-            mock_data_stream(),
-            "scraped_documents",
-            "example_scraper"
-        )
+        await pipeline.extract_and_load(mock_data_stream(), "scraped_documents", "example_scraper")
 
         # Transform & Analyze
         stats = await pipeline.transform_and_analyze("scraped_documents")
         print(f"Table statistics: {stats}")
 
         # Query data
-        recent_docs = await pipeline.execute_query("""
+        recent_docs = await pipeline.execute_query(
+            """
             SELECT title, url, scraped_at 
             FROM scraped_documents 
             ORDER BY scraped_at DESC 
             LIMIT 10
-        """)
+        """
+        )
         print(f"Recent documents: {recent_docs}")
 
     finally:

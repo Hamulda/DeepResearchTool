@@ -31,30 +31,23 @@ class Phase3Tester:
     """Test suite pro FÁZE 3 komponenty"""
 
     def __init__(self):
-        self.test_results = {
-            "phase": 3,
-            "start_time": datetime.now().isoformat(),
-            "tests": []
-        }
+        self.test_results = {"phase": 3, "start_time": datetime.now().isoformat(), "tests": []}
         self.config = self._get_test_config()
 
     def _get_test_config(self):
         """Test konfigurace pro FÁZI 3"""
         return {
-            "synthesis": {
-                "min_citations_per_claim": 2,
-                "confidence_threshold": 0.7
-            },
+            "synthesis": {"min_citations_per_claim": 2, "confidence_threshold": 0.7},
             "verification": {
                 "contradiction_threshold": 0.7,
                 "min_counter_evidence": 1,
-                "confidence_penalty": 0.3
+                "confidence_penalty": 0.3,
             },
             "connectors": {
                 "cache_dir": "research_cache/test",
                 "max_retries": 2,
-                "rate_limit_delay": 0.1  # Rychlejší pro testy
-            }
+                "rate_limit_delay": 0.1,  # Rychlejší pro testy
+            },
         }
 
     async def test_template_synthesis(self):
@@ -69,18 +62,18 @@ class Phase3Tester:
                 {
                     "doc_id": "doc1",
                     "content": "Climate change significantly affects Arctic ice levels. Studies show declining ice mass.",
-                    "source_type": "primary"
+                    "source_type": "primary",
                 },
                 {
                     "doc_id": "doc2",
                     "content": "Arctic ice has been melting at accelerated rates due to global warming trends.",
-                    "source_type": "primary"
+                    "source_type": "primary",
                 },
                 {
                     "doc_id": "doc3",
                     "content": "Research indicates that Arctic ice thickness has decreased by 40% since 1980.",
-                    "source_type": "secondary"
-                }
+                    "source_type": "secondary",
+                },
             ]
 
             query = "climate change Arctic ice"
@@ -90,8 +83,9 @@ class Phase3Tester:
 
             # Kontrola minimálních citací
             for claim in claims:
-                assert len(claim.citations) >= self.config["synthesis"]["min_citations_per_claim"], \
-                    f"Claim {claim.claim_id} nemá dostatek citací"
+                assert (
+                    len(claim.citations) >= self.config["synthesis"]["min_citations_per_claim"]
+                ), f"Claim {claim.claim_id} nemá dostatek citací"
 
                 # Kontrola char offsetů
                 for citation in claim.citations:
@@ -109,9 +103,9 @@ class Phase3Tester:
                     "claims_generated": len(claims),
                     "avg_citations_per_claim": sum(len(c.citations) for c in claims) / len(claims),
                     "avg_confidence": sum(c.confidence for c in claims) / len(claims),
-                    "report_length": len(report)
+                    "report_length": len(report),
                 },
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             self.test_results["tests"].append(test_result)
@@ -122,7 +116,7 @@ class Phase3Tester:
                 "test": "template_synthesis",
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             self.test_results["tests"].append(test_result)
             print(f"❌ Template synthesis test failed: {e}")
@@ -143,7 +137,7 @@ class Phase3Tester:
                     confidence=0.9,
                     support_count=2,
                     contradict_count=0,
-                    conflict_sets=[]
+                    conflict_sets=[],
                 ),
                 Claim(
                     claim_id="claim2",
@@ -152,8 +146,8 @@ class Phase3Tester:
                     confidence=0.7,
                     support_count=1,
                     contradict_count=0,
-                    conflict_sets=[]
-                )
+                    conflict_sets=[],
+                ),
             ]
 
             # Mock evidence contexts s contra-evidence
@@ -161,13 +155,13 @@ class Phase3Tester:
                 {
                     "doc_id": "doc1",
                     "content": "However, some researchers argue that Arctic ice decline is not as severe as reported.",
-                    "source_type": "secondary"
+                    "source_type": "secondary",
                 },
                 {
                     "doc_id": "doc2",
                     "content": "Despite claims, recent measurements show stable ice levels in certain regions.",
-                    "source_type": "primary"
-                }
+                    "source_type": "primary",
+                },
             ]
 
             verified_claims, conflict_sets = await verifier.verify_claims(claims, evidence_contexts)
@@ -182,7 +176,9 @@ class Phase3Tester:
             assert len(conflict_sets) > 0, "Žádné konflikty nebyly detekovány"
 
             # Test disagreement coverage
-            coverage_metrics = verifier.calculate_disagreement_coverage(verified_claims, conflict_sets)
+            coverage_metrics = verifier.calculate_disagreement_coverage(
+                verified_claims, conflict_sets
+            )
             assert coverage_metrics["total_coverage"] > 0, "Disagreement coverage je nulová"
 
             test_result = {
@@ -193,9 +189,9 @@ class Phase3Tester:
                     "conflict_sets": len(conflict_sets),
                     "total_counter_evidence": total_counter_evidence,
                     "disagreement_coverage": coverage_metrics["total_coverage"],
-                    "conflict_rate": coverage_metrics["conflict_rate"]
+                    "conflict_rate": coverage_metrics["conflict_rate"],
                 },
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             self.test_results["tests"].append(test_result)
@@ -206,7 +202,7 @@ class Phase3Tester:
                 "test": "adversarial_verification",
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             self.test_results["tests"].append(test_result)
             print(f"❌ Adversarial verification test failed: {e}")
@@ -229,7 +225,7 @@ class Phase3Tester:
                     {
                         "filename": "crawl-data/CC-MAIN-2024-10/segments/segment.warc.gz",
                         "offset": 1234567,
-                        "length": 12345
+                        "length": 12345,
                     }
                 ]
 
@@ -244,9 +240,9 @@ class Phase3Tester:
                 "status": "passed",
                 "metrics": {
                     "index_results": len(index_results),
-                    "cache_files": cache_stats["cached_records"]
+                    "cache_files": cache_stats["cached_records"],
                 },
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             self.test_results["tests"].append(test_result)
@@ -257,7 +253,7 @@ class Phase3Tester:
                 "test": "commoncrawl_connector",
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             self.test_results["tests"].append(test_result)
             print(f"❌ Common Crawl connector test failed: {e}")
@@ -290,7 +286,7 @@ class Phase3Tester:
                     "references": [],
                     "funding_info": [],
                     "source_api": "openalex",
-                    "confidence_score": 0.9
+                    "confidence_score": 0.9,
                 }
             ]
 
@@ -301,9 +297,9 @@ class Phase3Tester:
                 "status": "passed",
                 "metrics": {
                     "available_apis": len(api_stats["apis_available"]),
-                    "mock_papers": len(mock_papers)
+                    "mock_papers": len(mock_papers),
                 },
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             self.test_results["tests"].append(test_result)
@@ -314,7 +310,7 @@ class Phase3Tester:
                 "test": "open_science_connector",
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             self.test_results["tests"].append(test_result)
             print(f"❌ Open science connector test failed: {e}")
@@ -343,9 +339,9 @@ class Phase3Tester:
                 "status": "passed",
                 "metrics": {
                     "extracted_citations": len(citations),
-                    "mock_documents": len(mock_documents)
+                    "mock_documents": len(mock_documents),
                 },
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             self.test_results["tests"].append(test_result)
@@ -356,7 +352,7 @@ class Phase3Tester:
                 "test": "legal_apis_connector",
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             self.test_results["tests"].append(test_result)
             print(f"❌ Legal APIs connector test failed: {e}")
@@ -370,7 +366,7 @@ class Phase3Tester:
             self.test_adversarial_verification(),
             self.test_commoncrawl_connector(),
             self.test_open_science_connector(),
-            self.test_legal_apis_connector()
+            self.test_legal_apis_connector(),
         ]
 
         await asyncio.gather(*tests)
@@ -384,7 +380,7 @@ class Phase3Tester:
             "passed_tests": passed_tests,
             "failed_tests": total_tests - passed_tests,
             "success_rate": passed_tests / total_tests if total_tests > 0 else 0,
-            "end_time": datetime.now().isoformat()
+            "end_time": datetime.now().isoformat(),
         }
 
         # Ulož výsledky

@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 # Pydantic Models for API
 class ResearchRequest(BaseModel):
     """Research request model"""
+
     query: str = Field(..., description="Research query or question", min_length=1, max_length=1000)
     profile: str = Field("balanced", description="Research profile: quick, balanced, or thorough")
     language: str = Field("en", description="Language preference: en, cs, de, fr")
@@ -46,13 +47,14 @@ class ResearchRequest(BaseModel):
                 "profile": "balanced",
                 "language": "en",
                 "max_sources": 15,
-                "include_security_scan": True
+                "include_security_scan": True,
             }
         }
 
 
 class ResearchResponse(BaseModel):
     """Research response model"""
+
     request_id: str = Field(..., description="Unique request identifier")
     query: str = Field(..., description="Original research query")
     summary: str = Field(..., description="Executive summary of findings")
@@ -66,6 +68,7 @@ class ResearchResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response"""
+
     status: str = Field(..., description="Service status")
     timestamp: datetime = Field(..., description="Response timestamp")
     version: str = Field(..., description="Application version")
@@ -75,6 +78,7 @@ class HealthResponse(BaseModel):
 
 class SecurityStatusResponse(BaseModel):
     """Security status response"""
+
     overall_status: str = Field(..., description="Overall security status")
     components: Dict[str, Dict[str, Any]] = Field(..., description="Security component details")
     recent_threats_blocked: int = Field(..., description="Recent threats blocked")
@@ -106,7 +110,7 @@ async def lifespan(app: FastAPI):
         enable_rate_limiting=True,
         enable_policy_enforcement=True,
         enable_pii_protection=True,
-        enable_secrets_management=True
+        enable_secrets_management=True,
     )
 
     app_state.security_orchestrator = SecurityOrchestrator(security_config)
@@ -171,7 +175,7 @@ app = FastAPI(
         "name": "Proprietary",
         "url": "https://deepresearchtool.com/license",
     },
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -201,11 +205,7 @@ def custom_openapi():
 
     # Add security schemes
     openapi_schema["components"]["securitySchemes"] = {
-        "ApiKeyAuth": {
-            "type": "apiKey",
-            "in": "header",
-            "name": "X-API-Key"
-        }
+        "ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"}
     }
 
     app.openapi_schema = openapi_schema
@@ -225,7 +225,7 @@ async def root():
     except FileNotFoundError:
         return HTMLResponse(
             content="<h1>DeepResearchTool API</h1><p>Frontend not found. Visit /docs for API documentation.</p>",
-            status_code=200
+            status_code=200,
         )
 
 
@@ -242,7 +242,7 @@ async def health_check():
     components = {
         "api_server": "healthy",
         "security_orchestrator": "healthy" if app_state.security_orchestrator else "unavailable",
-        "research_orchestrator": "healthy" if app_state.research_orchestrator else "initializing"
+        "research_orchestrator": "healthy" if app_state.research_orchestrator else "initializing",
     }
 
     return HealthResponse(
@@ -250,16 +250,13 @@ async def health_check():
         timestamp=datetime.now(),
         version="1.0.0",
         uptime_seconds=uptime,
-        components=components
+        components=components,
     )
 
 
 # Research endpoint
 @app.post("/api/research", response_model=ResearchResponse, tags=["Research"])
-async def conduct_research(
-    request: ResearchRequest,
-    background_tasks: BackgroundTasks
-):
+async def conduct_research(request: ResearchRequest, background_tasks: BackgroundTasks):
     """
     Conduct comprehensive research analysis.
 
@@ -294,7 +291,7 @@ async def conduct_research(
             if not query_security.allowed:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Query blocked by security policies: {query_security.violations}"
+                    detail=f"Query blocked by security policies: {query_security.violations}",
                 )
 
             # Apply PII redaction to query if needed
@@ -305,14 +302,14 @@ async def conduct_research(
             security_status = {
                 "query_sanitized": sanitized_query != request.query,
                 "security_violations": len(query_security.violations),
-                "confidence": query_security.overall_confidence
+                "confidence": query_security.overall_confidence,
             }
 
         # Mock research processing (in production would use actual orchestrator)
         processing_time = {
-            "quick": 30000,      # 30s
-            "balanced": 75000,   # 75s
-            "thorough": 135000   # 135s
+            "quick": 30000,  # 30s
+            "balanced": 75000,  # 75s
+            "thorough": 135000,  # 135s
         }.get(request.profile, 75000)
 
         # Simulate processing delay for demo
@@ -327,7 +324,7 @@ async def conduct_research(
                 f"Primary finding related to {request.query}",
                 f"Secondary analysis reveals important trends",
                 f"Cross-referenced data supports conclusions",
-                f"Expert opinions validate research direction"
+                f"Expert opinions validate research direction",
             ],
             sources_analyzed=request.max_sources,
             processing_time_ms=processing_time + (time.time() - start_time) * 1000,
@@ -337,8 +334,8 @@ async def conduct_research(
                 "profile": request.profile,
                 "language": request.language,
                 "timestamp": datetime.now().isoformat(),
-                "api_version": "1.0.0"
-            }
+                "api_version": "1.0.0",
+            },
         )
 
         app_state.successful_requests += 1
@@ -352,7 +349,9 @@ async def conduct_research(
         raise
     except Exception as e:
         logger.error(f"Research request {request_id} failed: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error during research processing")
+        raise HTTPException(
+            status_code=500, detail="Internal server error during research processing"
+        )
 
 
 # Security status endpoint
@@ -374,7 +373,7 @@ async def get_security_status():
             overall_status="active",
             components=dashboard.get("components", {}),
             recent_threats_blocked=dashboard.get("overall_stats", {}).get("blocked_requests", 0),
-            compliance_score=98.7  # Mock compliance score
+            compliance_score=98.7,  # Mock compliance score
         )
 
     except Exception as e:
@@ -399,7 +398,7 @@ async def get_metrics():
         "success_rate": app_state.successful_requests / max(app_state.total_requests, 1),
         "requests_per_minute": app_state.total_requests / max(uptime / 60, 1),
         "version": "1.0.0",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
     }
 
     if app_state.security_orchestrator:
@@ -419,12 +418,14 @@ async def custom_swagger_ui_html():
         oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
         swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@4.15.5/swagger-ui-bundle.js",
         swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@4.15.5/swagger-ui.css",
-        swagger_ui_parameters={"defaultModelsExpandDepth": -1}
+        swagger_ui_parameters={"defaultModelsExpandDepth": -1},
     )
 
 
 # Background task functions
-async def log_research_request(request_id: str, request: ResearchRequest, response: ResearchResponse):
+async def log_research_request(
+    request_id: str, request: ResearchRequest, response: ResearchResponse
+):
     """Background task to log research requests for analytics"""
     log_entry = {
         "request_id": request_id,
@@ -435,7 +436,7 @@ async def log_research_request(request_id: str, request: ResearchRequest, respon
         "processing_time_ms": response.processing_time_ms,
         "sources_analyzed": response.sources_analyzed,
         "confidence_score": response.confidence_score,
-        "success": True
+        "success": True,
     }
 
     logger.info(f"Research request completed: {json.dumps(log_entry)}")
@@ -451,8 +452,8 @@ async def http_exception_handler(request, exc):
             "error": exc.detail,
             "status_code": exc.status_code,
             "timestamp": datetime.now().isoformat(),
-            "path": str(request.url)
-        }
+            "path": str(request.url),
+        },
     )
 
 
@@ -466,8 +467,8 @@ async def internal_error_handler(request, exc):
             "error": "Internal server error",
             "status_code": 500,
             "timestamp": datetime.now().isoformat(),
-            "message": "An unexpected error occurred. Please try again later."
-        }
+            "message": "An unexpected error occurred. Please try again later.",
+        },
     )
 
 
@@ -475,15 +476,8 @@ async def internal_error_handler(request, exc):
 if __name__ == "__main__":
     # Setup logging
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     # Run server
-    uvicorn.run(
-        "api_server_enhanced:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    uvicorn.run("api_server_enhanced:app", host="0.0.0.0", port=8000, reload=True, log_level="info")

@@ -13,17 +13,17 @@ import os
 from datetime import datetime, timedelta
 
 # Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 
 from core.enhanced_orchestrator import EnhancedResearchOrchestrator, ResearchRequest
 from analysis.specialized_analyzer import SpecializedSourceAnalyzer
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 
 class ResearchDemonstrator:
     """Demonstrates capabilities of enhanced research tool"""
@@ -47,23 +47,23 @@ class ResearchDemonstrator:
         # Demonstrate different research scenarios
         scenarios = [
             {
-                'name': 'CIA Declassified Intelligence Analysis',
-                'topic': 'MKUltra mind control experiments',
-                'sources': ['declassified', 'academic'],
-                'depth': 'comprehensive'
+                "name": "CIA Declassified Intelligence Analysis",
+                "topic": "MKUltra mind control experiments",
+                "sources": ["declassified", "academic"],
+                "depth": "comprehensive",
             },
             {
-                'name': 'Academic Research Synthesis',
-                'topic': 'quantum computing algorithms',
-                'sources': ['academic'],
-                'depth': 'standard'
+                "name": "Academic Research Synthesis",
+                "topic": "quantum computing algorithms",
+                "sources": ["academic"],
+                "depth": "standard",
             },
             {
-                'name': 'OSINT Investigation',
-                'topic': 'cybersecurity threat intelligence',
-                'sources': ['osint', 'academic'],
-                'depth': 'comprehensive'
-            }
+                "name": "OSINT Investigation",
+                "topic": "cybersecurity threat intelligence",
+                "sources": ["osint", "academic"],
+                "depth": "comprehensive",
+            },
         ]
 
         results_summary = []
@@ -74,13 +74,13 @@ class ResearchDemonstrator:
 
             # Create research request
             request = ResearchRequest(
-                topic=scenario['topic'],
-                research_depth=scenario['depth'],
-                source_types=scenario['sources'],
-                security_level='high',
+                topic=scenario["topic"],
+                research_depth=scenario["depth"],
+                source_types=scenario["sources"],
+                security_level="high",
                 correlation_analysis=True,
                 generate_report=True,
-                max_results_per_source=20  # Reduced for demo
+                max_results_per_source=20,  # Reduced for demo
             )
 
             # Conduct research
@@ -114,7 +114,7 @@ class ResearchDemonstrator:
         print(f"⏱️  Execution time: {results.execution_time:.2f} seconds")
         print(f"📄 Total documents found: {stats.get('total_documents', 0)}")
 
-        breakdown = stats.get('source_breakdown', {})
+        breakdown = stats.get("source_breakdown", {})
         for source, count in breakdown.items():
             if count > 0:
                 print(f"   • {source.title()}: {count} documents")
@@ -122,7 +122,7 @@ class ResearchDemonstrator:
         print(f"🔗 Correlations found: {stats.get('correlations_found', 0)}")
 
         # Display quality assessment
-        quality = stats.get('data_quality', {})
+        quality = stats.get("data_quality", {})
         if quality:
             print("📈 Data quality scores:")
             for source, score in quality.items():
@@ -138,14 +138,14 @@ class ResearchDemonstrator:
 
     def _display_performance_report(self, performance):
         """Display performance metrics"""
-        metrics = performance['performance_metrics']
+        metrics = performance["performance_metrics"]
 
         print(f"🚀 Total requests processed: {metrics['total_requests']}")
         print(f"✅ Successful searches: {metrics['successful_searches']}")
         print(f"⚡ Average response time: {metrics['average_response_time']:.2f}s")
         print(f"🔗 Total correlations found: {metrics['correlations_found']}")
 
-        sources = performance['sources_available']
+        sources = performance["sources_available"]
         print("\n📡 Available sources:")
         for source, available in sources.items():
             status = "✅" if available else "❌"
@@ -166,17 +166,18 @@ class ResearchDemonstrator:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
             json_file = f"demo_results_{timestamp}.json"
-            with open(json_file, 'w', encoding='utf-8') as f:
+            with open(json_file, "w", encoding="utf-8") as f:
                 f.write(json_export)
             print(f"💾 Saved JSON to: {json_file}")
 
             html_file = f"demo_results_{timestamp}.html"
-            with open(html_file, 'w', encoding='utf-8') as f:
+            with open(html_file, "w", encoding="utf-8") as f:
                 f.write(html_export)
             print(f"💾 Saved HTML to: {html_file}")
 
         except Exception as e:
             print(f"❌ Export demonstration failed: {str(e)}")
+
 
 async def run_individual_component_tests():
     """Test individual components separately"""
@@ -192,7 +193,7 @@ async def run_individual_component_tests():
 
         # Mock correlation analysis
         mock_data = {
-            'test_source': [{'title': 'Test Document', 'content': 'Sample analysis content'}]
+            "test_source": [{"title": "Test Document", "content": "Sample analysis content"}]
         }
 
         correlations = await analyzer.correlation_analysis(mock_data)
@@ -202,6 +203,7 @@ async def run_individual_component_tests():
         print(f"❌ Specialized Analyzer test failed: {str(e)}")
 
     print("\n✅ Component testing completed")
+
 
 def display_implementation_summary():
     """Display summary of what was implemented"""
@@ -256,7 +258,7 @@ def display_implementation_summary():
         "   • Specialized source configuration",
         "   • Security protocol settings",
         "   • Rate limiting per source",
-        "   • Quality thresholds"
+        "   • Quality thresholds",
     ]
 
     for feature in implemented_features:
@@ -271,11 +273,12 @@ def display_implementation_summary():
         "✅ Entity relationship mapping and timeline reconstruction",
         "✅ Multi-layer security and anonymity protocols",
         "✅ Comprehensive intelligence report generation",
-        "✅ Real-time performance monitoring and optimization"
+        "✅ Real-time performance monitoring and optimization",
     ]
 
     for capability in capabilities:
         print(capability)
+
 
 async def main():
     """Main demonstration function"""
@@ -311,6 +314,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Demo failed: {str(e)}")
         print("💡 Note: Some features require additional setup (Tor, API keys, etc.)")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

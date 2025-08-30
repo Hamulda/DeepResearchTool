@@ -1,71 +1,70 @@
 #!/usr/bin/env python3
-"""
-Enhanced Reciprocal Rank Fusion (RRF) Implementation
+"""Enhanced Reciprocal Rank Fusion (RRF) Implementation
 RRF s per-source authority/recency priory a pokročilou deduplikací
 
 Author: Senior Python/MLOps Agent
 """
 
-import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple
-from dataclasses import dataclass
-import json
-import hashlib
 from collections import defaultdict
-import numpy as np
-import time
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from typing import Any
 
 import structlog
 
 logger = structlog.get_logger(__name__)
 
+
 @dataclass
 class RankedResult:
     """Single ranked search result with enhanced metadata"""
+
     id: str
     content: str
     score: float
     rank: int
     source_connector: str
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
     canonical_url: str = ""
     title: str = ""
     content_hash: str = ""
     # Enhanced fields for FÁZE 1
     authority_score: float = 0.0
     recency_score: float = 0.0
-    publication_date: Optional[datetime] = None
+    publication_date: datetime | None = None
     source_authority: float = 0.0
+
 
 @dataclass
 class FusionResult:
     """Enhanced result of RRF fusion"""
-    results: List[RankedResult]
-    fusion_scores: List[float]
-    deduplication_stats: Dict[str, int]
+
+    results: list[RankedResult]
+    fusion_scores: list[float]
+    deduplication_stats: dict[str, int]
     k_parameter: int
     original_lists_count: int
     # Enhanced metrics for FÁZE 1
-    authority_distribution: Dict[str, float]
-    recency_distribution: Dict[str, float]
-    source_coverage: Dict[str, int]
+    authority_distribution: dict[str, float]
+    recency_distribution: dict[str, float]
+    source_coverage: dict[str, int]
     fusion_quality_score: float
+
 
 @dataclass
 class SourcePriors:
     """Per-source authority and recency priors"""
+
     source_name: str
     authority_weight: float
     recency_weight: float
     base_authority: float
     recency_decay_days: int = 365
 
+
 class DocumentDeduplicator:
     """Cross-connector document deduplication"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.dedup_config = config.get("deduplication", {})
 
@@ -76,14 +75,17 @@ class DocumentDeduplicator:
         self.title_similarity_threshold = self.dedup_config.get("title_threshold", 0.9)
 
         # Duplicate handling strategy
-        self.duplicate_strategy = self.dedup_config.get("strategy", "merge_scores")  # merge_scores, keep_best, penalize
+        self.duplicate_strategy = self.dedup_config.get(
+            "strategy", "merge_scores"
+        )  # merge_scores, keep_best, penalize
         self.duplicate_penalty = self.dedup_config.get("penalty_factor", 0.8)
 
         self.logger = structlog.get_logger(__name__)
 
-    def deduplicate_results(self, ranked_lists: List[List[RankedResult]]) -> Tuple[List[List[RankedResult]], Dict[str, int]]:
+    def deduplicate_results(
+        self, ranked_lists: list[list[RankedResult]]
+    ) -> Tuple[list[list[RankedResult]], dict[str, int]]:
         """Deduplicate across multiple ranked lists"""
-
         if not self.enabled:
             return ranked_lists, {"duplicates_removed": 0, "duplicates_merged": 0}
 
@@ -137,7 +139,6 @@ class DocumentDeduplicator:
 
     def _generate_content_hash(self, result: RankedResult) -> str:
         """Generate content hash for deduplication"""
-
         # Normalize URL
         normalized_url = self._normalize_url(result.canonical_url)
 
@@ -156,11 +157,11 @@ class DocumentDeduplicator:
         import re
 
         # Remove protocol, www, trailing slash, query parameters
-        normalized = re.sub(r'^https?://', '', url.lower())
-        normalized = re.sub(r'^www\.', '', normalized)
-        normalized = re.sub(r'/+$', '', normalized)
-        normalized = re.sub(r'\?.*$', '', normalized)
-        normalized = re.sub(r'#.*$', '', normalized)
+        normalized = re.sub(r"^https?://", "", url.lower())
+        normalized = re.sub(r"^www\.", "", normalized)
+        normalized = re.sub(r"/+$", "", normalized)
+        normalized = re.sub(r"\?.*$", "", normalized)
+        normalized = re.sub(r"#.*$", "", normalized)
 
         return normalized
 
@@ -169,14 +170,15 @@ class DocumentDeduplicator:
         import re
 
         # Convert to lowercase, remove extra whitespace, punctuation
-        normalized = re.sub(r'[^\w\s]', ' ', text.lower())
-        normalized = re.sub(r'\s+', ' ', normalized).strip()
+        normalized = re.sub(r"[^\w\s]", " ", text.lower())
+        normalized = re.sub(r"\s+", " ", normalized).strip()
 
         return normalized
 
-    def _find_duplicate_key(self, result: RankedResult, hash_map: Dict[str, RankedResult]) -> Optional[str]:
+    def _find_duplicate_key(
+        self, result: RankedResult, hash_map: dict[str, RankedResult]
+    ) -> str | None:
         """Find if result is duplicate of existing result"""
-
         # Check exact hash match first
         if result.content_hash in hash_map:
             return result.content_hash
@@ -190,9 +192,10 @@ class DocumentDeduplicator:
 
     def _are_duplicates(self, result1: RankedResult, result2: RankedResult) -> bool:
         """Check if two results are duplicates based on similarity thresholds"""
-
         # URL similarity
-        url_similarity = self._calculate_url_similarity(result1.canonical_url, result2.canonical_url)
+        url_similarity = self._calculate_url_similarity(
+            result1.canonical_url, result2.canonical_url
+        )
         if url_similarity > self.url_similarity_threshold:
             return True
 
@@ -224,7 +227,7 @@ class DocumentDeduplicator:
 
         def get_ngrams(text: str, n: int = 3) -> set:
             normalized = self._normalize_text(text)
-            return set(normalized[i:i+n] for i in range(len(normalized) - n + 1))
+            return set(normalized[i : i + n] for i in range(len(normalized) - n + 1))
 
         ngrams1 = get_ngrams(text1)
         ngrams2 = get_ngrams(text2)
@@ -237,15 +240,16 @@ class DocumentDeduplicator:
 
         return intersection / union if union > 0 else 0.0
 
-    def _resolve_duplicates(self, duplicate_group: List[Tuple[int, int, RankedResult]]) -> Optional[RankedResult]:
+    def _resolve_duplicates(
+        self, duplicate_group: list[Tuple[int, int, RankedResult]]
+    ) -> RankedResult | None:
         """Resolve duplicate group according to strategy"""
-
         if self.duplicate_strategy == "keep_best":
             # Keep the highest scoring result
             best_result = max(duplicate_group, key=lambda x: x[2].score)[2]
             return best_result
 
-        elif self.duplicate_strategy == "merge_scores":
+        if self.duplicate_strategy == "merge_scores":
             # Merge scores from all duplicates
             base_result = duplicate_group[0][2]
 
@@ -263,16 +267,16 @@ class DocumentDeduplicator:
                 metadata={
                     **base_result.metadata,
                     "merged_from": [result.source_connector for _, _, result in duplicate_group],
-                    "original_scores": scores
+                    "original_scores": scores,
                 },
                 canonical_url=base_result.canonical_url,
                 title=base_result.title,
-                content_hash=base_result.content_hash
+                content_hash=base_result.content_hash,
             )
 
             return merged_result
 
-        elif self.duplicate_strategy == "penalize":
+        if self.duplicate_strategy == "penalize":
             # Keep best but penalize for being duplicate
             best_result = max(duplicate_group, key=lambda x: x[2].score)[2]
             best_result.score *= self.duplicate_penalty
@@ -281,19 +285,17 @@ class DocumentDeduplicator:
 
         return None
 
+
 class RRFEngine:
     """Reciprocal Rank Fusion engine with parameter optimization"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.rrf_config = config.get("rrf", {})
 
         # RRF parameters
         self.default_k = self.rrf_config.get("k", 40)
-        self.profile_k_values = self.rrf_config.get("profile_k", {
-            "quick": 40,
-            "thorough": 60
-        })
+        self.profile_k_values = self.rrf_config.get("profile_k", {"quick": 40, "thorough": 60})
 
         # Components
         self.deduplicator = DocumentDeduplicator(config)
@@ -303,11 +305,13 @@ class RRFEngine:
 
         self.logger = structlog.get_logger(__name__)
 
-    def fuse_rankings(self, ranked_lists: List[List[RankedResult]],
-                     k: Optional[int] = None,
-                     profile: str = "quick") -> FusionResult:
+    def fuse_rankings(
+        self,
+        ranked_lists: list[list[RankedResult]],
+        k: int | None = None,
+        profile: str = "quick",
+    ) -> FusionResult:
         """Fuse multiple ranked lists using RRF"""
-
         if k is None:
             k = self.profile_k_values.get(profile, self.default_k)
 
@@ -327,7 +331,9 @@ class RRFEngine:
             result.rank = new_rank
 
         # Enhanced metrics calculation
-        authority_distribution, recency_distribution, source_coverage = self._calculate_enhanced_metrics(fused_results)
+        authority_distribution, recency_distribution, source_coverage = (
+            self._calculate_enhanced_metrics(fused_results)
+        )
 
         fusion_quality_score = self._calculate_fusion_quality(fused_results, dedup_stats)
 
@@ -340,23 +346,26 @@ class RRFEngine:
             authority_distribution=authority_distribution,
             recency_distribution=recency_distribution,
             source_coverage=source_coverage,
-            fusion_quality_score=fusion_quality_score
+            fusion_quality_score=fusion_quality_score,
         )
 
         # Track for analysis
-        self.fusion_history.append({
-            "k": k,
-            "profile": profile,
-            "lists_count": len(ranked_lists),
-            "final_count": len(fused_results),
-            "dedup_stats": dedup_stats
-        })
+        self.fusion_history.append(
+            {
+                "k": k,
+                "profile": profile,
+                "lists_count": len(ranked_lists),
+                "final_count": len(fused_results),
+                "dedup_stats": dedup_stats,
+            }
+        )
 
         return fusion_result
 
-    def _apply_rrf_formula(self, ranked_lists: List[List[RankedResult]], k: int) -> List[RankedResult]:
+    def _apply_rrf_formula(
+        self, ranked_lists: list[list[RankedResult]], k: int
+    ) -> list[RankedResult]:
         """Apply RRF formula to combine rankings"""
-
         # Collect all unique results
         all_results = {}
         result_scores = defaultdict(float)
@@ -386,22 +395,21 @@ class RRFEngine:
                 metadata={
                     **result.metadata,
                     "rrf_score": fused_score,
-                    "original_score": result.score
+                    "original_score": result.score,
                 },
                 canonical_url=result.canonical_url,
                 title=result.title,
-                content_hash=result.content_hash
+                content_hash=result.content_hash,
             )
 
             fused_results.append(fused_result)
 
         return fused_results
 
-    def optimize_k_parameter(self, test_queries: List[str],
-                           ground_truth: Dict[str, List[str]],
-                           retrieval_engine) -> Dict[str, Any]:
+    def optimize_k_parameter(
+        self, test_queries: list[str], ground_truth: dict[str, list[str]], retrieval_engine
+    ) -> dict[str, Any]:
         """Optimize k parameter using test queries and ground truth"""
-
         k_values = self.rrf_config.get("k_sweep_range", [20, 40, 60, 80])
         optimization_results = {}
 
@@ -439,26 +447,28 @@ class RRFEngine:
                 avg_metrics = {
                     "ndcg@10": np.mean([m.get("ndcg@10", 0) for m in metrics]),
                     "recall@10": np.mean([m.get("recall@10", 0) for m in metrics]),
-                    "mrr": np.mean([m.get("mrr", 0) for m in metrics])
+                    "mrr": np.mean([m.get("mrr", 0) for m in metrics]),
                 }
                 optimization_results[k] = avg_metrics
 
         # Find best k value
-        best_k = max(optimization_results.keys(),
-                    key=lambda k: optimization_results[k].get("ndcg@10", 0))
+        best_k = max(
+            optimization_results.keys(), key=lambda k: optimization_results[k].get("ndcg@10", 0)
+        )
 
         return {
             "best_k": best_k,
             "all_results": optimization_results,
             "recommendation": {
                 "quick": min(k_values),  # Fast retrieval
-                "thorough": best_k      # Best quality
-            }
+                "thorough": best_k,  # Best quality
+            },
         }
 
-    def _calculate_metrics(self, results: List[RankedResult], ground_truth: List[str]) -> Dict[str, float]:
+    def _calculate_metrics(
+        self, results: list[RankedResult], ground_truth: list[str]
+    ) -> dict[str, float]:
         """Calculate retrieval metrics"""
-
         # Convert to IDs for comparison
         result_ids = [r.id for r in results[:10]]  # Top 10
         gt_set = set(ground_truth)
@@ -483,15 +493,12 @@ class RRFEngine:
                 mrr = 1 / (i + 1)
                 break
 
-        return {
-            "recall@10": recall_at_10,
-            "ndcg@10": ndcg_at_10,
-            "mrr": mrr
-        }
+        return {"recall@10": recall_at_10, "ndcg@10": ndcg_at_10, "mrr": mrr}
 
-    def _calculate_enhanced_metrics(self, results: List[RankedResult]) -> Tuple[Dict[str, float], Dict[str, float], Dict[str, int]]:
+    def _calculate_enhanced_metrics(
+        self, results: list[RankedResult]
+    ) -> Tuple[dict[str, float], dict[str, float], dict[str, int]]:
         """Calculate enhanced metrics for authority and recency distribution"""
-
         authority_distribution = defaultdict(float)
         recency_distribution = defaultdict(float)
         source_coverage = defaultdict(int)
@@ -505,7 +512,9 @@ class RRFEngine:
             # Recency score contribution (decayed)
             if result.publication_date:
                 recency_age = (now - result.publication_date).days
-                decay_factor = max(0, 1 - recency_age / result.metadata.get("recency_decay_days", 365))
+                decay_factor = max(
+                    0, 1 - recency_age / result.metadata.get("recency_decay_days", 365)
+                )
                 recency_distribution[result.source_connector] += result.recency_score * decay_factor
 
             # Source coverage
@@ -525,11 +534,14 @@ class RRFEngine:
 
         return dict(authority_distribution), dict(recency_distribution), dict(source_coverage)
 
-    def _calculate_fusion_quality(self, results: List[RankedResult], dedup_stats: Dict[str, int]) -> float:
+    def _calculate_fusion_quality(
+        self, results: list[RankedResult], dedup_stats: dict[str, int]
+    ) -> float:
         """Calculate quality score of the fusion"""
-
         # Base quality from deduplication stats
-        quality_score = dedup_stats.get("unique_results", 0) / max(1, dedup_stats.get("duplicates_removed", 1))
+        quality_score = dedup_stats.get("unique_results", 0) / max(
+            1, dedup_stats.get("duplicates_removed", 1)
+        )
 
         # Authority and recency factors
         authority_factor = np.mean([r.authority_score for r in results]) if results else 0
@@ -540,9 +552,8 @@ class RRFEngine:
 
         return quality_score
 
-    def get_optimization_report(self) -> Dict[str, Any]:
+    def get_optimization_report(self) -> dict[str, Any]:
         """Get RRF optimization analysis report"""
-
         if not self.fusion_history:
             return {"message": "No fusion history available"}
 
@@ -554,10 +565,7 @@ class RRFEngine:
             final_count = entry["final_count"]
             dedup_ratio = entry["dedup_stats"].get("duplicates_removed", 0) / max(1, final_count)
 
-            k_performance[k].append({
-                "final_count": final_count,
-                "dedup_ratio": dedup_ratio
-            })
+            k_performance[k].append({"final_count": final_count, "dedup_ratio": dedup_ratio})
 
         # Generate recommendations
         recommendations = {}
@@ -568,15 +576,16 @@ class RRFEngine:
             recommendations[k] = {
                 "avg_results": avg_final_count,
                 "avg_dedup_ratio": avg_dedup_ratio,
-                "efficiency_score": avg_final_count * (1 - avg_dedup_ratio)
+                "efficiency_score": avg_final_count * (1 - avg_dedup_ratio),
             }
 
         return {
             "k_performance": dict(k_performance),
             "recommendations": recommendations,
-            "total_fusions": len(self.fusion_history)
+            "total_fusions": len(self.fusion_history),
         }
 
-def create_rrf_engine(config: Dict[str, Any]) -> RRFEngine:
+
+def create_rrf_engine(config: dict[str, Any]) -> RRFEngine:
     """Factory function for RRF engine"""
     return RRFEngine(config)

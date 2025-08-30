@@ -1,29 +1,30 @@
 #!/usr/bin/env python3
-"""
-Metrics Collector
+"""Metrics Collector
 Comprehensive performance and operational metrics collection
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, List, Any, Optional, Callable, Union
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-import time
-import threading
+from datetime import UTC, datetime, timedelta
+from enum import Enum
 import json
-import psutil
 import logging
 from pathlib import Path
-from collections import defaultdict, deque
-from enum import Enum
 import statistics
+import threading
+import time
+from typing import Any
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
 
 class MetricType(Enum):
     """Types of metrics collected"""
+
     COUNTER = "counter"
     GAUGE = "gauge"
     HISTOGRAM = "histogram"
@@ -33,21 +34,19 @@ class MetricType(Enum):
 @dataclass
 class MetricValue:
     """Individual metric value with metadata"""
-    value: Union[int, float]
-    timestamp: datetime
-    tags: Dict[str, str] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "value": self.value,
-            "timestamp": self.timestamp.isoformat(),
-            "tags": self.tags
-        }
+    value: int | float
+    timestamp: datetime
+    tags: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"value": self.value, "timestamp": self.timestamp.isoformat(), "tags": self.tags}
 
 
 @dataclass
 class MetricDefinition:
     """Definition of a metric including aggregation rules"""
+
     name: str
     metric_type: MetricType
     description: str
@@ -56,7 +55,9 @@ class MetricDefinition:
     aggregation_window_minutes: int = 5
 
     def __post_init__(self):
-        self.values: deque = deque(maxlen=int(self.retention_hours * 60 / self.aggregation_window_minutes))
+        self.values: deque = deque(
+            maxlen=int(self.retention_hours * 60 / self.aggregation_window_minutes)
+        )
         self.lock = threading.Lock()
 
 
@@ -67,9 +68,8 @@ class SystemMetricsCollector:
         self.process = psutil.Process()
         self.system_start_time = time.time()
 
-    def collect_system_metrics(self) -> Dict[str, float]:
+    def collect_system_metrics(self) -> dict[str, float]:
         """Collect current system metrics"""
-
         try:
             # CPU metrics
             cpu_percent = psutil.cpu_percent(interval=0.1)
@@ -86,7 +86,7 @@ class SystemMetricsCollector:
             process_cpu_percent = self.process.cpu_percent()
 
             # Disk metrics for current directory
-            disk_usage = psutil.disk_usage('.')
+            disk_usage = psutil.disk_usage(".")
             disk_used_gb = disk_usage.used / (1024 * 1024 * 1024)
             disk_free_gb = disk_usage.free / (1024 * 1024 * 1024)
             disk_percent = (disk_usage.used / disk_usage.total) * 100
@@ -108,7 +108,7 @@ class SystemMetricsCollector:
                 "disk.percent": disk_percent,
                 "network.bytes_sent": network_bytes_sent,
                 "network.bytes_recv": network_bytes_recv,
-                "uptime_seconds": time.time() - self.system_start_time
+                "uptime_seconds": time.time() - self.system_start_time,
             }
 
         except Exception as e:
@@ -119,7 +119,7 @@ class SystemMetricsCollector:
 class MetricsCollector:
     """Main metrics collection and aggregation system"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.metrics_config = config.get("observability", {}).get("metrics", {})
 
@@ -128,8 +128,8 @@ class MetricsCollector:
         self.storage_dir.mkdir(exist_ok=True)
 
         # Metric definitions
-        self.metrics: Dict[str, MetricDefinition] = {}
-        self.metric_values: Dict[str, deque] = defaultdict(lambda: deque(maxlen=10000))
+        self.metrics: dict[str, MetricDefinition] = {}
+        self.metric_values: dict[str, deque] = defaultdict(lambda: deque(maxlen=10000))
 
         # System metrics
         self.system_collector = SystemMetricsCollector()
@@ -145,7 +145,7 @@ class MetricsCollector:
             "total_metrics_collected": 0,
             "collection_errors": 0,
             "last_collection_time": None,
-            "avg_collection_duration_ms": 0.0
+            "avg_collection_duration_ms": 0.0,
         }
 
         # Initialize standard metrics
@@ -159,49 +159,59 @@ class MetricsCollector:
 
     def _initialize_standard_metrics(self):
         """Initialize standard DeepResearchTool metrics"""
-
         standard_metrics = [
             # Pipeline metrics
-            MetricDefinition("pipeline.executions", MetricType.COUNTER, "Total pipeline executions"),
-            MetricDefinition("pipeline.duration_ms", MetricType.TIMER, "Pipeline execution duration", "ms"),
-            MetricDefinition("pipeline.success_rate", MetricType.GAUGE, "Pipeline success rate", "%"),
-            MetricDefinition("pipeline.claims_generated", MetricType.HISTOGRAM, "Claims generated per pipeline"),
-
+            MetricDefinition(
+                "pipeline.executions", MetricType.COUNTER, "Total pipeline executions"
+            ),
+            MetricDefinition(
+                "pipeline.duration_ms", MetricType.TIMER, "Pipeline execution duration", "ms"
+            ),
+            MetricDefinition(
+                "pipeline.success_rate", MetricType.GAUGE, "Pipeline success rate", "%"
+            ),
+            MetricDefinition(
+                "pipeline.claims_generated", MetricType.HISTOGRAM, "Claims generated per pipeline"
+            ),
             # Retrieval metrics
             MetricDefinition("retrieval.queries", MetricType.COUNTER, "Total retrieval queries"),
             MetricDefinition("retrieval.duration_ms", MetricType.TIMER, "Retrieval duration", "ms"),
-            MetricDefinition("retrieval.documents_found", MetricType.HISTOGRAM, "Documents found per query"),
+            MetricDefinition(
+                "retrieval.documents_found", MetricType.HISTOGRAM, "Documents found per query"
+            ),
             MetricDefinition("retrieval.cache_hit_rate", MetricType.GAUGE, "Cache hit rate", "%"),
-
             # Reranking metrics
-            MetricDefinition("reranking.operations", MetricType.COUNTER, "Total reranking operations"),
+            MetricDefinition(
+                "reranking.operations", MetricType.COUNTER, "Total reranking operations"
+            ),
             MetricDefinition("reranking.duration_ms", MetricType.TIMER, "Reranking duration", "ms"),
-            MetricDefinition("reranking.cross_encoder_usage", MetricType.GAUGE, "Cross-encoder usage rate", "%"),
-
+            MetricDefinition(
+                "reranking.cross_encoder_usage", MetricType.GAUGE, "Cross-encoder usage rate", "%"
+            ),
             # LLM metrics
             MetricDefinition("llm.requests", MetricType.COUNTER, "Total LLM requests"),
             MetricDefinition("llm.tokens_input", MetricType.COUNTER, "Input tokens processed"),
             MetricDefinition("llm.tokens_output", MetricType.COUNTER, "Output tokens generated"),
             MetricDefinition("llm.duration_ms", MetricType.TIMER, "LLM request duration", "ms"),
-
             # Verification metrics
             MetricDefinition("verification.claims_checked", MetricType.COUNTER, "Claims verified"),
-            MetricDefinition("verification.contradictions_found", MetricType.COUNTER, "Contradictions detected"),
-            MetricDefinition("verification.confidence_avg", MetricType.GAUGE, "Average verification confidence"),
-
+            MetricDefinition(
+                "verification.contradictions_found", MetricType.COUNTER, "Contradictions detected"
+            ),
+            MetricDefinition(
+                "verification.confidence_avg", MetricType.GAUGE, "Average verification confidence"
+            ),
             # Cache metrics
             MetricDefinition("cache.hits", MetricType.COUNTER, "Cache hits"),
             MetricDefinition("cache.misses", MetricType.COUNTER, "Cache misses"),
             MetricDefinition("cache.size_mb", MetricType.GAUGE, "Cache size", "MB"),
-
             # Error metrics
             MetricDefinition("errors.total", MetricType.COUNTER, "Total errors"),
             MetricDefinition("errors.rate", MetricType.GAUGE, "Error rate", "errors/min"),
-
             # System metrics
             MetricDefinition("system.cpu_percent", MetricType.GAUGE, "CPU usage", "%"),
             MetricDefinition("system.memory_mb", MetricType.GAUGE, "Memory usage", "MB"),
-            MetricDefinition("system.disk_percent", MetricType.GAUGE, "Disk usage", "%")
+            MetricDefinition("system.disk_percent", MetricType.GAUGE, "Disk usage", "%"),
         ]
 
         for metric in standard_metrics:
@@ -215,12 +225,11 @@ class MetricsCollector:
     def record_metric(
         self,
         name: str,
-        value: Union[int, float],
-        tags: Optional[Dict[str, str]] = None,
-        timestamp: Optional[datetime] = None
+        value: float,
+        tags: dict[str, str] | None = None,
+        timestamp: datetime | None = None,
     ):
         """Record a metric value"""
-
         if not self.collection_enabled:
             return
 
@@ -229,7 +238,7 @@ class MetricsCollector:
             return
 
         if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
+            timestamp = datetime.now(UTC)
 
         if tags is None:
             tags = {}
@@ -241,34 +250,32 @@ class MetricsCollector:
 
         self.performance_metrics["total_metrics_collected"] += 1
 
-    def increment_counter(self, name: str, tags: Optional[Dict[str, str]] = None):
+    def increment_counter(self, name: str, tags: dict[str, str] | None = None):
         """Increment a counter metric"""
         self.record_metric(name, 1, tags)
 
-    def set_gauge(self, name: str, value: Union[int, float], tags: Optional[Dict[str, str]] = None):
+    def set_gauge(self, name: str, value: float, tags: dict[str, str] | None = None):
         """Set a gauge metric value"""
         self.record_metric(name, value, tags)
 
-    def record_timer(self, name: str, duration_ms: float, tags: Optional[Dict[str, str]] = None):
+    def record_timer(self, name: str, duration_ms: float, tags: dict[str, str] | None = None):
         """Record a timer metric"""
         self.record_metric(name, duration_ms, tags)
 
-    def record_histogram(self, name: str, value: Union[int, float], tags: Optional[Dict[str, str]] = None):
+    def record_histogram(
+        self, name: str, value: float, tags: dict[str, str] | None = None
+    ):
         """Record a histogram metric"""
         self.record_metric(name, value, tags)
 
-    def timer(self, name: str, tags: Optional[Dict[str, str]] = None):
+    def timer(self, name: str, tags: dict[str, str] | None = None):
         """Context manager for timing operations"""
         return MetricTimer(self, name, tags)
 
     def get_metric_values(
-        self,
-        name: str,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None
-    ) -> List[MetricValue]:
+        self, name: str, since: datetime | None = None, until: datetime | None = None
+    ) -> list[MetricValue]:
         """Get metric values within time range"""
-
         if name not in self.metrics:
             return []
 
@@ -288,15 +295,11 @@ class MetricsCollector:
         return values
 
     def get_metric_aggregates(
-        self,
-        name: str,
-        since: Optional[datetime] = None,
-        window_minutes: int = 5
-    ) -> Dict[str, float]:
+        self, name: str, since: datetime | None = None, window_minutes: int = 5
+    ) -> dict[str, float]:
         """Get aggregated metric statistics"""
-
         if since is None:
-            since = datetime.now(timezone.utc) - timedelta(hours=1)
+            since = datetime.now(UTC) - timedelta(hours=1)
 
         values = self.get_metric_values(name, since)
 
@@ -311,7 +314,7 @@ class MetricsCollector:
             "avg": statistics.mean(numeric_values),
             "min": min(numeric_values),
             "max": max(numeric_values),
-            "latest": numeric_values[-1] if numeric_values else 0
+            "latest": numeric_values[-1] if numeric_values else 0,
         }
 
         if len(numeric_values) > 1:
@@ -322,7 +325,6 @@ class MetricsCollector:
 
     def collect_system_metrics(self):
         """Collect and record system metrics"""
-
         start_time = time.time()
 
         try:
@@ -338,10 +340,14 @@ class MetricsCollector:
                     self.set_gauge("system.disk_percent", value)
 
                 # Record all system metrics with system prefix
-                full_name = f"system.{metric_name}" if not metric_name.startswith("system.") else metric_name
+                full_name = (
+                    f"system.{metric_name}"
+                    if not metric_name.startswith("system.")
+                    else metric_name
+                )
                 self.record_metric(full_name, value, {"source": "system_collector"})
 
-            self.performance_metrics["last_collection_time"] = datetime.now(timezone.utc)
+            self.performance_metrics["last_collection_time"] = datetime.now(UTC)
 
         except Exception as e:
             self.performance_metrics["collection_errors"] += 1
@@ -354,14 +360,13 @@ class MetricsCollector:
 
         if total_collections > 0:
             self.performance_metrics["avg_collection_duration_ms"] = (
-                (current_avg * (total_collections - 1) + duration_ms) / total_collections
-            )
+                current_avg * (total_collections - 1) + duration_ms
+            ) / total_collections
         else:
             self.performance_metrics["avg_collection_duration_ms"] = duration_ms
 
     def start_collection(self):
         """Start background metrics collection"""
-
         if self.collection_thread and self.collection_thread.is_alive():
             return
 
@@ -373,7 +378,6 @@ class MetricsCollector:
 
     def stop_collection_thread(self):
         """Stop background metrics collection"""
-
         self.stop_collection.set()
         if self.collection_thread:
             self.collection_thread.join(timeout=5)
@@ -382,7 +386,6 @@ class MetricsCollector:
 
     def _collection_loop(self):
         """Background collection loop"""
-
         while not self.stop_collection.is_set():
             self.collect_system_metrics()
 
@@ -390,22 +393,18 @@ class MetricsCollector:
             self.stop_collection.wait(self.collection_interval)
 
     def export_metrics(
-        self,
-        format: str = "json",
-        since: Optional[datetime] = None,
-        include_system: bool = True
-    ) -> Dict[str, Any]:
+        self, format: str = "json", since: datetime | None = None, include_system: bool = True
+    ) -> dict[str, Any]:
         """Export metrics in specified format"""
-
         if since is None:
-            since = datetime.now(timezone.utc) - timedelta(hours=1)
+            since = datetime.now(UTC) - timedelta(hours=1)
 
         exported_data = {
-            "export_timestamp": datetime.now(timezone.utc).isoformat(),
+            "export_timestamp": datetime.now(UTC).isoformat(),
             "export_range_start": since.isoformat(),
             "format": format,
             "metrics": {},
-            "performance": self.performance_metrics.copy()
+            "performance": self.performance_metrics.copy(),
         }
 
         for metric_name, metric_def in self.metrics.items():
@@ -419,40 +418,38 @@ class MetricsCollector:
                 "definition": {
                     "type": metric_def.metric_type.value,
                     "description": metric_def.description,
-                    "unit": metric_def.unit
+                    "unit": metric_def.unit,
                 },
                 "aggregates": aggregates,
-                "recent_values": [v.to_dict() for v in values[-10:]]  # Last 10 values
+                "recent_values": [v.to_dict() for v in values[-10:]],  # Last 10 values
             }
 
         return exported_data
 
-    def save_metrics(self, filepath: Optional[Path] = None):
+    def save_metrics(self, filepath: Path | None = None):
         """Save metrics to file"""
-
         if filepath is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filepath = self.storage_dir / f"metrics_export_{timestamp}.json"
 
         exported_data = self.export_metrics()
 
-        with open(filepath, 'w', encoding='utf-8') as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(exported_data, f, indent=2, ensure_ascii=False)
 
         logger.info(f"Metrics saved to: {filepath}")
         return filepath
 
-    def get_dashboard_data(self) -> Dict[str, Any]:
+    def get_dashboard_data(self) -> dict[str, Any]:
         """Get data formatted for dashboard display"""
-
-        since = datetime.now(timezone.utc) - timedelta(minutes=30)
+        since = datetime.now(UTC) - timedelta(minutes=30)
 
         dashboard_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "system_health": {},
             "pipeline_performance": {},
             "error_rates": {},
-            "cache_performance": {}
+            "cache_performance": {},
         }
 
         # System health
@@ -463,21 +460,27 @@ class MetricsCollector:
                 dashboard_data["system_health"][metric] = aggregates["latest"]
 
         # Pipeline performance
-        pipeline_metrics = ["pipeline.duration_ms", "pipeline.success_rate", "pipeline.claims_generated"]
+        pipeline_metrics = [
+            "pipeline.duration_ms",
+            "pipeline.success_rate",
+            "pipeline.claims_generated",
+        ]
         for metric in pipeline_metrics:
             aggregates = self.get_metric_aggregates(metric, since)
             if aggregates:
                 dashboard_data["pipeline_performance"][metric] = {
                     "avg": aggregates.get("avg", 0),
                     "latest": aggregates.get("latest", 0),
-                    "count": aggregates.get("count", 0)
+                    "count": aggregates.get("count", 0),
                 }
 
         # Error rates
         error_aggregates = self.get_metric_aggregates("errors.total", since)
         if error_aggregates:
             dashboard_data["error_rates"]["total_errors"] = error_aggregates["sum"]
-            dashboard_data["error_rates"]["error_rate_per_min"] = error_aggregates["sum"] / 30  # 30 min window
+            dashboard_data["error_rates"]["error_rate_per_min"] = (
+                error_aggregates["sum"] / 30
+            )  # 30 min window
 
         # Cache performance
         cache_hits = self.get_metric_aggregates("cache.hits", since)
@@ -495,7 +498,9 @@ class MetricsCollector:
 class MetricTimer:
     """Context manager for timing operations"""
 
-    def __init__(self, collector: MetricsCollector, name: str, tags: Optional[Dict[str, str]] = None):
+    def __init__(
+        self, collector: MetricsCollector, name: str, tags: dict[str, str] | None = None
+    ):
         self.collector = collector
         self.name = name
         self.tags = tags or {}
@@ -511,7 +516,7 @@ class MetricTimer:
             self.collector.record_timer(self.name, duration_ms, self.tags)
 
 
-def create_metrics_collector(config: Dict[str, Any]) -> MetricsCollector:
+def create_metrics_collector(config: dict[str, Any]) -> MetricsCollector:
     """Factory function for metrics collector"""
     return MetricsCollector(config)
 
@@ -519,13 +524,8 @@ def create_metrics_collector(config: Dict[str, Any]) -> MetricsCollector:
 # Usage example
 if __name__ == "__main__":
     config = {
-        "observability": {
-            "metrics": {
-                "enabled": True,
-                "collection_interval_seconds": 10
-            }
-        },
-        "metrics_storage": "test_metrics"
+        "observability": {"metrics": {"enabled": True, "collection_interval_seconds": 10}},
+        "metrics_storage": "test_metrics",
     }
 
     collector = MetricsCollector(config)

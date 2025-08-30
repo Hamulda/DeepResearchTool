@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-"""
-Strukturované logování pomocí structlog
+"""Strukturované logování pomocí structlog
 Nahrazuje všechna print() a základní logging volání
 
 Author: Senior Python/MLOps Agent
 """
 
-import json
-import logging
-import sys
 from datetime import datetime
+import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+import sys
 
 import structlog
-from structlog.processors import JSONRenderer, TimeStamper, add_log_level, CallsiteParameterAdder
+from structlog.processors import CallsiteParameterAdder, JSONRenderer, TimeStamper
 
 from ..config.settings import get_settings
 
@@ -22,17 +19,17 @@ from ..config.settings import get_settings
 def configure_logging(
     log_level: str = "INFO",
     log_format: str = "json",
-    log_file: Optional[str] = None,
-    enable_console: bool = True
+    log_file: str | None = None,
+    enable_console: bool = True,
 ) -> None:
-    """
-    Konfigurace strukturovaného logování
+    """Konfigurace strukturovaného logování
 
     Args:
         log_level: Úroveň logování (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_format: Formát logů (json, text)
         log_file: Cesta k log souboru (optional)
         enable_console: Povolit výstup na konzoli
+
     """
     settings = get_settings()
 
@@ -64,12 +61,12 @@ def configure_logging(
 
         if log_format == "json":
             processors.append(JSONRenderer())
-            console_handler.setFormatter(logging.Formatter('%(message)s'))
+            console_handler.setFormatter(logging.Formatter("%(message)s"))
         else:
             processors.append(structlog.dev.ConsoleRenderer(colors=True))
-            console_handler.setFormatter(logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            ))
+            console_handler.setFormatter(
+                logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+            )
 
         handlers.append(console_handler)
 
@@ -82,15 +79,11 @@ def configure_logging(
 
         # Soubory vždy v JSON formátu pro lepší parsování
         file_processors = processors[:-1] + [JSONRenderer()]
-        file_handler.setFormatter(logging.Formatter('%(message)s'))
+        file_handler.setFormatter(logging.Formatter("%(message)s"))
         handlers.append(file_handler)
 
     # Konfigurace standardního loggingu
-    logging.basicConfig(
-        level=numeric_level,
-        handlers=handlers,
-        format='%(message)s'
-    )
+    logging.basicConfig(level=numeric_level, handlers=handlers, format="%(message)s")
 
     # Konfigurace structlog
     structlog.configure(
@@ -102,8 +95,7 @@ def configure_logging(
 
 
 class StructuredLogger:
-    """
-    Wrapper pro strukturované logování s kontextovými informacemi
+    """Wrapper pro strukturované logování s kontextovými informacemi
     """
 
     def __init__(self, name: str, **context):
@@ -138,7 +130,7 @@ class StructuredLogger:
         """Log exception with traceback"""
         self.logger.exception(message, **kwargs)
 
-    def bind(self, **kwargs) -> 'StructuredLogger':
+    def bind(self, **kwargs) -> "StructuredLogger":
         """Vytvoří nový logger s dodatečným kontextem"""
         new_logger = StructuredLogger(self.logger.name)
         new_logger.logger = self.logger.bind(**kwargs)
@@ -147,19 +139,14 @@ class StructuredLogger:
 
 
 class AuditLogger(StructuredLogger):
-    """
-    Specializovaný logger pro audit trail
+    """Specializovaný logger pro audit trail
     """
 
     def __init__(self, component: str):
         super().__init__("audit", component=component)
 
     def user_action(
-        self,
-        action: str,
-        user_id: Optional[str] = None,
-        resource: Optional[str] = None,
-        **kwargs
+        self, action: str, user_id: str | None = None, resource: str | None = None, **kwargs
     ) -> None:
         """Logování uživatelských akcí"""
         self.info(
@@ -171,13 +158,7 @@ class AuditLogger(StructuredLogger):
             **kwargs
         )
 
-    def security_event(
-        self,
-        event_type: str,
-        severity: str,
-        description: str,
-        **kwargs
-    ) -> None:
+    def security_event(self, event_type: str, severity: str, description: str, **kwargs) -> None:
         """Logování bezpečnostních událostí"""
         self.warning(
             "Security event detected",
@@ -191,8 +172,8 @@ class AuditLogger(StructuredLogger):
     def data_access(
         self,
         operation: str,
-        table_name: Optional[str] = None,
-        record_count: Optional[int] = None,
+        table_name: str | None = None,
+        record_count: int | None = None,
         **kwargs
     ) -> None:
         """Logování přístupu k datům"""
@@ -207,32 +188,21 @@ class AuditLogger(StructuredLogger):
 
 
 class PerformanceLogger(StructuredLogger):
-    """
-    Specializovaný logger pro výkonnostní metriky
+    """Specializovaný logger pro výkonnostní metriky
     """
 
     def __init__(self, component: str):
         super().__init__("performance", component=component)
 
-    def timing(
-        self,
-        operation: str,
-        duration_ms: float,
-        **kwargs
-    ) -> None:
+    def timing(self, operation: str, duration_ms: float, **kwargs) -> None:
         """Logování časování operací"""
-        self.info(
-            "Operation timing",
-            operation=operation,
-            duration_ms=duration_ms,
-            **kwargs
-        )
+        self.info("Operation timing", operation=operation, duration_ms=duration_ms, **kwargs)
 
     def resource_usage(
         self,
-        cpu_percent: Optional[float] = None,
-        memory_mb: Optional[float] = None,
-        disk_io_mb: Optional[float] = None,
+        cpu_percent: float | None = None,
+        memory_mb: float | None = None,
+        disk_io_mb: float | None = None,
         **kwargs
     ) -> None:
         """Logování využití zdrojů"""
@@ -245,11 +215,7 @@ class PerformanceLogger(StructuredLogger):
         )
 
     def throughput(
-        self,
-        operation: str,
-        items_per_second: float,
-        total_items: int,
-        **kwargs
+        self, operation: str, items_per_second: float, total_items: int, **kwargs
     ) -> None:
         """Logování propustnosti"""
         self.info(
@@ -262,8 +228,7 @@ class PerformanceLogger(StructuredLogger):
 
 
 def get_logger(name: str, **context) -> StructuredLogger:
-    """
-    Factory funkce pro získání loggeru
+    """Factory funkce pro získání loggeru
 
     Args:
         name: Název loggeru
@@ -271,32 +236,33 @@ def get_logger(name: str, **context) -> StructuredLogger:
 
     Returns:
         StructuredLogger instance
+
     """
     return StructuredLogger(name, **context)
 
 
 def get_audit_logger(component: str) -> AuditLogger:
-    """
-    Factory funkce pro audit logger
+    """Factory funkce pro audit logger
 
     Args:
         component: Název komponenty
 
     Returns:
         AuditLogger instance
+
     """
     return AuditLogger(component)
 
 
 def get_performance_logger(component: str) -> PerformanceLogger:
-    """
-    Factory funkce pro performance logger
+    """Factory funkce pro performance logger
 
     Args:
         component: Název komponenty
 
     Returns:
         PerformanceLogger instance
+
     """
     return PerformanceLogger(component)
 
@@ -310,7 +276,7 @@ def _initialize_logging():
             log_level=settings.monitoring.log_level,
             log_format=settings.monitoring.log_format,
             log_file=settings.monitoring.log_file_path,
-            enable_console=True
+            enable_console=True,
         )
     except Exception as e:
         # Fallback na základní konfiguraci

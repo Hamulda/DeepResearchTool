@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""
-Qdrant integration s per-collection ef_search a advanced deduplication
+"""Qdrant integration s per-collection ef_search a advanced deduplication
 FÁZE 2: Optimalizované vektorové vyhledávání
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple, Set
 from dataclasses import dataclass
-import time
-import hashlib
 import json
+import logging
+import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,27 +18,29 @@ logger = logging.getLogger(__name__)
 @dataclass
 class QdrantConfig:
     """Konfigurace pro Qdrant collection"""
+
     collection_name: str
     ef_search: int
     vector_size: int
     distance_metric: str
-    hnsw_config: Dict[str, Any]
-    quantization: Optional[Dict[str, Any]] = None
+    hnsw_config: dict[str, Any]
+    quantization: dict[str, Any] | None = None
 
 
 @dataclass
 class DeduplicationResult:
     """Výsledek deduplication procesu"""
-    deduplicated_docs: List[Dict[str, Any]]
-    duplicate_groups: List[List[str]]
-    similarity_matrix: Dict[str, Dict[str, float]]
-    stats: Dict[str, Any]
+
+    deduplicated_docs: list[dict[str, Any]]
+    duplicate_groups: list[list[str]]
+    similarity_matrix: dict[str, dict[str, float]]
+    stats: dict[str, Any]
 
 
 class EnhancedDeduplicator:
     """Advanced deduplication s minhash a cosine similarity"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.dedup_config = config.get("retrieval", {}).get("deduplication", {})
 
@@ -58,15 +58,15 @@ class EnhancedDeduplicator:
         self.audit_enabled = self.dedup_config.get("audit_enabled", True)
         self.merge_mappings = {}  # Track what was merged
 
-    async def deduplicate_documents(self, documents: List[Dict[str, Any]]) -> DeduplicationResult:
-        """
-        Provede advanced deduplication s audit logging
+    async def deduplicate_documents(self, documents: list[dict[str, Any]]) -> DeduplicationResult:
+        """Provede advanced deduplication s audit logging
 
         Args:
             documents: List dokumentů k deduplikaci
 
         Returns:
             DeduplicationResult s deduplikovanými dokumenty
+
         """
         start_time = time.time()
 
@@ -75,7 +75,11 @@ class EnhancedDeduplicator:
                 deduplicated_docs=documents,
                 duplicate_groups=[],
                 similarity_matrix={},
-                stats={"total_input": len(documents), "duplicates_removed": 0, "processing_time": 0.0}
+                stats={
+                    "total_input": len(documents),
+                    "duplicates_removed": 0,
+                    "processing_time": 0.0,
+                },
             )
 
         logger.info(f"Starting deduplication for {len(documents)} documents")
@@ -100,23 +104,29 @@ class EnhancedDeduplicator:
             "duplicate_groups": len(duplicate_groups),
             "processing_time": processing_time,
             "similarity_threshold": self.similarity_threshold,
-            "minhash_perms": self.minhash_num_perm
+            "minhash_perms": self.minhash_num_perm,
         }
 
         # Audit logging
         if self.audit_enabled:
-            await self._log_deduplication_audit(documents, deduplicated_docs, duplicate_groups, stats)
+            await self._log_deduplication_audit(
+                documents, deduplicated_docs, duplicate_groups, stats
+            )
 
-        logger.info(f"Deduplication completed: {len(documents)} → {len(deduplicated_docs)} docs ({stats['duplicates_removed']} removed)")
+        logger.info(
+            f"Deduplication completed: {len(documents)} → {len(deduplicated_docs)} docs ({stats['duplicates_removed']} removed)"
+        )
 
         return DeduplicationResult(
             deduplicated_docs=deduplicated_docs,
             duplicate_groups=duplicate_groups,
             similarity_matrix=similarity_matrix,
-            stats=stats
+            stats=stats,
         )
 
-    async def _generate_minhash_signatures(self, documents: List[Dict[str, Any]]) -> Dict[str, List[int]]:
+    async def _generate_minhash_signatures(
+        self, documents: list[dict[str, Any]]
+    ) -> dict[str, list[int]]:
         """Generuje MinHash signatures pro dokumenty"""
         signatures = {}
 
@@ -126,10 +136,7 @@ class EnhancedDeduplicator:
 
             if len(content) < self.min_content_length:
                 # Use title + metadata for short content
-                content = " ".join([
-                    doc.get("title", ""),
-                    str(doc.get("metadata", {}))
-                ])
+                content = " ".join([doc.get("title", ""), str(doc.get("metadata", {}))])
 
             # Generate shingles
             shingles = self._generate_shingles(content)
@@ -140,25 +147,25 @@ class EnhancedDeduplicator:
 
         return signatures
 
-    def _generate_shingles(self, text: str) -> Set[str]:
+    def _generate_shingles(self, text: str) -> set[str]:
         """Generuje k-shingles z textu"""
         text = text.lower().strip()
         words = text.split()
 
         shingles = set()
         for i in range(len(words) - self.shingle_size + 1):
-            shingle = " ".join(words[i:i + self.shingle_size])
+            shingle = " ".join(words[i : i + self.shingle_size])
             shingles.add(shingle)
 
         return shingles
 
-    def _calculate_minhash(self, shingles: Set[str]) -> List[int]:
+    def _calculate_minhash(self, shingles: set[str]) -> list[int]:
         """Výpočet MinHash signature"""
         # Simple MinHash implementation
         signature = []
 
         for i in range(self.minhash_num_perm):
-            min_hash = float('inf')
+            min_hash = float("inf")
 
             for shingle in shingles:
                 # Create hash with permutation
@@ -166,11 +173,13 @@ class EnhancedDeduplicator:
                 hash_val = hash(hash_input) % (2**32)
                 min_hash = min(min_hash, hash_val)
 
-            signature.append(int(min_hash) if min_hash != float('inf') else 0)
+            signature.append(int(min_hash) if min_hash != float("inf") else 0)
 
         return signature
 
-    async def _calculate_similarity_matrix(self, signatures: Dict[str, List[int]], documents: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+    async def _calculate_similarity_matrix(
+        self, signatures: dict[str, list[int]], documents: list[dict[str, Any]]
+    ) -> dict[str, dict[str, float]]:
         """Výpočet similarity matrix"""
         doc_ids = list(signatures.keys())
         similarity_matrix = {}
@@ -185,37 +194,42 @@ class EnhancedDeduplicator:
                     else:
                         # Jaccard similarity from MinHash
                         minhash_sim = self._jaccard_similarity_from_minhash(
-                            signatures[doc_id1],
-                            signatures[doc_id2]
+                            signatures[doc_id1], signatures[doc_id2]
                         )
 
                         # Metadata similarity
-                        doc1 = next(d for d in documents if d.get("id", str(hash(str(d)))) == doc_id1)
-                        doc2 = next(d for d in documents if d.get("id", str(hash(str(d)))) == doc_id2)
+                        doc1 = next(
+                            d for d in documents if d.get("id", str(hash(str(d)))) == doc_id1
+                        )
+                        doc2 = next(
+                            d for d in documents if d.get("id", str(hash(str(d)))) == doc_id2
+                        )
 
                         metadata_sim = self._calculate_metadata_similarity(doc1, doc2)
 
                         # Combined similarity
                         combined_sim = (
-                            self.content_similarity_weight * minhash_sim +
-                            self.metadata_similarity_weight * metadata_sim
+                            self.content_similarity_weight * minhash_sim
+                            + self.metadata_similarity_weight * metadata_sim
                         )
 
                         similarity_matrix[doc_id1][doc_id2] = combined_sim
-                        similarity_matrix[doc_id2] = similarity_matrix[doc_id2] if doc_id2 in similarity_matrix else {}
+                        similarity_matrix[doc_id2] = (
+                            similarity_matrix[doc_id2] if doc_id2 in similarity_matrix else {}
+                        )
                         similarity_matrix[doc_id2][doc_id1] = combined_sim
 
         return similarity_matrix
 
-    def _jaccard_similarity_from_minhash(self, sig1: List[int], sig2: List[int]) -> float:
+    def _jaccard_similarity_from_minhash(self, sig1: list[int], sig2: list[int]) -> float:
         """Výpočet Jaccard similarity z MinHash signatures"""
         if len(sig1) != len(sig2):
             return 0.0
 
-        matches = sum(1 for a, b in zip(sig1, sig2) if a == b)
+        matches = sum(1 for a, b in zip(sig1, sig2, strict=False) if a == b)
         return matches / len(sig1)
 
-    def _calculate_metadata_similarity(self, doc1: Dict[str, Any], doc2: Dict[str, Any]) -> float:
+    def _calculate_metadata_similarity(self, doc1: dict[str, Any], doc2: dict[str, Any]) -> float:
         """Výpočet metadata similarity"""
         metadata1 = doc1.get("metadata", {})
         metadata2 = doc2.get("metadata", {})
@@ -258,7 +272,9 @@ class EnhancedDeduplicator:
 
         return intersection / union
 
-    async def _find_duplicate_groups(self, similarity_matrix: Dict[str, Dict[str, float]]) -> List[List[str]]:
+    async def _find_duplicate_groups(
+        self, similarity_matrix: dict[str, dict[str, float]]
+    ) -> list[list[str]]:
         """Najde skupiny duplicitních dokumentů"""
         doc_ids = list(similarity_matrix.keys())
         visited = set()
@@ -286,7 +302,9 @@ class EnhancedDeduplicator:
 
         return duplicate_groups
 
-    async def _select_representatives(self, documents: List[Dict[str, Any]], duplicate_groups: List[List[str]]) -> List[Dict[str, Any]]:
+    async def _select_representatives(
+        self, documents: list[dict[str, Any]], duplicate_groups: list[list[str]]
+    ) -> list[dict[str, Any]]:
         """Vybere reprezentanty z duplicate groups"""
         doc_lookup = {}
         for doc in documents:
@@ -331,7 +349,7 @@ class EnhancedDeduplicator:
 
         return result
 
-    def _calculate_document_quality_score(self, doc: Dict[str, Any]) -> float:
+    def _calculate_document_quality_score(self, doc: dict[str, Any]) -> float:
         """Výpočet quality score pro document selection"""
         score = 0.0
 
@@ -342,7 +360,9 @@ class EnhancedDeduplicator:
         # Metadata completeness
         metadata = doc.get("metadata", {})
         important_fields = ["title", "author", "published_date", "source_type"]
-        completeness = sum(1 for field in important_fields if metadata.get(field)) / len(important_fields)
+        completeness = sum(1 for field in important_fields if metadata.get(field)) / len(
+            important_fields
+        )
         score += completeness * 0.3
 
         # Source authority
@@ -352,7 +372,7 @@ class EnhancedDeduplicator:
             "news_tier1": 0.8,
             "news_tier2": 0.6,
             "blog": 0.4,
-            "unknown": 0.5
+            "unknown": 0.5,
         }.get(metadata.get("authority_type", "unknown"), 0.5)
         score += authority_score * 0.2
 
@@ -362,11 +382,13 @@ class EnhancedDeduplicator:
 
         return score
 
-    async def _log_deduplication_audit(self,
-                                     original_docs: List[Dict[str, Any]],
-                                     deduplicated_docs: List[Dict[str, Any]],
-                                     duplicate_groups: List[List[str]],
-                                     stats: Dict[str, Any]):
+    async def _log_deduplication_audit(
+        self,
+        original_docs: list[dict[str, Any]],
+        deduplicated_docs: list[dict[str, Any]],
+        duplicate_groups: list[list[str]],
+        stats: dict[str, Any],
+    ):
         """Audit logging pro deduplication"""
         audit_data = {
             "timestamp": time.time(),
@@ -380,9 +402,9 @@ class EnhancedDeduplicator:
                 "similarity_threshold": self.similarity_threshold,
                 "minhash_num_perm": self.minhash_num_perm,
                 "content_weight": self.content_similarity_weight,
-                "metadata_weight": self.metadata_similarity_weight
+                "metadata_weight": self.metadata_similarity_weight,
             },
-            "stats": stats
+            "stats": stats,
         }
 
         # In real implementation, would save to audit log file
@@ -392,7 +414,7 @@ class EnhancedDeduplicator:
 class QdrantVectorStore:
     """Qdrant integration s per-collection ef_search optimization"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.qdrant_config = config.get("retrieval", {}).get("qdrant", {})
 
@@ -410,13 +432,13 @@ class QdrantVectorStore:
             "total_latency": 0.0,
             "p50_latency": [],
             "p95_latency": [],
-            "recall_at_k": {}
+            "recall_at_k": {},
         }
 
         # Mock client - real implementation would use qdrant-client
         self.client = None
 
-    def _load_collection_configs(self) -> Dict[str, QdrantConfig]:
+    def _load_collection_configs(self) -> dict[str, QdrantConfig]:
         """Načte per-collection konfigurace"""
         configs = {}
 
@@ -428,11 +450,8 @@ class QdrantVectorStore:
                 ef_search=collection_settings.get("ef_search", 128),
                 vector_size=collection_settings.get("vector_size", 384),
                 distance_metric=collection_settings.get("distance", "Cosine"),
-                hnsw_config=collection_settings.get("hnsw", {
-                    "m": 16,
-                    "ef_construct": 100
-                }),
-                quantization=collection_settings.get("quantization")
+                hnsw_config=collection_settings.get("hnsw", {"m": 16, "ef_construct": 100}),
+                quantization=collection_settings.get("quantization"),
             )
 
         # Default config if none specified
@@ -442,7 +461,7 @@ class QdrantVectorStore:
                 ef_search=128,
                 vector_size=384,
                 distance_metric="Cosine",
-                hnsw_config={"m": 16, "ef_construct": 100}
+                hnsw_config={"m": 16, "ef_construct": 100},
             )
 
         return configs
@@ -457,13 +476,14 @@ class QdrantVectorStore:
 
         logger.info(f"✅ Qdrant initialized with {len(self.collection_configs)} collections")
 
-    async def search_vectors(self,
-                           query_vector: List[float],
-                           collection_name: str = "default",
-                           top_k: int = 50,
-                           filter_conditions: Optional[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        """
-        Vyhledá vectors s optimalizovaným ef_search
+    async def search_vectors(
+        self,
+        query_vector: list[float],
+        collection_name: str = "default",
+        top_k: int = 50,
+        filter_conditions: dict[str, Any] | None = None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Vyhledá vectors s optimalizovaným ef_search
 
         Args:
             query_vector: Query embedding vector
@@ -473,11 +493,14 @@ class QdrantVectorStore:
 
         Returns:
             Tuple[results, search_metadata]
+
         """
         start_time = time.time()
 
         # Get collection config
-        collection_config = self.collection_configs.get(collection_name, self.collection_configs["default"])
+        collection_config = self.collection_configs.get(
+            collection_name, self.collection_configs["default"]
+        )
 
         # Optimize ef_search based on top_k
         optimal_ef_search = max(collection_config.ef_search, top_k * 2)
@@ -490,16 +513,18 @@ class QdrantVectorStore:
         for i in range(min(top_k, 20)):  # Mock up to 20 results
             score = 0.9 - (i * 0.03)  # Decreasing relevance
 
-            results.append({
-                "id": f"{collection_name}_doc_{i}",
-                "content": f"Mock document {i} from collection {collection_name}",
-                "score": score,
-                "metadata": {
-                    "collection": collection_name,
-                    "source_type": "vector_search",
-                    "ef_search_used": optimal_ef_search
+            results.append(
+                {
+                    "id": f"{collection_name}_doc_{i}",
+                    "content": f"Mock document {i} from collection {collection_name}",
+                    "score": score,
+                    "metadata": {
+                        "collection": collection_name,
+                        "source_type": "vector_search",
+                        "ef_search_used": optimal_ef_search,
+                    },
                 }
-            })
+            )
 
         search_time = time.time() - start_time
 
@@ -513,10 +538,12 @@ class QdrantVectorStore:
             "results_count": len(results),
             "top_k_requested": top_k,
             "filter_applied": filter_conditions is not None,
-            "vector_dim": len(query_vector)
+            "vector_dim": len(query_vector),
         }
 
-        logger.debug(f"Vector search completed: {len(results)} results in {search_time:.3f}s (ef_search={optimal_ef_search})")
+        logger.debug(
+            f"Vector search completed: {len(results)} results in {search_time:.3f}s (ef_search={optimal_ef_search})"
+        )
 
         return results, search_metadata
 
@@ -538,7 +565,7 @@ class QdrantVectorStore:
         if top_k not in self.performance_stats["recall_at_k"]:
             self.performance_stats["recall_at_k"][top_k] = []
 
-    def get_performance_stats(self) -> Dict[str, Any]:
+    def get_performance_stats(self) -> dict[str, Any]:
         """Vrací performance statistiky"""
         total_queries = self.performance_stats["queries"]
 
@@ -560,10 +587,10 @@ class QdrantVectorStore:
                 name: {
                     "ef_search": config.ef_search,
                     "vector_size": config.vector_size,
-                    "distance_metric": config.distance_metric
+                    "distance_metric": config.distance_metric,
                 }
                 for name, config in self.collection_configs.items()
-            }
+            },
         }
 
         return stats

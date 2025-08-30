@@ -111,18 +111,18 @@ class TestPhase5Components:
                     "uri": "bolt://localhost:7687",
                     "username": "neo4j",
                     "password": "test",
-                    "database": "test_db"
+                    "database": "test_db",
                 },
                 "entity_linking": {
                     "enabled": True,
                     "confidence_threshold": 0.7,
-                    "max_entities_per_document": 50
+                    "max_entities_per_document": 50,
                 },
                 "knowledge_synthesis": {
                     "max_nodes": 1000,
                     "max_relations": 2000,
-                    "relation_confidence_threshold": 0.6
-                }
+                    "relation_confidence_threshold": 0.6,
+                },
             }
         }
 
@@ -137,7 +137,7 @@ class TestPhase5Components:
         node = GraphNode(
             id="test_entity_1",
             type="Person",
-            properties={"name": "John Doe", "occupation": "Researcher"}
+            properties={"name": "John Doe", "occupation": "Researcher"},
         )
 
         # Test relation creation
@@ -145,7 +145,7 @@ class TestPhase5Components:
             source="test_entity_1",
             target="test_entity_2",
             type="WORKS_WITH",
-            properties={"since": "2023"}
+            properties={"since": "2023"},
         )
 
         print("✅ Neo4j Knowledge Graph test passed")
@@ -167,20 +167,20 @@ class TestPhase5Components:
                 text="John Doe",
                 entity_id="Q12345",
                 confidence=0.95,
-                metadata={"type": "Person", "source": "wikidata"}
+                metadata={"type": "Person", "source": "wikidata"},
             ),
             EntityLink(
                 text="OpenAI",
                 entity_id="Q67890",
                 confidence=0.98,
-                metadata={"type": "Organization", "source": "wikidata"}
+                metadata={"type": "Organization", "source": "wikidata"},
             ),
             EntityLink(
                 text="San Francisco",
                 entity_id="Q62",
                 confidence=0.99,
-                metadata={"type": "City", "source": "wikidata"}
-            )
+                metadata={"type": "City", "source": "wikidata"},
+            ),
         ]
 
         # Validate entity links
@@ -202,13 +202,13 @@ class TestPhase5Components:
             {
                 "id": "doc1",
                 "content": "John Doe is a researcher at OpenAI working on artificial intelligence.",
-                "metadata": {"source": "research_paper", "date": "2023-01-15"}
+                "metadata": {"source": "research_paper", "date": "2023-01-15"},
             },
             {
                 "id": "doc2",
                 "content": "OpenAI is a leading AI research company founded by Sam Altman and others.",
-                "metadata": {"source": "company_profile", "date": "2023-02-10"}
-            }
+                "metadata": {"source": "company_profile", "date": "2023-02-10"},
+            },
         ]
 
         # Mock synthesis result
@@ -216,18 +216,18 @@ class TestPhase5Components:
             nodes=[
                 GraphNode("person_john_doe", "Person", {"name": "John Doe"}),
                 GraphNode("org_openai", "Organization", {"name": "OpenAI"}),
-                GraphNode("concept_ai", "Concept", {"name": "Artificial Intelligence"})
+                GraphNode("concept_ai", "Concept", {"name": "Artificial Intelligence"}),
             ],
             relations=[
                 GraphRelation("person_john_doe", "org_openai", "WORKS_AT", {}),
                 GraphRelation("person_john_doe", "concept_ai", "RESEARCHES", {}),
-                GraphRelation("org_openai", "concept_ai", "DEVELOPS", {})
+                GraphRelation("org_openai", "concept_ai", "DEVELOPS", {}),
             ],
             metadata={
                 "synthesis_time": datetime.now().isoformat(),
                 "documents_processed": len(mock_documents),
-                "confidence_score": 0.85
-            }
+                "confidence_score": 0.85,
+            },
         )
 
         # Validate synthesis result
@@ -245,11 +245,7 @@ async def main():
     print("=" * 60)
 
     start_time = datetime.now()
-    test_results = {
-        "phase": 5,
-        "start_time": start_time.isoformat(),
-        "tests": []
-    }
+    test_results = {"phase": 5, "start_time": start_time.isoformat(), "tests": []}
 
     try:
         tester = TestPhase5Components()
@@ -257,49 +253,49 @@ async def main():
         # Test 1: Neo4j Knowledge Graph
         try:
             result = tester.test_neo4j_integration()
-            test_results["tests"].append({
-                "name": "Neo4j Knowledge Graph",
-                "status": "PASSED" if result else "FAILED",
-                "details": "Neo4j integration and graph operations"
-            })
+            test_results["tests"].append(
+                {
+                    "name": "Neo4j Knowledge Graph",
+                    "status": "PASSED" if result else "FAILED",
+                    "details": "Neo4j integration and graph operations",
+                }
+            )
         except Exception as e:
-            test_results["tests"].append({
-                "name": "Neo4j Knowledge Graph",
-                "status": "FAILED",
-                "error": str(e)
-            })
+            test_results["tests"].append(
+                {"name": "Neo4j Knowledge Graph", "status": "FAILED", "error": str(e)}
+            )
             print(f"❌ Neo4j test failed: {e}")
 
         # Test 2: Entity Linking
         try:
             result = tester.test_entity_linking()
-            test_results["tests"].append({
-                "name": "Entity Linking",
-                "status": "PASSED" if result else "FAILED",
-                "details": "Entity detection and linking to knowledge bases"
-            })
+            test_results["tests"].append(
+                {
+                    "name": "Entity Linking",
+                    "status": "PASSED" if result else "FAILED",
+                    "details": "Entity detection and linking to knowledge bases",
+                }
+            )
         except Exception as e:
-            test_results["tests"].append({
-                "name": "Entity Linking",
-                "status": "FAILED",
-                "error": str(e)
-            })
+            test_results["tests"].append(
+                {"name": "Entity Linking", "status": "FAILED", "error": str(e)}
+            )
             print(f"❌ Entity Linking test failed: {e}")
 
         # Test 3: Knowledge Graph Synthesis
         try:
             result = tester.test_knowledge_graph_synthesis()
-            test_results["tests"].append({
-                "name": "Knowledge Graph Synthesis",
-                "status": "PASSED" if result else "FAILED",
-                "details": "Synthesis of knowledge graphs from documents"
-            })
+            test_results["tests"].append(
+                {
+                    "name": "Knowledge Graph Synthesis",
+                    "status": "PASSED" if result else "FAILED",
+                    "details": "Synthesis of knowledge graphs from documents",
+                }
+            )
         except Exception as e:
-            test_results["tests"].append({
-                "name": "Knowledge Graph Synthesis",
-                "status": "FAILED",
-                "error": str(e)
-            })
+            test_results["tests"].append(
+                {"name": "Knowledge Graph Synthesis", "status": "FAILED", "error": str(e)}
+            )
             print(f"❌ Knowledge Graph Synthesis test failed: {e}")
 
     except Exception as e:
@@ -317,7 +313,7 @@ async def main():
         "total_tests": total_tests,
         "passed": passed_tests,
         "failed": total_tests - passed_tests,
-        "success_rate": passed_tests / total_tests if total_tests > 0 else 0
+        "success_rate": passed_tests / total_tests if total_tests > 0 else 0,
     }
 
     # Save results

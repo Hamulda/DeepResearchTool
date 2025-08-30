@@ -1,30 +1,29 @@
 #!/usr/bin/env python3
-"""
-Enhanced RAG Evaluation System
+"""Enhanced RAG Evaluation System
 Comprehensive metrics for retrieval, citation, groundedness and hallucination detection
 
 Author: Senior IT Specialist
 """
 
-import asyncio
-import numpy as np
-import logging
-from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
-import json
+import logging
 import re
-from sklearn.metrics.pairwise import cosine_similarity
+from typing import Any
+
+import numpy as np
 from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 @dataclass
 class EvaluationMetrics:
     """Comprehensive evaluation metrics"""
+
     # Retrieval metrics
-    retrieval_recall_at_k: Dict[int, float] = field(default_factory=dict)
-    retrieval_precision_at_k: Dict[int, float] = field(default_factory=dict)
-    retrieval_ndcg_at_k: Dict[int, float] = field(default_factory=dict)
+    retrieval_recall_at_k: dict[int, float] = field(default_factory=dict)
+    retrieval_precision_at_k: dict[int, float] = field(default_factory=dict)
+    retrieval_ndcg_at_k: dict[int, float] = field(default_factory=dict)
     retrieval_mrr: float = 0.0
 
     # Citation metrics
@@ -58,10 +57,13 @@ class RetrievalEvaluator:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
-    def evaluate_retrieval(self, retrieved_docs: List[Dict[str, Any]],
-                          ground_truth_docs: List[str], k_values: List[int] = None) -> Dict[str, float]:
-        """
-        Evaluate retrieval metrics at different k values
+    def evaluate_retrieval(
+        self,
+        retrieved_docs: list[dict[str, Any]],
+        ground_truth_docs: list[str],
+        k_values: list[int] = None,
+    ) -> dict[str, float]:
+        """Evaluate retrieval metrics at different k values
 
         Args:
             retrieved_docs: List of retrieved documents with scores
@@ -70,15 +72,18 @@ class RetrievalEvaluator:
 
         Returns:
             Dictionary with retrieval metrics
+
         """
         if k_values is None:
             k_values = [1, 3, 5, 10, 20]
 
         if not retrieved_docs or not ground_truth_docs:
-            return {f"recall_at_{k}": 0.0 for k in k_values} | \
-                   {f"precision_at_{k}": 0.0 for k in k_values} | \
-                   {f"ndcg_at_{k}": 0.0 for k in k_values} | \
-                   {"mrr": 0.0}
+            return (
+                {f"recall_at_{k}": 0.0 for k in k_values}
+                | {f"precision_at_{k}": 0.0 for k in k_values}
+                | {f"ndcg_at_{k}": 0.0 for k in k_values}
+                | {"mrr": 0.0}
+            )
 
         retrieved_ids = [doc.get("doc_id", "") for doc in retrieved_docs]
         ground_truth_set = set(ground_truth_docs)
@@ -118,9 +123,11 @@ class RetrievalEvaluator:
                 break
         metrics["mrr"] = mrr
 
-        self.logger.info(f"Retrieval evaluation: R@10={metrics.get('recall_at_10', 0):.3f}, "
-                        f"P@10={metrics.get('precision_at_10', 0):.3f}, "
-                        f"nDCG@10={metrics.get('ndcg_at_10', 0):.3f}")
+        self.logger.info(
+            f"Retrieval evaluation: R@10={metrics.get('recall_at_10', 0):.3f}, "
+            f"P@10={metrics.get('precision_at_10', 0):.3f}, "
+            f"nDCG@10={metrics.get('ndcg_at_10', 0):.3f}"
+        )
 
         return metrics
 
@@ -136,15 +143,15 @@ class CitationEvaluator:
         """Lazy load sentence encoder"""
         if self.sentence_encoder is None:
             try:
-                self.sentence_encoder = SentenceTransformer('all-MiniLM-L6-v2')
+                self.sentence_encoder = SentenceTransformer("all-MiniLM-L6-v2")
                 self.logger.info("Sentence encoder loaded for citation evaluation")
             except Exception as e:
                 self.logger.warning(f"Failed to load sentence encoder: {e}")
 
-    def evaluate_citations(self, claims: List[Dict[str, Any]],
-                          all_evidence: List[Dict[str, Any]]) -> Dict[str, float]:
-        """
-        Evaluate citation precision and recall
+    def evaluate_citations(
+        self, claims: list[dict[str, Any]], all_evidence: list[dict[str, Any]]
+    ) -> dict[str, float]:
+        """Evaluate citation precision and recall
 
         Args:
             claims: List of claims with their evidence
@@ -152,6 +159,7 @@ class CitationEvaluator:
 
         Returns:
             Citation metrics
+
         """
         if not claims:
             return {"citation_precision": 0.0, "citation_recall": 0.0, "citation_f1": 0.0}
@@ -183,28 +191,32 @@ class CitationEvaluator:
             total_relevant_citations += relevant_citations
 
         # Citation Precision: relevant citations / total citations
-        citation_precision = (total_relevant_citations / total_cited_evidence
-                            if total_cited_evidence > 0 else 0)
+        citation_precision = (
+            total_relevant_citations / total_cited_evidence if total_cited_evidence > 0 else 0
+        )
 
         # Citation Recall: claims with citations / total claims
-        citation_recall = (total_claims_with_citations / len(claims)
-                         if len(claims) > 0 else 0)
+        citation_recall = total_claims_with_citations / len(claims) if len(claims) > 0 else 0
 
         # Citation F1
-        citation_f1 = (2 * citation_precision * citation_recall /
-                      (citation_precision + citation_recall)
-                      if (citation_precision + citation_recall) > 0 else 0)
+        citation_f1 = (
+            2 * citation_precision * citation_recall / (citation_precision + citation_recall)
+            if (citation_precision + citation_recall) > 0
+            else 0
+        )
 
-        self.logger.info(f"Citation evaluation: Precision={citation_precision:.3f}, "
-                        f"Recall={citation_recall:.3f}, F1={citation_f1:.3f}")
+        self.logger.info(
+            f"Citation evaluation: Precision={citation_precision:.3f}, "
+            f"Recall={citation_recall:.3f}, F1={citation_f1:.3f}"
+        )
 
         return {
             "citation_precision": citation_precision,
             "citation_recall": citation_recall,
-            "citation_f1": citation_f1
+            "citation_f1": citation_f1,
         }
 
-    def _is_citation_relevant(self, claim_text: str, evidence: Dict[str, Any]) -> bool:
+    def _is_citation_relevant(self, claim_text: str, evidence: dict[str, Any]) -> bool:
         """Check if citation is relevant to claim using semantic similarity"""
         evidence_text = evidence.get("snippet", evidence.get("content", ""))
 
@@ -216,7 +228,11 @@ class CitationEvaluator:
         evidence_words = set(evidence_text.lower().split())
 
         overlap = len(claim_words & evidence_words)
-        overlap_ratio = overlap / min(len(claim_words), len(evidence_words)) if claim_words and evidence_words else 0
+        overlap_ratio = (
+            overlap / min(len(claim_words), len(evidence_words))
+            if claim_words and evidence_words
+            else 0
+        )
 
         # Use semantic similarity if available
         if self.sentence_encoder is None:
@@ -244,10 +260,10 @@ class GroundednessEvaluator:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
-    def evaluate_groundedness(self, claims: List[Dict[str, Any]],
-                            min_evidence_per_claim: int = 2) -> Dict[str, float]:
-        """
-        Evaluate groundedness metrics
+    def evaluate_groundedness(
+        self, claims: list[dict[str, Any]], min_evidence_per_claim: int = 2
+    ) -> dict[str, float]:
+        """Evaluate groundedness metrics
 
         Args:
             claims: List of claims with evidence
@@ -255,13 +271,10 @@ class GroundednessEvaluator:
 
         Returns:
             Groundedness metrics
+
         """
         if not claims:
-            return {
-                "groundedness_rate": 0.0,
-                "claim_support_ratio": 0.0,
-                "evidence_coverage": 0.0
-            }
+            return {"groundedness_rate": 0.0, "claim_support_ratio": 0.0, "evidence_coverage": 0.0}
 
         grounded_claims = 0
         total_evidence_count = 0
@@ -289,14 +302,16 @@ class GroundednessEvaluator:
         # Evidence coverage: average evidence per claim
         evidence_coverage = total_evidence_count / len(claims)
 
-        self.logger.info(f"Groundedness evaluation: Rate={groundedness_rate:.3f}, "
-                        f"Support ratio={claim_support_ratio:.3f}, "
-                        f"Coverage={evidence_coverage:.1f}")
+        self.logger.info(
+            f"Groundedness evaluation: Rate={groundedness_rate:.3f}, "
+            f"Support ratio={claim_support_ratio:.3f}, "
+            f"Coverage={evidence_coverage:.1f}"
+        )
 
         return {
             "groundedness_rate": groundedness_rate,
             "claim_support_ratio": claim_support_ratio,
-            "evidence_coverage": evidence_coverage
+            "evidence_coverage": evidence_coverage,
         }
 
 
@@ -314,10 +329,10 @@ class HallucinationDetector:
             r"\b(studies show|research proves|scientists say)\b",  # Vague attributions
         ]
 
-    def detect_hallucinations(self, claims: List[Dict[str, Any]],
-                            all_evidence: List[Dict[str, Any]]) -> Dict[str, float]:
-        """
-        Detect potential hallucinations in claims
+    def detect_hallucinations(
+        self, claims: list[dict[str, Any]], all_evidence: list[dict[str, Any]]
+    ) -> dict[str, float]:
+        """Detect potential hallucinations in claims
 
         Args:
             claims: List of claims to check
@@ -325,12 +340,10 @@ class HallucinationDetector:
 
         Returns:
             Hallucination metrics
+
         """
         if not claims:
-            return {
-                "hallucination_rate": 0.0,
-                "unsupported_claims_ratio": 0.0
-            }
+            return {"hallucination_rate": 0.0, "unsupported_claims_ratio": 0.0}
 
         hallucination_count = 0
         unsupported_claims = 0
@@ -363,12 +376,14 @@ class HallucinationDetector:
         hallucination_rate = hallucination_count / len(claims)
         unsupported_claims_ratio = unsupported_claims / len(claims)
 
-        self.logger.info(f"Hallucination detection: Rate={hallucination_rate:.3f}, "
-                        f"Unsupported ratio={unsupported_claims_ratio:.3f}")
+        self.logger.info(
+            f"Hallucination detection: Rate={hallucination_rate:.3f}, "
+            f"Unsupported ratio={unsupported_claims_ratio:.3f}"
+        )
 
         return {
             "hallucination_rate": hallucination_rate,
-            "unsupported_claims_ratio": unsupported_claims_ratio
+            "unsupported_claims_ratio": unsupported_claims_ratio,
         }
 
     def _calculate_hallucination_score(self, claim_text: str) -> float:
@@ -382,8 +397,9 @@ class HallucinationDetector:
 
         return min(score, 1.0)
 
-    def _is_claim_supported(self, claim_text: str, claim_evidence: List[Dict[str, Any]],
-                          all_evidence_texts: set) -> bool:
+    def _is_claim_supported(
+        self, claim_text: str, claim_evidence: list[dict[str, Any]], all_evidence_texts: set
+    ) -> bool:
         """Check if claim is supported by evidence"""
         claim_words = set(claim_text.lower().split())
 
@@ -404,7 +420,7 @@ class HallucinationDetector:
 class ComprehensiveRAGEvaluator:
     """Main RAG evaluation system combining all metrics"""
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         self.config = config or {}
         self.logger = logging.getLogger(__name__)
 
@@ -420,25 +436,25 @@ class ComprehensiveRAGEvaluator:
                 "groundedness_rate": 0.75,
                 "citation_precision": 0.65,
                 "retrieval_recall_at_10": 0.60,
-                "hallucination_rate": 0.25
+                "hallucination_rate": 0.25,
             },
             "thorough": {
                 "groundedness_rate": 0.85,
                 "citation_precision": 0.75,
                 "retrieval_recall_at_10": 0.70,
-                "hallucination_rate": 0.15
-            }
+                "hallucination_rate": 0.15,
+            },
         }
 
-    async def evaluate_response(self, evaluation_data: Dict[str, Any]) -> EvaluationMetrics:
-        """
-        Comprehensive evaluation of RAG response
+    async def evaluate_response(self, evaluation_data: dict[str, Any]) -> EvaluationMetrics:
+        """Comprehensive evaluation of RAG response
 
         Args:
             evaluation_data: Contains query, claims, evidence, ground_truth, etc.
 
         Returns:
             Complete evaluation metrics
+
         """
         self.logger.info("Starting comprehensive RAG evaluation...")
 
@@ -457,16 +473,13 @@ class ComprehensiveRAGEvaluator:
             )
 
             metrics.retrieval_recall_at_k = {
-                k: retrieval_metrics.get(f"recall_at_{k}", 0.0)
-                for k in [1, 3, 5, 10, 20]
+                k: retrieval_metrics.get(f"recall_at_{k}", 0.0) for k in [1, 3, 5, 10, 20]
             }
             metrics.retrieval_precision_at_k = {
-                k: retrieval_metrics.get(f"precision_at_{k}", 0.0)
-                for k in [1, 3, 5, 10, 20]
+                k: retrieval_metrics.get(f"precision_at_{k}", 0.0) for k in [1, 3, 5, 10, 20]
             }
             metrics.retrieval_ndcg_at_k = {
-                k: retrieval_metrics.get(f"ndcg_at_{k}", 0.0)
-                for k in [1, 3, 5, 10, 20]
+                k: retrieval_metrics.get(f"ndcg_at_{k}", 0.0) for k in [1, 3, 5, 10, 20]
             }
             metrics.retrieval_mrr = retrieval_metrics.get("mrr", 0.0)
 
@@ -486,7 +499,9 @@ class ComprehensiveRAGEvaluator:
 
         # Hallucination detection
         if claims:
-            hallucination_metrics = self.hallucination_detector.detect_hallucinations(claims, evidence)
+            hallucination_metrics = self.hallucination_detector.detect_hallucinations(
+                claims, evidence
+            )
             metrics.hallucination_rate = hallucination_metrics["hallucination_rate"]
             metrics.unsupported_claims_ratio = hallucination_metrics["unsupported_claims_ratio"]
 
@@ -511,7 +526,7 @@ class ComprehensiveRAGEvaluator:
 
         return metrics
 
-    def _calculate_answer_relevance(self, query: str, claims: List[Dict[str, Any]]) -> float:
+    def _calculate_answer_relevance(self, query: str, claims: list[dict[str, Any]]) -> float:
         """Calculate how relevant the answer is to the query"""
         if not query or not claims:
             return 0.0
@@ -529,8 +544,9 @@ class ComprehensiveRAGEvaluator:
 
         return sum(relevance_scores) / len(relevance_scores) if relevance_scores else 0.0
 
-    def _calculate_answer_completeness(self, claims: List[Dict[str, Any]],
-                                     expected_claims: List[str]) -> float:
+    def _calculate_answer_completeness(
+        self, claims: list[dict[str, Any]], expected_claims: list[str]
+    ) -> float:
         """Calculate how complete the answer is compared to expected claims"""
         if not expected_claims:
             return 1.0  # No expectations, assume complete
@@ -555,13 +571,13 @@ class ComprehensiveRAGEvaluator:
 
         return covered_expectations / len(expected_claims)
 
-    def check_quality_gates(self, metrics: EvaluationMetrics) -> Tuple[bool, List[str]]:
-        """
-        Check if metrics pass quality gates for the profile
+    def check_quality_gates(self, metrics: EvaluationMetrics) -> tuple[bool, list[str]]:
+        """Check if metrics pass quality gates for the profile
 
         Returns:
             - passed: Whether all gates passed
             - failures: List of failed gate descriptions
+
         """
         profile = metrics.profile
         gates = self.quality_gates.get(profile, self.quality_gates["quick"])
@@ -570,30 +586,40 @@ class ComprehensiveRAGEvaluator:
 
         # Check each gate
         if metrics.groundedness_rate < gates["groundedness_rate"]:
-            failures.append(f"Groundedness rate {metrics.groundedness_rate:.3f} < {gates['groundedness_rate']}")
+            failures.append(
+                f"Groundedness rate {metrics.groundedness_rate:.3f} < {gates['groundedness_rate']}"
+            )
 
         if metrics.citation_precision < gates["citation_precision"]:
-            failures.append(f"Citation precision {metrics.citation_precision:.3f} < {gates['citation_precision']}")
+            failures.append(
+                f"Citation precision {metrics.citation_precision:.3f} < {gates['citation_precision']}"
+            )
 
         recall_10 = metrics.retrieval_recall_at_k.get(10, 0)
         if recall_10 < gates["retrieval_recall_at_10"]:
-            failures.append(f"Retrieval recall@10 {recall_10:.3f} < {gates['retrieval_recall_at_10']}")
+            failures.append(
+                f"Retrieval recall@10 {recall_10:.3f} < {gates['retrieval_recall_at_10']}"
+            )
 
         if metrics.hallucination_rate > gates["hallucination_rate"]:
-            failures.append(f"Hallucination rate {metrics.hallucination_rate:.3f} > {gates['hallucination_rate']}")
+            failures.append(
+                f"Hallucination rate {metrics.hallucination_rate:.3f} > {gates['hallucination_rate']}"
+            )
 
         passed = len(failures) == 0
 
         if passed:
             self.logger.info(f"✅ All quality gates passed for {profile} profile")
         else:
-            self.logger.warning(f"❌ Quality gates failed for {profile} profile: {len(failures)} issues")
+            self.logger.warning(
+                f"❌ Quality gates failed for {profile} profile: {len(failures)} issues"
+            )
             for failure in failures:
                 self.logger.warning(f"  - {failure}")
 
         return passed, failures
 
 
-def create_rag_evaluator(config: Dict[str, Any] = None) -> ComprehensiveRAGEvaluator:
+def create_rag_evaluator(config: dict[str, Any] = None) -> ComprehensiveRAGEvaluator:
     """Factory function for RAG evaluator"""
     return ComprehensiveRAGEvaluator(config)

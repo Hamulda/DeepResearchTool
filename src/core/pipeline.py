@@ -1,15 +1,14 @@
-"""
-Core research pipeline for automatic evidence-based research
+"""Core research pipeline for automatic evidence-based research
 BEZ human-in-the-loop checkpointů
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
+from dataclasses import dataclass
 import logging
 import time
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +16,12 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PipelineResult:
     """Result from research pipeline execution"""
-    claims: List[Dict[str, Any]]
-    citations: List[Dict[str, Any]]
-    synthesis: Dict[str, Any]
-    retrieval_log: Dict[str, Any]
-    evaluation: Dict[str, Any]
+
+    claims: list[dict[str, Any]]
+    citations: list[dict[str, Any]]
+    synthesis: dict[str, Any]
+    retrieval_log: dict[str, Any]
+    evaluation: dict[str, Any]
     token_count: int
     processing_time: float
 
@@ -29,7 +29,7 @@ class PipelineResult:
 class ResearchPipeline:
     """Main research pipeline - automatic execution"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.initialized = False
 
@@ -43,15 +43,15 @@ class ResearchPipeline:
         self.initialized = True
         logger.info("Pipeline initialized successfully")
 
-    async def execute(self, query: str) -> Dict[str, Any]:
-        """
-        Execute full research pipeline automatically
+    async def execute(self, query: str) -> dict[str, Any]:
+        """Execute full research pipeline automatically
 
         Args:
             query: Research query
 
         Returns:
             Complete research result with claims and citations
+
         """
         if not self.initialized:
             raise RuntimeError("Pipeline not initialized. Call initialize() first.")
@@ -84,13 +84,13 @@ class ResearchPipeline:
             "retrieval_log": retrieval_result.get("log", {}),
             "evaluation": evaluation_result,
             "token_count": verified_result.get("token_count", 0),
-            "processing_time": processing_time
+            "processing_time": processing_time,
         }
 
         logger.info(f"Pipeline execution completed in {processing_time:.2f}s")
         return result
 
-    async def _retrieval_stage(self, query: str) -> Dict[str, Any]:
+    async def _retrieval_stage(self, query: str) -> dict[str, Any]:
         """FÁZE 2: HyDE + Hybrid retrieval + RRF"""
         logger.info("Stage 1: Retrieval")
 
@@ -103,25 +103,25 @@ class ResearchPipeline:
                     "id": "doc1",
                     "content": "Sample research content about the query topic.",
                     "source": "mock_source",
-                    "score": 0.95
+                    "score": 0.95,
                 },
                 {
                     "id": "doc2",
                     "content": "Additional evidence supporting the research findings.",
                     "source": "mock_source_2",
-                    "score": 0.87
-                }
+                    "score": 0.87,
+                },
             ],
             "log": {
                 "query": query,
                 "hyde_generated": True,
                 "rrf_applied": True,
                 "total_retrieved": 2,
-                "stats": {"retrieval_time": 0.5}
-            }
+                "stats": {"retrieval_time": 0.5},
+            },
         }
 
-    async def _ranking_stage(self, retrieval_result: Dict[str, Any]) -> Dict[str, Any]:
+    async def _ranking_stage(self, retrieval_result: dict[str, Any]) -> dict[str, Any]:
         """FÁZE 2: Re-ranking + MMR + Contextual compression"""
         logger.info("Stage 2: Re-ranking and compression")
 
@@ -133,10 +133,10 @@ class ResearchPipeline:
             "ranked_documents": documents,
             "compression_applied": True,
             "mmr_diversification": True,
-            "stats": {"ranking_time": 0.3}
+            "stats": {"ranking_time": 0.3},
         }
 
-    async def _synthesis_stage(self, query: str, ranked_results: Dict[str, Any]) -> Dict[str, Any]:
+    async def _synthesis_stage(self, query: str, ranked_results: dict[str, Any]) -> dict[str, Any]:
         """FÁZE 3: Template-driven synthesis with evidence binding"""
         logger.info("Stage 3: Synthesis")
 
@@ -151,18 +151,18 @@ class ResearchPipeline:
                 "text": f"Based on the research, {query} shows significant evidence in multiple sources.",
                 "citations": [
                     {"doc_id": "doc1", "char_offset": [0, 50]},
-                    {"doc_id": "doc2", "char_offset": [10, 60]}
+                    {"doc_id": "doc2", "char_offset": [10, 60]},
                 ],
-                "confidence": 0.85
+                "confidence": 0.85,
             },
             {
                 "text": f"Further analysis of {query} reveals additional supporting evidence.",
                 "citations": [
                     {"doc_id": "doc1", "char_offset": [51, 100]},
-                    {"doc_id": "doc2", "char_offset": [61, 110]}
+                    {"doc_id": "doc2", "char_offset": [61, 110]},
                 ],
-                "confidence": 0.78
-            }
+                "confidence": 0.78,
+            },
         ]
 
         citations = []
@@ -173,10 +173,10 @@ class ResearchPipeline:
             "claims": claims,
             "citations": citations,
             "template_used": "evidence_driven",
-            "stats": {"synthesis_time": 0.4}
+            "stats": {"synthesis_time": 0.4},
         }
 
-    async def _verification_stage(self, synthesis_result: Dict[str, Any]) -> Dict[str, Any]:
+    async def _verification_stage(self, synthesis_result: dict[str, Any]) -> dict[str, Any]:
         """FÁZE 3: Adversarial verification + contradiction detection"""
         logger.info("Stage 4: Verification")
 
@@ -185,17 +185,19 @@ class ResearchPipeline:
 
         # Pass through with verification metadata
         result = synthesis_result.copy()
-        result.update({
-            "verification_applied": True,
-            "contradictions_checked": True,
-            "claim_graph_built": True,
-            "token_count": 1500,  # Mock token count
-            "stats": {"verification_time": 0.2}
-        })
+        result.update(
+            {
+                "verification_applied": True,
+                "contradictions_checked": True,
+                "claim_graph_built": True,
+                "token_count": 1500,  # Mock token count
+                "stats": {"verification_time": 0.2},
+            }
+        )
 
         return result
 
-    async def _evaluation_stage(self, verified_result: Dict[str, Any]) -> Dict[str, Any]:
+    async def _evaluation_stage(self, verified_result: dict[str, Any]) -> dict[str, Any]:
         """FÁZE 4: Quality evaluation and metrics"""
         logger.info("Stage 5: Evaluation")
 
@@ -207,7 +209,7 @@ class ResearchPipeline:
             "citation_precision": 0.82,
             "groundedness": 0.88,
             "evidence_coverage": 0.79,
-            "stats": {"evaluation_time": 0.1}
+            "stats": {"evaluation_time": 0.1},
         }
 
     async def cleanup(self):

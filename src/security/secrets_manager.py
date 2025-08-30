@@ -1,27 +1,28 @@
-"""
-FÁZE 7: Secrets Management System
+"""FÁZE 7: Secrets Management System
 Ochrana citlivých informací v konfiguraci s environment-based přístupem
 """
 
 import base64
+from dataclasses import dataclass, field
+from enum import Enum
 import json
 import logging
 import os
+from pathlib import Path
 import re
+from typing import Any
+import warnings
+
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
-import warnings
 
 logger = logging.getLogger(__name__)
 
 
 class SecretType(Enum):
     """Typy tajemství"""
+
     API_KEY = "api_key"
     DATABASE_URL = "database_url"
     PASSWORD = "password"
@@ -35,6 +36,7 @@ class SecretType(Enum):
 
 class SecretSource(Enum):
     """Zdroje tajemství"""
+
     ENVIRONMENT = "environment"
     FILE = "file"
     ENCRYPTED_FILE = "encrypted_file"
@@ -45,32 +47,33 @@ class SecretSource(Enum):
 @dataclass
 class SecretDefinition:
     """Definice tajemství"""
+
     name: str
     secret_type: SecretType
     source: SecretSource
     required: bool = True
     description: str = ""
-    env_var: Optional[str] = None
-    file_path: Optional[str] = None
-    default_value: Optional[str] = None
-    validation_pattern: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
+    env_var: str | None = None
+    file_path: str | None = None
+    default_value: str | None = None
+    validation_pattern: str | None = None
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass
 class SecretValue:
     """Hodnota tajemství s metadata"""
+
     name: str
     value: str
     source: SecretSource
     is_encrypted: bool = False
-    last_accessed: Optional[float] = None
+    last_accessed: float | None = None
     access_count: int = 0
 
 
 class SecretsManager:
-    """
-    FÁZE 7: Advanced Secrets Management System
+    """FÁZE 7: Advanced Secrets Management System
 
     Features:
     - Environment-based konfigurace s fallback
@@ -83,10 +86,10 @@ class SecretsManager:
 
     def __init__(
         self,
-        master_key: Optional[str] = None,
-        secrets_file: Optional[Path] = None,
+        master_key: str | None = None,
+        secrets_file: Path | None = None,
         enable_encryption: bool = True,
-        audit_access: bool = True
+        audit_access: bool = True,
     ):
         self.secrets_file = secrets_file or Path("secrets.enc")
         self.enable_encryption = enable_encryption
@@ -99,31 +102,33 @@ class SecretsManager:
             self._setup_encryption()
 
         # Secret definitions
-        self.secret_definitions: Dict[str, SecretDefinition] = {}
+        self.secret_definitions: dict[str, SecretDefinition] = {}
 
         # Cached secrets
-        self._secret_cache: Dict[str, SecretValue] = {}
+        self._secret_cache: dict[str, SecretValue] = {}
 
         # Access tracking
-        self.access_log: List[Dict[str, Any]] = []
+        self.access_log: list[dict[str, Any]] = []
 
         # Security patterns
         self.sensitive_patterns = [
-            r'password',
-            r'secret',
-            r'key',
-            r'token',
-            r'credential',
-            r'auth',
-            r'api[_-]?key',
-            r'access[_-]?token',
-            r'private[_-]?key'
+            r"password",
+            r"secret",
+            r"key",
+            r"token",
+            r"credential",
+            r"auth",
+            r"api[_-]?key",
+            r"access[_-]?token",
+            r"private[_-]?key",
         ]
 
         # Load default secrets configuration
         self._load_default_secrets()
 
-        logger.info(f"SecretsManager initialized with encryption={'enabled' if self._cipher_suite else 'disabled'}")
+        logger.info(
+            f"SecretsManager initialized with encryption={'enabled' if self._cipher_suite else 'disabled'}"
+        )
 
     def _setup_encryption(self) -> None:
         """Nastavení šifrování"""
@@ -132,7 +137,7 @@ class SecretsManager:
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,
-                salt=b'deepresearch_salt',  # V produkci by měl být náhodný
+                salt=b"deepresearch_salt",  # V produkci by měl být náhodný
                 iterations=100000,
             )
             key = base64.urlsafe_b64encode(kdf.derive(self.master_key.encode()))
@@ -144,7 +149,6 @@ class SecretsManager:
 
     def _load_default_secrets(self) -> None:
         """Načtení výchozích definic tajemství"""
-
         default_secrets = [
             SecretDefinition(
                 name="ollama_api_key",
@@ -153,7 +157,7 @@ class SecretsManager:
                 env_var="OLLAMA_API_KEY",
                 required=False,
                 description="Ollama API key for authenticated requests",
-                validation_pattern=r'^[a-zA-Z0-9\-_]{20,}$'
+                validation_pattern=r"^[a-zA-Z0-9\-_]{20,}$",
             ),
             SecretDefinition(
                 name="qdrant_api_key",
@@ -162,7 +166,7 @@ class SecretsManager:
                 env_var="QDRANT_API_KEY",
                 required=False,
                 description="Qdrant vector database API key",
-                validation_pattern=r'^[a-zA-Z0-9\-_]{16,}$'
+                validation_pattern=r"^[a-zA-Z0-9\-_]{16,}$",
             ),
             SecretDefinition(
                 name="openai_api_key",
@@ -171,7 +175,7 @@ class SecretsManager:
                 env_var="OPENAI_API_KEY",
                 required=False,
                 description="OpenAI API key for GPT models",
-                validation_pattern=r'^sk-[a-zA-Z0-9]{48}$'
+                validation_pattern=r"^sk-[a-zA-Z0-9]{48}$",
             ),
             SecretDefinition(
                 name="database_url",
@@ -180,7 +184,7 @@ class SecretsManager:
                 env_var="DATABASE_URL",
                 required=False,
                 description="Database connection URL",
-                validation_pattern=r'^(postgresql|mysql|sqlite)://.+'
+                validation_pattern=r"^(postgresql|mysql|sqlite)://.+",
             ),
             SecretDefinition(
                 name="jwt_secret",
@@ -189,8 +193,8 @@ class SecretsManager:
                 env_var="JWT_SECRET",
                 required=True,
                 description="JWT signing secret",
-                validation_pattern=r'^[a-zA-Z0-9\-_]{32,}$',
-                default_value=self._generate_random_secret(32)
+                validation_pattern=r"^[a-zA-Z0-9\-_]{32,}$",
+                default_value=self._generate_random_secret(32),
             ),
             SecretDefinition(
                 name="webhook_secret",
@@ -199,7 +203,7 @@ class SecretsManager:
                 env_var="WEBHOOK_SECRET",
                 required=False,
                 description="Webhook verification secret",
-                validation_pattern=r'^[a-zA-Z0-9\-_]{16,}$'
+                validation_pattern=r"^[a-zA-Z0-9\-_]{16,}$",
             ),
             SecretDefinition(
                 name="admin_password",
@@ -208,8 +212,8 @@ class SecretsManager:
                 env_var="ADMIN_PASSWORD",
                 required=False,
                 description="Admin interface password",
-                validation_pattern=r'^.{8,}$'  # Min 8 characters
-            )
+                validation_pattern=r"^.{8,}$",  # Min 8 characters
+            ),
         ]
 
         for secret_def in default_secrets:
@@ -220,17 +224,16 @@ class SecretsManager:
         import secrets
         import string
 
-        alphabet = string.ascii_letters + string.digits + '-_'
-        return ''.join(secrets.choice(alphabet) for _ in range(length))
+        alphabet = string.ascii_letters + string.digits + "-_"
+        return "".join(secrets.choice(alphabet) for _ in range(length))
 
     def add_secret_definition(self, definition: SecretDefinition) -> None:
         """Přidání definice tajemství"""
         self.secret_definitions[definition.name] = definition
         logger.info(f"Added secret definition: {definition.name}")
 
-    def get_secret(self, name: str, default: Optional[str] = None) -> Optional[str]:
-        """
-        Získání hodnoty tajemství s audit loggingem
+    def get_secret(self, name: str, default: str | None = None) -> str | None:
+        """Získání hodnoty tajemství s audit loggingem
         """
         import time
 
@@ -282,7 +285,7 @@ class SecretsManager:
 
         return None
 
-    def _load_secret_from_sources(self, definition: SecretDefinition) -> Optional[SecretValue]:
+    def _load_secret_from_sources(self, definition: SecretDefinition) -> SecretValue | None:
         """Načtení tajemství z různých zdrojů"""
         import time
 
@@ -298,7 +301,7 @@ class SecretsManager:
             # Plain file
             if definition.file_path and Path(definition.file_path).exists():
                 try:
-                    with open(definition.file_path, 'r') as f:
+                    with open(definition.file_path) as f:
                         value = f.read().strip()
                 except Exception as e:
                     logger.error(f"Error reading secret from file {definition.file_path}: {e}")
@@ -314,7 +317,7 @@ class SecretsManager:
                 source=source,
                 is_encrypted=(source == SecretSource.ENCRYPTED_FILE),
                 last_accessed=time.time(),
-                access_count=1
+                access_count=1,
             )
 
         return None
@@ -335,7 +338,7 @@ class SecretsManager:
         name: str,
         value: str,
         encrypt: bool = True,
-        source: SecretSource = SecretSource.ENCRYPTED_FILE
+        source: SecretSource = SecretSource.ENCRYPTED_FILE,
     ) -> bool:
         """Uložení tajemství"""
         import time
@@ -351,7 +354,7 @@ class SecretsManager:
                 source=source,
                 is_encrypted=encrypt,
                 last_accessed=time.time(),
-                access_count=0
+                access_count=0,
             )
             self._secret_cache[name] = secret_value
 
@@ -379,7 +382,7 @@ class SecretsManager:
         # Save back to file
         self._save_encrypted_secrets_file(secrets_data)
 
-    def _load_encrypted_secret(self, name: str) -> Optional[str]:
+    def _load_encrypted_secret(self, name: str) -> str | None:
         """Načtení šifrovaného tajemství"""
         if not self._cipher_suite:
             return None
@@ -395,22 +398,22 @@ class SecretsManager:
 
         return None
 
-    def _load_encrypted_secrets_file(self) -> Dict[str, str]:
+    def _load_encrypted_secrets_file(self) -> dict[str, str]:
         """Načtení šifrovaného souboru s tajemstvími"""
         if not self.secrets_file.exists():
             return {}
 
         try:
-            with open(self.secrets_file, 'r') as f:
+            with open(self.secrets_file) as f:
                 return json.load(f)
         except Exception as e:
             logger.error(f"Error loading secrets file: {e}")
             return {}
 
-    def _save_encrypted_secrets_file(self, secrets_data: Dict[str, str]) -> None:
+    def _save_encrypted_secrets_file(self, secrets_data: dict[str, str]) -> None:
         """Uložení šifrovaného souboru s tajemstvími"""
         try:
-            with open(self.secrets_file, 'w') as f:
+            with open(self.secrets_file, "w") as f:
                 json.dump(secrets_data, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving secrets file: {e}")
@@ -424,7 +427,7 @@ class SecretsManager:
             "secret_name": name,
             "source": source.value,
             "success": success,
-            "caller": self._get_caller_info()
+            "caller": self._get_caller_info(),
         }
 
         self.access_log.append(log_entry)
@@ -433,7 +436,9 @@ class SecretsManager:
         if len(self.access_log) > 1000:
             self.access_log = self.access_log[-1000:]
 
-        logger.debug(f"Secret access: {name} from {source.value} - {'success' if success else 'failed'}")
+        logger.debug(
+            f"Secret access: {name} from {source.value} - {'success' if success else 'failed'}"
+        )
 
     def _get_caller_info(self) -> str:
         """Získání informací o volajícím"""
@@ -454,9 +459,8 @@ class SecretsManager:
 
         return "unknown"
 
-    def scan_config_for_secrets(self, config: Dict[str, Any]) -> List[str]:
-        """
-        Skenování konfigurace pro potenciální tajemství
+    def scan_config_for_secrets(self, config: dict[str, Any]) -> list[str]:
+        """Skenování konfigurace pro potenciální tajemství
         """
         found_secrets = []
 
@@ -479,9 +483,8 @@ class SecretsManager:
         scan_recursive(config)
         return found_secrets
 
-    def sanitize_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Sanitizace konfigurace - nahrazení tajemství placeholdery
+    def sanitize_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Sanitizace konfigurace - nahrazení tajemství placeholdery
         """
         import copy
 
@@ -552,7 +555,7 @@ class SecretsManager:
             logger.error(f"Error deleting secret '{name}': {e}")
             return False
 
-    def list_secrets(self, include_values: bool = False) -> Dict[str, Any]:
+    def list_secrets(self, include_values: bool = False) -> dict[str, Any]:
         """Seznam všech tajemství"""
         result = {}
 
@@ -562,7 +565,7 @@ class SecretsManager:
                 "source": definition.source.value,
                 "required": definition.required,
                 "description": definition.description,
-                "has_value": name in self._secret_cache or self.get_secret(name) is not None
+                "has_value": name in self._secret_cache or self.get_secret(name) is not None,
             }
 
             if include_values and name in self._secret_cache:
@@ -574,12 +577,13 @@ class SecretsManager:
 
         return result
 
-    def get_secrets_stats(self) -> Dict[str, Any]:
+    def get_secrets_stats(self) -> dict[str, Any]:
         """Statistiky secrets manageru"""
         import time
 
         recent_accesses = [
-            entry for entry in self.access_log
+            entry
+            for entry in self.access_log
             if time.time() - entry["timestamp"] < 3600  # Last hour
         ]
 
@@ -590,12 +594,12 @@ class SecretsManager:
             "total_accesses": len(self.access_log),
             "recent_accesses_1h": len(recent_accesses),
             "successful_accesses": len([e for e in recent_accesses if e["success"]]),
-            "failed_accesses": len([e for e in recent_accesses if not e["success"]])
+            "failed_accesses": len([e for e in recent_accesses if not e["success"]]),
         }
 
 
 # Global secrets manager instance
-_secrets_manager: Optional[SecretsManager] = None
+_secrets_manager: SecretsManager | None = None
 
 
 def get_secrets_manager() -> SecretsManager:
@@ -606,7 +610,7 @@ def get_secrets_manager() -> SecretsManager:
     return _secrets_manager
 
 
-def get_secret(name: str, default: Optional[str] = None) -> Optional[str]:
+def get_secret(name: str, default: str | None = None) -> str | None:
     """Convenience funkce pro získání tajemství"""
     return get_secrets_manager().get_secret(name, default)
 
@@ -635,15 +639,8 @@ if __name__ == "__main__":
 
     # Test config scanning
     test_config = {
-        "database": {
-            "host": "localhost",
-            "password": "secret123",
-            "api_key": "sensitive_key"
-        },
-        "features": {
-            "enabled": True,
-            "webhook_secret": "webhook123"
-        }
+        "database": {"host": "localhost", "password": "secret123", "api_key": "sensitive_key"},
+        "features": {"enabled": True, "webhook_secret": "webhook123"},
     }
 
     print("\nScanning config for secrets...")

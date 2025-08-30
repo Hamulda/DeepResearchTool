@@ -1,29 +1,28 @@
 #!/usr/bin/env python3
-"""
-Adversarial verifikace a konflikt detekce
+"""Adversarial verifikace a konflikt detekce
 Counter-evidence sweep a claim graph s support/contradict vztahy
 
 Author: Senior Python/MLOps Agent
 """
 
+from collections import defaultdict
+from dataclasses import asdict, dataclass
+from datetime import datetime
 import json
 import re
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional, Tuple, Any, Set
-from datetime import datetime
-import asyncio
-from collections import defaultdict
+from typing import Any
 
-from ..synthesis.template_synthesis import Claim, Citation
+from ..synthesis.template_synthesis import Citation, Claim
 
 
 @dataclass
 class ConflictSet:
     """Sada konfliktních claims"""
+
     conflict_id: str
-    claims: List[str]  # claim_ids
-    evidence_for: List[Citation]
-    evidence_against: List[Citation]
+    claims: list[str]  # claim_ids
+    evidence_for: list[Citation]
+    evidence_against: list[Citation]
     confidence_penalty: float
     resolution_status: str  # "unresolved", "resolved", "flagged"
 
@@ -31,25 +30,26 @@ class ConflictSet:
 @dataclass
 class ClaimRelation:
     """Vztah mezi claims"""
+
     source_claim_id: str
     target_claim_id: str
     relation_type: str  # "supports", "contradicts", "neutral"
     confidence: float
-    evidence: List[Citation]
+    evidence: list[Citation]
 
 
 class AdversarialVerifier:
     """Adversarial verifikace s counter-evidence sweep"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.contradiction_threshold = config.get("contradiction_threshold", 0.7)
         self.min_counter_evidence = config.get("min_counter_evidence", 1)
         self.confidence_penalty = config.get("confidence_penalty", 0.3)
 
-    async def verify_claims(self,
-                          claims: List[Claim],
-                          evidence_contexts: List[Dict[str, Any]]) -> Tuple[List[Claim], List[ConflictSet]]:
+    async def verify_claims(
+        self, claims: list[Claim], evidence_contexts: list[dict[str, Any]]
+    ) -> tuple[list[Claim], list[ConflictSet]]:
         """Hlavní verifikační pipeline"""
         print("🔍 Starting adversarial verification...")
 
@@ -69,9 +69,9 @@ class AdversarialVerifier:
 
         return penalized_claims, conflict_sets
 
-    async def _counter_evidence_sweep(self,
-                                    claims: List[Claim],
-                                    evidence_contexts: List[Dict[str, Any]]) -> List[Claim]:
+    async def _counter_evidence_sweep(
+        self, claims: list[Claim], evidence_contexts: list[dict[str, Any]]
+    ) -> list[Claim]:
         """Hledá counter-evidence pro každý claim"""
         updated_claims = []
 
@@ -89,26 +89,26 @@ class AdversarialVerifier:
                 confidence=claim.confidence,
                 support_count=claim.support_count,
                 contradict_count=len(counter_evidence),
-                conflict_sets=claim.conflict_sets
+                conflict_sets=claim.conflict_sets,
             )
 
             updated_claims.append(updated_claim)
 
         return updated_claims
 
-    def _find_counter_evidence(self,
-                              claim: Claim,
-                              evidence_contexts: List[Dict[str, Any]]) -> List[Citation]:
+    def _find_counter_evidence(
+        self, claim: Claim, evidence_contexts: list[dict[str, Any]]
+    ) -> list[Citation]:
         """Najde kontradikující evidenci pro claim"""
         counter_evidence = []
         claim_words = set(claim.text.lower().split())
 
         # Klíčová slova pro negaci
         negation_patterns = [
-            r'\b(not|no|never|cannot|does not|did not|will not)\b',
-            r'\b(however|but|although|despite|contrary)\b',
-            r'\b(refutes|disproves|contradicts|opposes)\b',
-            r'\b(unlikely|doubtful|questionable|disputed)\b'
+            r"\b(not|no|never|cannot|does not|did not|will not)\b",
+            r"\b(however|but|although|despite|contrary)\b",
+            r"\b(refutes|disproves|contradicts|opposes)\b",
+            r"\b(unlikely|doubtful|questionable|disputed)\b",
         ]
 
         for context in evidence_contexts:
@@ -116,7 +116,7 @@ class AdversarialVerifier:
             doc_id = context.get("doc_id", "unknown")
 
             # Hledej věty s negačními vzory
-            sentences = re.split(r'[.!?]+', content)
+            sentences = re.split(r"[.!?]+", content)
 
             for sentence in sentences:
                 sentence = sentence.strip()
@@ -124,8 +124,9 @@ class AdversarialVerifier:
                     continue
 
                 # Kontrola negačních vzorů
-                has_negation = any(re.search(pattern, sentence.lower())
-                                 for pattern in negation_patterns)
+                has_negation = any(
+                    re.search(pattern, sentence.lower()) for pattern in negation_patterns
+                )
 
                 if has_negation:
                     # Kontrola relevance k claim
@@ -151,10 +152,11 @@ class AdversarialVerifier:
                                     "relevance_score": relevance,
                                     "evidence_type": "contradictory",
                                     "negation_patterns": [
-                                        pattern for pattern in negation_patterns
+                                        pattern
+                                        for pattern in negation_patterns
                                         if re.search(pattern, sentence.lower())
-                                    ]
-                                }
+                                    ],
+                                },
                             )
                             counter_evidence.append(citation)
 
@@ -162,13 +164,13 @@ class AdversarialVerifier:
         counter_evidence.sort(key=lambda x: x.confidence, reverse=True)
         return counter_evidence[:5]  # Max 5 counter-evidence per claim
 
-    def _detect_contradictions(self, claims: List[Claim]) -> List[ConflictSet]:
+    def _detect_contradictions(self, claims: list[Claim]) -> list[ConflictSet]:
         """Detekuje kontradikce mezi claims"""
         conflict_sets = []
         processed_pairs = set()
 
         for i, claim1 in enumerate(claims):
-            for j, claim2 in enumerate(claims[i+1:], i+1):
+            for j, claim2 in enumerate(claims[i + 1 :], i + 1):
                 pair_key = tuple(sorted([claim1.claim_id, claim2.claim_id]))
                 if pair_key in processed_pairs:
                     continue
@@ -182,15 +184,27 @@ class AdversarialVerifier:
                     conflict_id = f"conflict_{len(conflict_sets)}"
 
                     # Sbírej evidenci pro a proti
-                    evidence_for_1 = [c for c in claim1.citations
-                                    if c.metadata.get("evidence_type") != "contradictory"]
-                    evidence_against_1 = [c for c in claim1.citations
-                                        if c.metadata.get("evidence_type") == "contradictory"]
+                    evidence_for_1 = [
+                        c
+                        for c in claim1.citations
+                        if c.metadata.get("evidence_type") != "contradictory"
+                    ]
+                    evidence_against_1 = [
+                        c
+                        for c in claim1.citations
+                        if c.metadata.get("evidence_type") == "contradictory"
+                    ]
 
-                    evidence_for_2 = [c for c in claim2.citations
-                                    if c.metadata.get("evidence_type") != "contradictory"]
-                    evidence_against_2 = [c for c in claim2.citations
-                                        if c.metadata.get("evidence_type") == "contradictory"]
+                    evidence_for_2 = [
+                        c
+                        for c in claim2.citations
+                        if c.metadata.get("evidence_type") != "contradictory"
+                    ]
+                    evidence_against_2 = [
+                        c
+                        for c in claim2.citations
+                        if c.metadata.get("evidence_type") == "contradictory"
+                    ]
 
                     conflict_set = ConflictSet(
                         conflict_id=conflict_id,
@@ -198,7 +212,7 @@ class AdversarialVerifier:
                         evidence_for=evidence_for_1 + evidence_for_2,
                         evidence_against=evidence_against_1 + evidence_against_2,
                         confidence_penalty=self.confidence_penalty * contradiction_score,
-                        resolution_status="unresolved"
+                        resolution_status="unresolved",
                     )
 
                     conflict_sets.append(conflict_set)
@@ -230,26 +244,32 @@ class AdversarialVerifier:
             text2_lower = claim2.text.lower()
 
             negation_indicators = [
-                ("increase", "decrease"), ("rise", "fall"), ("improve", "worsen"),
-                ("positive", "negative"), ("support", "oppose"), ("confirm", "deny"),
-                ("true", "false"), ("valid", "invalid")
+                ("increase", "decrease"),
+                ("rise", "fall"),
+                ("improve", "worsen"),
+                ("positive", "negative"),
+                ("support", "oppose"),
+                ("confirm", "deny"),
+                ("true", "false"),
+                ("valid", "invalid"),
             ]
 
             for pos, neg in negation_indicators:
-                if ((pos in text1_lower and neg in text2_lower) or
-                    (neg in text1_lower and pos in text2_lower)):
+                if (pos in text1_lower and neg in text2_lower) or (
+                    neg in text1_lower and pos in text2_lower
+                ):
                     negation_score += 0.3
 
         # Kombinované skóre
-        contradiction_score = (semantic_similarity * 0.4 +
-                             counter_factor * 0.3 +
-                             min(negation_score, 1.0) * 0.3)
+        contradiction_score = (
+            semantic_similarity * 0.4 + counter_factor * 0.3 + min(negation_score, 1.0) * 0.3
+        )
 
         return contradiction_score
 
-    def _apply_confidence_penalties(self,
-                                   claims: List[Claim],
-                                   conflict_sets: List[ConflictSet]) -> List[Claim]:
+    def _apply_confidence_penalties(
+        self, claims: list[Claim], conflict_sets: list[ConflictSet]
+    ) -> list[Claim]:
         """Aplikuje confidence penalizace na sporné claims"""
         penalty_map = defaultdict(float)
 
@@ -272,19 +292,19 @@ class AdversarialVerifier:
                 confidence=new_confidence,
                 support_count=claim.support_count,
                 contradict_count=claim.contradict_count,
-                conflict_sets=claim.conflict_sets
+                conflict_sets=claim.conflict_sets,
             )
 
             penalized_claims.append(penalized_claim)
 
         return penalized_claims
 
-    def _build_claim_relations(self, claims: List[Claim]) -> List[ClaimRelation]:
+    def _build_claim_relations(self, claims: list[Claim]) -> list[ClaimRelation]:
         """Buduje vztahy mezi claims"""
         relations = []
 
         for i, claim1 in enumerate(claims):
-            for j, claim2 in enumerate(claims[i+1:], i+1):
+            for j, claim2 in enumerate(claims[i + 1 :], i + 1):
                 # Určí typ vztahu
                 if any(conflict_id in claim2.conflict_sets for conflict_id in claim1.conflict_sets):
                     relation_type = "contradicts"
@@ -305,7 +325,7 @@ class AdversarialVerifier:
                         target_claim_id=claim2.claim_id,
                         relation_type=relation_type,
                         confidence=confidence,
-                        evidence=claim1.citations + claim2.citations
+                        evidence=claim1.citations + claim2.citations,
                     )
                     relations.append(relation)
 
@@ -324,11 +344,11 @@ class AdversarialVerifier:
         words2 = set(claim2.text.lower().split())
         semantic_similarity = len(words1.intersection(words2)) / max(len(words1), len(words2))
 
-        return (source_support * 0.6 + semantic_similarity * 0.4)
+        return source_support * 0.6 + semantic_similarity * 0.4
 
-    def calculate_disagreement_coverage(self,
-                                      claims: List[Claim],
-                                      conflict_sets: List[ConflictSet]) -> Dict[str, float]:
+    def calculate_disagreement_coverage(
+        self, claims: list[Claim], conflict_sets: list[ConflictSet]
+    ) -> dict[str, float]:
         """Vypočítá disagreement coverage metriky"""
         if not claims:
             return {"total_coverage": 0.0, "avg_counter_evidence": 0.0, "conflict_rate": 0.0}
@@ -349,13 +369,12 @@ class AdversarialVerifier:
             "total_coverage": total_coverage,
             "avg_counter_evidence": avg_counter_evidence,
             "conflict_rate": conflict_rate,
-            "total_conflicts": len(conflict_sets)
+            "total_conflicts": len(conflict_sets),
         }
 
-    def save_verification_artifacts(self,
-                                  claims: List[Claim],
-                                  conflict_sets: List[ConflictSet],
-                                  output_dir: str) -> Dict[str, str]:
+    def save_verification_artifacts(
+        self, claims: list[Claim], conflict_sets: list[ConflictSet], output_dir: str
+    ) -> dict[str, str]:
         """Uloží verifikační artefakty"""
         artifacts = {}
 
@@ -363,20 +382,20 @@ class AdversarialVerifier:
         conflict_data = [asdict(cs) for cs in conflict_sets]
         conflict_file = f"{output_dir}/conflict_sets.json"
         with open(conflict_file, "w") as f:
-            json.dump({
-                "timestamp": datetime.now().isoformat(),
-                "conflict_sets": conflict_data
-            }, f, indent=2)
+            json.dump(
+                {"timestamp": datetime.now().isoformat(), "conflict_sets": conflict_data},
+                f,
+                indent=2,
+            )
         artifacts["conflict_sets"] = conflict_file
 
         # Disagreement coverage
         coverage_metrics = self.calculate_disagreement_coverage(claims, conflict_sets)
         coverage_file = f"{output_dir}/disagreement_coverage.json"
         with open(coverage_file, "w") as f:
-            json.dump({
-                "timestamp": datetime.now().isoformat(),
-                "metrics": coverage_metrics
-            }, f, indent=2)
+            json.dump(
+                {"timestamp": datetime.now().isoformat(), "metrics": coverage_metrics}, f, indent=2
+            )
         artifacts["disagreement_coverage"] = coverage_file
 
         return artifacts

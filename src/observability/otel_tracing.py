@@ -1,35 +1,33 @@
 #!/usr/bin/env python3
-"""
-OpenTelemetry Tracing for DAG Pipeline
+"""OpenTelemetry Tracing for DAG Pipeline
 Comprehensive observability with spans, metrics, and performance tracking
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, List, Any, Optional, Callable, Union
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-import time
-import logging
-import json
-from pathlib import Path
-from contextlib import contextmanager
-from functools import wraps
-import threading
 from collections import defaultdict, deque
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from functools import wraps
+import logging
+import threading
+import time
+from typing import Any
 
 try:
-    from opentelemetry import trace, metrics
+    from opentelemetry import metrics, trace
     from opentelemetry.exporter.jaeger.thrift import JaegerExporter
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
     from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
     from opentelemetry.trace import Status, StatusCode
     from opentelemetry.util.types import Attributes
+
     OTEL_AVAILABLE = True
 except ImportError:
     OTEL_AVAILABLE = False
@@ -41,6 +39,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SpanMetrics:
     """Metrics collected for a span"""
+
     duration_ms: float
     tokens_processed: int = 0
     cache_hits: int = 0
@@ -49,7 +48,7 @@ class SpanMetrics:
     memory_usage_mb: float = 0.0
     cpu_usage_percent: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "duration_ms": self.duration_ms,
             "tokens_processed": self.tokens_processed,
@@ -57,18 +56,19 @@ class SpanMetrics:
             "cache_misses": self.cache_misses,
             "error_count": self.error_count,
             "memory_usage_mb": self.memory_usage_mb,
-            "cpu_usage_percent": self.cpu_usage_percent
+            "cpu_usage_percent": self.cpu_usage_percent,
         }
 
 
 @dataclass
 class DAGNodeMetrics:
     """Aggregated metrics for a DAG node"""
+
     node_name: str
     total_executions: int = 0
     total_duration_ms: float = 0.0
     avg_duration_ms: float = 0.0
-    min_duration_ms: float = float('inf')
+    min_duration_ms: float = float("inf")
     max_duration_ms: float = 0.0
     success_count: int = 0
     error_count: int = 0
@@ -90,15 +90,21 @@ class DAGNodeMetrics:
 
         self.success_rate = self.success_count / self.total_executions
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "node_name": self.node_name,
             "total_executions": self.total_executions,
             "avg_duration_ms": self.avg_duration_ms,
-            "min_duration_ms": self.min_duration_ms if self.min_duration_ms != float('inf') else 0.0,
+            "min_duration_ms": (
+                self.min_duration_ms if self.min_duration_ms != float("inf") else 0.0
+            ),
             "max_duration_ms": self.max_duration_ms,
             "success_rate": self.success_rate,
-            "recent_avg_duration": sum(self.recent_durations) / len(self.recent_durations) if self.recent_durations else 0.0
+            "recent_avg_duration": (
+                sum(self.recent_durations) / len(self.recent_durations)
+                if self.recent_durations
+                else 0.0
+            ),
         }
 
 
@@ -140,7 +146,7 @@ class MockSpan:
 class DAGTracer:
     """Enhanced tracer for DAG pipeline observability"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.tracing_config = config.get("observability", {}).get("tracing", {})
 
@@ -155,7 +161,9 @@ class DAGTracer:
         self._initialize_telemetry()
 
         # Node metrics tracking
-        self.node_metrics: Dict[str, DAGNodeMetrics] = defaultdict(lambda: DAGNodeMetrics("unknown"))
+        self.node_metrics: dict[str, DAGNodeMetrics] = defaultdict(
+            lambda: DAGNodeMetrics("unknown")
+        )
         self.metrics_lock = threading.Lock()
 
         # Current context
@@ -166,17 +174,18 @@ class DAGTracer:
 
     def _initialize_telemetry(self):
         """Initialize OpenTelemetry providers and exporters"""
-
         if not OTEL_AVAILABLE:
             self.tracer = MockTracer(self.service_name)
             return
 
         # Resource information
-        resource = Resource.create({
-            "service.name": self.service_name,
-            "service.version": self.service_version,
-            "deployment.environment": self.config.get("environment", "development")
-        })
+        resource = Resource.create(
+            {
+                "service.name": self.service_name,
+                "service.version": self.service_version,
+                "deployment.environment": self.config.get("environment", "development"),
+            }
+        )
 
         # Trace provider
         self.tracer_provider = TracerProvider(resource=resource)
@@ -191,7 +200,6 @@ class DAGTracer:
 
     def _setup_trace_exporters(self):
         """Setup trace exporters (Jaeger, OTLP, etc.)"""
-
         exporters_config = self.tracing_config.get("exporters", {})
 
         # Jaeger exporter
@@ -211,7 +219,7 @@ class DAGTracer:
             otlp_config = exporters_config["otlp"]
             otlp_exporter = OTLPSpanExporter(
                 endpoint=otlp_config.get("endpoint", "http://localhost:4317"),
-                insecure=otlp_config.get("insecure", True)
+                insecure=otlp_config.get("insecure", True),
             )
 
             span_processor = BatchSpanProcessor(otlp_exporter)
@@ -220,7 +228,6 @@ class DAGTracer:
 
     def _setup_metric_exporters(self):
         """Setup metric exporters"""
-
         if not OTEL_AVAILABLE:
             return
 
@@ -230,26 +237,23 @@ class DAGTracer:
             otlp_config = exporters_config["otlp"]
             metric_exporter = OTLPMetricExporter(
                 endpoint=otlp_config.get("endpoint", "http://localhost:4317"),
-                insecure=otlp_config.get("insecure", True)
+                insecure=otlp_config.get("insecure", True),
             )
 
             metric_reader = PeriodicExportingMetricReader(
-                exporter=metric_exporter,
-                export_interval_millis=30000  # 30 seconds
+                exporter=metric_exporter, export_interval_millis=30000  # 30 seconds
             )
 
             meter_provider = MeterProvider(
-                resource=self.tracer_provider.resource,
-                metric_readers=[metric_reader]
+                resource=self.tracer_provider.resource, metric_readers=[metric_reader]
             )
 
             metrics.set_meter_provider(meter_provider)
             self.meter = metrics.get_meter(self.service_name, self.service_version)
             logger.info("OTLP metric exporter configured")
 
-    def start_pipeline(self, pipeline_id: str, profile: str, query: str) -> 'PipelineSpan':
+    def start_pipeline(self, pipeline_id: str, profile: str, query: str) -> "PipelineSpan":
         """Start tracing a complete pipeline execution"""
-
         self.current_pipeline_id = pipeline_id
         self.current_profile = profile
 
@@ -259,20 +263,16 @@ class DAGTracer:
                 "pipeline.id": pipeline_id,
                 "pipeline.profile": profile,
                 "pipeline.query": query[:100],  # Truncate long queries
-                "pipeline.start_time": datetime.now(timezone.utc).isoformat()
-            }
+                "pipeline.start_time": datetime.now(UTC).isoformat(),
+            },
         )
 
         return PipelineSpan(self, span, pipeline_id, profile)
 
     def trace_dag_node(
-        self,
-        node_name: str,
-        operation: str = "execute",
-        **attributes
-    ) -> 'DAGNodeSpan':
+        self, node_name: str, operation: str = "execute", **attributes
+    ) -> "DAGNodeSpan":
         """Start tracing a DAG node execution"""
-
         span_name = f"dag_node.{node_name}.{operation}"
 
         span_attributes = {
@@ -280,7 +280,7 @@ class DAGTracer:
             "dag.operation": operation,
             "dag.pipeline_id": self.current_pipeline_id,
             "dag.profile": self.current_profile,
-            **attributes
+            **attributes,
         }
 
         span = self.tracer.start_span(span_name, attributes=span_attributes)
@@ -289,7 +289,6 @@ class DAGTracer:
 
     def record_node_metrics(self, node_name: str, duration_ms: float, success: bool, **metrics):
         """Record metrics for a DAG node"""
-
         with self.metrics_lock:
             node_metrics = self.node_metrics[node_name]
             if node_metrics.node_name == "unknown":
@@ -301,34 +300,29 @@ class DAGTracer:
             for key, value in metrics.items():
                 setattr(node_metrics, key, value)
 
-    def get_node_metrics(self, node_name: Optional[str] = None) -> Union[Dict[str, DAGNodeMetrics], DAGNodeMetrics]:
+    def get_node_metrics(
+        self, node_name: str | None = None
+    ) -> dict[str, DAGNodeMetrics] | DAGNodeMetrics:
         """Get metrics for specific node or all nodes"""
-
         with self.metrics_lock:
             if node_name:
                 return self.node_metrics.get(node_name, DAGNodeMetrics(node_name))
-            else:
-                return dict(self.node_metrics)
+            return dict(self.node_metrics)
 
-    def export_metrics_summary(self) -> Dict[str, Any]:
+    def export_metrics_summary(self) -> dict[str, Any]:
         """Export comprehensive metrics summary"""
-
         with self.metrics_lock:
             summary = {
-                "export_timestamp": datetime.now(timezone.utc).isoformat(),
-                "service_info": {
-                    "name": self.service_name,
-                    "version": self.service_version
-                },
+                "export_timestamp": datetime.now(UTC).isoformat(),
+                "service_info": {"name": self.service_name, "version": self.service_version},
                 "node_metrics": {
-                    name: metrics.to_dict()
-                    for name, metrics in self.node_metrics.items()
+                    name: metrics.to_dict() for name, metrics in self.node_metrics.items()
                 },
                 "pipeline_stats": {
                     "current_pipeline_id": self.current_pipeline_id,
                     "current_profile": self.current_profile,
-                    "total_nodes_tracked": len(self.node_metrics)
-                }
+                    "total_nodes_tracked": len(self.node_metrics),
+                },
             }
 
             # Calculate overall statistics
@@ -346,7 +340,9 @@ class DAGTracer:
                     "total_executions": total_executions,
                     "total_errors": total_errors,
                     "overall_error_rate": total_errors / max(total_executions, 1),
-                    "avg_execution_time": sum(all_durations) / len(all_durations) if all_durations else 0.0
+                    "avg_execution_time": (
+                        sum(all_durations) / len(all_durations) if all_durations else 0.0
+                    ),
                 }
 
             return summary
@@ -366,9 +362,9 @@ class PipelineSpan:
         """Set span attribute"""
         self.span.set_attribute(key, value)
 
-    def add_event(self, name: str, attributes: Optional[Dict[str, Any]] = None):
+    def add_event(self, name: str, attributes: dict[str, Any] | None = None):
         """Add event to span"""
-        if OTEL_AVAILABLE and hasattr(self.span, 'add_event'):
+        if OTEL_AVAILABLE and hasattr(self.span, "add_event"):
             self.span.add_event(name, attributes or {})
 
     def set_status(self, success: bool, message: str = ""):
@@ -379,14 +375,13 @@ class PipelineSpan:
 
     def end(self, **final_attributes):
         """End pipeline span"""
-
         duration_ms = (time.time() - self.start_time) * 1000
 
         # Set final attributes
         final_attrs = {
             "pipeline.duration_ms": duration_ms,
-            "pipeline.end_time": datetime.now(timezone.utc).isoformat(),
-            **final_attributes
+            "pipeline.end_time": datetime.now(UTC).isoformat(),
+            **final_attributes,
         }
 
         for key, value in final_attrs.items():
@@ -418,9 +413,9 @@ class DAGNodeSpan:
         """Set span attribute"""
         self.span.set_attribute(key, value)
 
-    def add_event(self, name: str, attributes: Optional[Dict[str, Any]] = None):
+    def add_event(self, name: str, attributes: dict[str, Any] | None = None):
         """Add event to span"""
-        if OTEL_AVAILABLE and hasattr(self.span, 'add_event'):
+        if OTEL_AVAILABLE and hasattr(self.span, "add_event"):
             self.span.add_event(name, attributes or {})
 
     def record_tokens(self, count: int):
@@ -458,16 +453,15 @@ class DAGNodeSpan:
 
     def end(self, **final_attributes):
         """End node span and record metrics"""
-
         duration_ms = (time.time() - self.start_time) * 1000
         self.metrics.duration_ms = duration_ms
 
         # Set final attributes
         final_attrs = {
             "node.duration_ms": duration_ms,
-            "node.end_time": datetime.now(timezone.utc).isoformat(),
+            "node.end_time": datetime.now(UTC).isoformat(),
             **self.metrics.to_dict(),
-            **final_attributes
+            **final_attributes,
         }
 
         for key, value in final_attrs.items():
@@ -480,7 +474,8 @@ class DAGNodeSpan:
             duration_ms,
             success,
             tokens_processed=self.metrics.tokens_processed,
-            cache_hit_rate=self.metrics.cache_hits / max(self.metrics.cache_hits + self.metrics.cache_misses, 1)
+            cache_hit_rate=self.metrics.cache_hits
+            / max(self.metrics.cache_hits + self.metrics.cache_misses, 1),
         )
 
         self.span.end()
@@ -507,13 +502,13 @@ def traced_dag_node(node_name: str, operation: str = "execute"):
             # Try to find tracer in arguments or kwargs
             tracer = None
             for arg in args:
-                if hasattr(arg, 'tracer') and isinstance(arg.tracer, DAGTracer):
+                if hasattr(arg, "tracer") and isinstance(arg.tracer, DAGTracer):
                     tracer = arg.tracer
                     break
 
             if not tracer:
                 # Fallback to global tracer if available
-                tracer = getattr(traced_dag_node, '_global_tracer', None)
+                tracer = getattr(traced_dag_node, "_global_tracer", None)
 
             if tracer:
                 with tracer.trace_dag_node(node_name, operation) as span:
@@ -539,6 +534,7 @@ def traced_dag_node(node_name: str, operation: str = "execute"):
                 return func(*args, **kwargs)
 
         return wrapper
+
     return decorator
 
 
@@ -547,7 +543,7 @@ def set_global_tracer(tracer: DAGTracer):
     traced_dag_node._global_tracer = tracer
 
 
-def create_dag_tracer(config: Dict[str, Any]) -> DAGTracer:
+def create_dag_tracer(config: dict[str, Any]) -> DAGTracer:
     """Factory function for DAG tracer"""
     return DAGTracer(config)
 
@@ -560,26 +556,24 @@ if __name__ == "__main__":
         "observability": {
             "tracing": {
                 "exporters": {
-                    "jaeger": {
-                        "enabled": False,
-                        "host": "localhost",
-                        "port": 6831
-                    },
+                    "jaeger": {"enabled": False, "host": "localhost", "port": 6831},
                     "otlp": {
                         "enabled": False,
                         "endpoint": "http://localhost:4317",
-                        "insecure": True
-                    }
+                        "insecure": True,
+                    },
                 }
             }
-        }
+        },
     }
 
     tracer = DAGTracer(config)
     set_global_tracer(tracer)
 
     # Example pipeline execution
-    with tracer.start_pipeline("test_pipeline", "thorough", "COVID vaccine effectiveness") as pipeline:
+    with tracer.start_pipeline(
+        "test_pipeline", "thorough", "COVID vaccine effectiveness"
+    ) as pipeline:
 
         # Retrieval node
         with tracer.trace_dag_node("retrieval", "hybrid_search") as span:
@@ -604,8 +598,10 @@ if __name__ == "__main__":
 
     # Export metrics
     metrics_summary = tracer.export_metrics_summary()
-    print(f"Pipeline execution completed")
+    print("Pipeline execution completed")
     print(f"Nodes tracked: {len(metrics_summary['node_metrics'])}")
 
-    for node_name, metrics in metrics_summary['node_metrics'].items():
-        print(f"- {node_name}: {metrics['avg_duration_ms']:.1f}ms avg, {metrics['success_rate']:.2f} success rate")
+    for node_name, metrics in metrics_summary["node_metrics"].items():
+        print(
+            f"- {node_name}: {metrics['avg_duration_ms']:.1f}ms avg, {metrics['success_rate']:.2f} success rate"
+        )

@@ -28,50 +28,43 @@ class SecurityChecker:
             (r'api_key\s*=\s*["\'][^"\']+["\']', "Hardcoded API key detected"),
             (r'secret\s*=\s*["\'][^"\']+["\']', "Hardcoded secret detected"),
             (r'token\s*=\s*["\'][^"\']+["\']', "Hardcoded token detected"),
-
             # Dangerous functions
-            (r'\beval\s*\(', "Use of eval() function detected"),
-            (r'\bexec\s*\(', "Use of exec() function detected"),
-            (r'subprocess\.call\s*\(.*shell\s*=\s*True', "Unsafe subprocess call with shell=True"),
-
+            (r"\beval\s*\(", "Use of eval() function detected"),
+            (r"\bexec\s*\(", "Use of exec() function detected"),
+            (r"subprocess\.call\s*\(.*shell\s*=\s*True", "Unsafe subprocess call with shell=True"),
             # SQL injection patterns
             (r'execute\s*\(\s*["\'].*%.*["\']', "Potential SQL injection via string formatting"),
-            (r'\.format\s*\(.*SELECT|INSERT|UPDATE|DELETE', "Potential SQL injection in query"),
-
+            (r"\.format\s*\(.*SELECT|INSERT|UPDATE|DELETE", "Potential SQL injection in query"),
             # Path traversal
-            (r'\.\./', "Potential path traversal detected"),
+            (r"\.\./", "Potential path traversal detected"),
             (r'open\s*\(\s*.*\+.*["\']', "Potential unsafe file operation"),
-
             # Network security
-            (r'verify\s*=\s*False', "SSL verification disabled"),
-            (r'check_hostname\s*=\s*False', "Hostname verification disabled"),
+            (r"verify\s*=\s*False", "SSL verification disabled"),
+            (r"check_hostname\s*=\s*False", "Hostname verification disabled"),
         ]
 
-        self.critical_files = [
-            "config.yaml",
-            "config_m1_local.yaml",
-            ".env",
-            "secrets.json"
-        ]
+        self.critical_files = ["config.yaml", "config_m1_local.yaml", ".env", "secrets.json"]
 
     def check_file(self, file_path: Path) -> List[Dict[str, Any]]:
         """Kontrola jednoho souboru"""
         issues = []
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            for line_num, line in enumerate(content.split('\n'), 1):
+            for line_num, line in enumerate(content.split("\n"), 1):
                 for pattern, message in self.security_patterns:
                     if re.search(pattern, line, re.IGNORECASE):
-                        issues.append({
-                            "file": str(file_path),
-                            "line": line_num,
-                            "issue": message,
-                            "content": line.strip()[:100],
-                            "severity": "HIGH"
-                        })
+                        issues.append(
+                            {
+                                "file": str(file_path),
+                                "line": line_num,
+                                "issue": message,
+                                "content": line.strip()[:100],
+                                "severity": "HIGH",
+                            }
+                        )
 
         except Exception as e:
             logger.warning(f"Could not check file {file_path}: {e}")
@@ -87,7 +80,8 @@ class SecurityChecker:
 
         try:
             import yaml
-            with open(config_path, 'r') as f:
+
+            with open(config_path, "r") as f:
                 config = yaml.safe_load(f)
 
             # Kontrola defaultních hesel
@@ -98,14 +92,21 @@ class SecurityChecker:
                     if isinstance(value, dict):
                         check_dict(value, current_path)
                     elif isinstance(value, str):
-                        if key.lower() in ['password', 'secret', 'token', 'key'] and value in ['', 'admin', 'password', '123456']:
-                            issues.append({
-                                "file": str(config_path),
-                                "line": 0,
-                                "issue": f"Weak or default {key} in config",
-                                "content": f"{current_path}: {value}",
-                                "severity": "CRITICAL"
-                            })
+                        if key.lower() in ["password", "secret", "token", "key"] and value in [
+                            "",
+                            "admin",
+                            "password",
+                            "123456",
+                        ]:
+                            issues.append(
+                                {
+                                    "file": str(config_path),
+                                    "line": 0,
+                                    "issue": f"Weak or default {key} in config",
+                                    "content": f"{current_path}: {value}",
+                                    "severity": "CRITICAL",
+                                }
+                            )
 
             check_dict(config)
 
@@ -143,7 +144,7 @@ class SecurityChecker:
             "critical_issues": critical_count,
             "high_issues": high_count,
             "issues": all_issues,
-            "passed": len(all_issues) == 0
+            "passed": len(all_issues) == 0,
         }
 
 
@@ -157,12 +158,12 @@ def main():
     print(f"Critical: {results['critical_issues']}")
     print(f"High: {results['high_issues']}")
 
-    if results['issues']:
+    if results["issues"]:
         print("\nIssues found:")
-        for issue in results['issues']:
+        for issue in results["issues"]:
             print(f"  {issue['severity']}: {issue['file']}:{issue['line']} - {issue['issue']}")
 
-    if not results['passed']:
+    if not results["passed"]:
         print("\n❌ Security check failed!")
         sys.exit(1)
     else:

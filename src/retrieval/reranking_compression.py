@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""
-Advanced Re-ranking a Contextual Compression
+"""Advanced Re-ranking a Contextual Compression
 Pairwise re-ranking + discourse-aware chunking + adaptive compression
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple, Union
 from dataclasses import dataclass
-import time
-import numpy as np
-import re
 from enum import Enum
-import json
+import logging
+import re
+import time
+from typing import Any
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
 class ReRankingStrategy(Enum):
     """Strategie re-rankingu"""
+
     CROSS_ENCODER = "cross_encoder"
     LLM_RATER = "llm_rater"
     HYBRID = "hybrid"
@@ -29,6 +29,7 @@ class ReRankingStrategy(Enum):
 @dataclass
 class ReRankingConfig:
     """Konfigurace re-ranking systému"""
+
     enabled: bool = True
     strategy: ReRankingStrategy = ReRankingStrategy.HYBRID
     top_k_rerank: int = 50  # Počet top dokumentů pro re-ranking
@@ -58,13 +59,14 @@ class ReRankingConfig:
 @dataclass
 class CompressionConfig:
     """Konfigurace contextual compression"""
+
     enabled: bool = True
     target_compression_ratio: float = 0.3  # Cílová kompresní ratio
     max_context_tokens: int = 8000
 
     # Source priorities
     primary_source_weight: float = 2.0  # Váha primární literatury
-    aggregator_penalty: float = 0.5    # Penalizace agregátorů
+    aggregator_penalty: float = 0.5  # Penalizace agregátorů
 
     # Adaptive chunking
     adaptive_chunking: bool = True
@@ -92,14 +94,12 @@ class CrossEncoderReRanker:
         self.rerank_stats = {
             "queries_processed": 0,
             "avg_rerank_time": 0.0,
-            "avg_score_change": 0.0
+            "avg_score_change": 0.0,
         }
 
     async def rerank_documents(
-        self,
-        query: str,
-        documents: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        self, query: str, documents: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Re-rank dokumenty pomocí cross-encoder"""
         if not self.config.enabled or len(documents) <= 1:
             return documents, {"reranking_used": False}
@@ -107,8 +107,8 @@ class CrossEncoderReRanker:
         start_time = time.time()
 
         # Limit na top-k dokumentů
-        docs_to_rerank = documents[:self.config.top_k_rerank]
-        remaining_docs = documents[self.config.top_k_rerank:]
+        docs_to_rerank = documents[: self.config.top_k_rerank]
+        remaining_docs = documents[self.config.top_k_rerank :]
 
         try:
             # Initialize model if needed
@@ -133,14 +133,16 @@ class CrossEncoderReRanker:
                 # Kombinuj original a rerank skóre
                 combined_score = 0.7 * rerank_score + 0.3 * original_score
 
-                new_doc.update({
-                    "score": combined_score,
-                    "rerank_metadata": {
-                        "original_score": original_score,
-                        "cross_encoder_score": rerank_score,
-                        "score_change": rerank_score - original_score
+                new_doc.update(
+                    {
+                        "score": combined_score,
+                        "rerank_metadata": {
+                            "original_score": original_score,
+                            "cross_encoder_score": rerank_score,
+                            "score_change": rerank_score - original_score,
+                        },
                     }
-                })
+                )
                 reranked_docs.append(new_doc)
 
             # Seřaď podle nového skóre
@@ -157,14 +159,17 @@ class CrossEncoderReRanker:
                 "strategy": "cross_encoder",
                 "documents_reranked": len(docs_to_rerank),
                 "rerank_time_seconds": elapsed_time,
-                "avg_score_change": np.mean([
-                    doc["rerank_metadata"]["score_change"]
-                    for doc in reranked_docs
-                ]) if reranked_docs else 0.0
+                "avg_score_change": (
+                    np.mean([doc["rerank_metadata"]["score_change"] for doc in reranked_docs])
+                    if reranked_docs
+                    else 0.0
+                ),
             }
 
             # Update stats
-            self._update_stats(len(docs_to_rerank), elapsed_time, rerank_metadata["avg_score_change"])
+            self._update_stats(
+                len(docs_to_rerank), elapsed_time, rerank_metadata["avg_score_change"]
+            )
 
             logger.info(f"Cross-encoder reranking completed in {elapsed_time:.2f}s")
 
@@ -182,14 +187,14 @@ class CrossEncoderReRanker:
             await asyncio.sleep(0.1)  # Simulate model loading
             self.model = "mock_cross_encoder"
 
-    async def _compute_cross_encoder_scores(self, pairs: List[Tuple[str, str]]) -> List[float]:
+    async def _compute_cross_encoder_scores(self, pairs: list[tuple[str, str]]) -> list[float]:
         """Vypočítá cross-encoder skóre pro query-document páry"""
         scores = []
 
         # Process in batches
         batch_size = self.config.cross_encoder_batch_size
         for i in range(0, len(pairs), batch_size):
-            batch = pairs[i:i + batch_size]
+            batch = pairs[i : i + batch_size]
 
             # Mock cross-encoder scoring
             batch_scores = []
@@ -248,14 +253,12 @@ class LLMRater:
         self.rating_stats = {
             "ratings_generated": 0,
             "avg_rating_time": 0.0,
-            "calibration_history": []
+            "calibration_history": [],
         }
 
     async def rate_documents(
-        self,
-        query: str,
-        documents: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        self, query: str, documents: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Rate dokumenty pomocí LLM"""
         if not self.config.enabled or len(documents) <= 1:
             return documents, {"llm_rating_used": False}
@@ -263,8 +266,8 @@ class LLMRater:
         start_time = time.time()
 
         # Limit na top-k dokumentů
-        docs_to_rate = documents[:self.config.top_k_rerank]
-        remaining_docs = documents[self.config.top_k_rerank:]
+        docs_to_rate = documents[: self.config.top_k_rerank]
+        remaining_docs = documents[self.config.top_k_rerank :]
 
         try:
             # Rate documents
@@ -287,15 +290,17 @@ class LLMRater:
                 # Kombinuj scores
                 combined_score = 0.6 * llm_score + 0.4 * original_score
 
-                new_doc.update({
-                    "score": combined_score,
-                    "llm_rating_metadata": {
-                        "original_score": original_score,
-                        "llm_score": llm_score,
-                        "rationale": rationale if self.config.enable_rationale_logging else "",
-                        "score_change": llm_score - original_score
+                new_doc.update(
+                    {
+                        "score": combined_score,
+                        "llm_rating_metadata": {
+                            "original_score": original_score,
+                            "llm_score": llm_score,
+                            "rationale": rationale if self.config.enable_rationale_logging else "",
+                            "score_change": llm_score - original_score,
+                        },
                     }
-                })
+                )
                 rated_docs.append(new_doc)
 
             # Seřaď podle combined score
@@ -312,10 +317,11 @@ class LLMRater:
                 "strategy": "llm_rater",
                 "documents_rated": len(docs_to_rate),
                 "rating_time_seconds": elapsed_time,
-                "avg_score_change": np.mean([
-                    doc["llm_rating_metadata"]["score_change"]
-                    for doc in rated_docs
-                ]) if rated_docs else 0.0
+                "avg_score_change": (
+                    np.mean([doc["llm_rating_metadata"]["score_change"] for doc in rated_docs])
+                    if rated_docs
+                    else 0.0
+                ),
             }
 
             # Update stats
@@ -330,10 +336,8 @@ class LLMRater:
             return documents, {"llm_rating_used": False, "error": str(e)}
 
     async def _generate_ratings(
-        self,
-        query: str,
-        documents: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        self, query: str, documents: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Generuje LLM ratings pro dokumenty"""
         ratings = []
 
@@ -349,7 +353,7 @@ class LLMRater:
                         prompt=prompt,
                         max_tokens=self.config.llm_max_tokens,
                         temperature=self.config.llm_temperature,
-                        model=self.config.llm_model
+                        model=self.config.llm_model,
                     )
                     rating_info = self._parse_llm_response(response)
                 else:
@@ -385,23 +389,23 @@ Focus on:
 
         return prompt
 
-    def _parse_llm_response(self, response: str) -> Dict[str, Any]:
+    def _parse_llm_response(self, response: str) -> dict[str, Any]:
         """Parsuje LLM odpověď"""
         try:
-            lines = response.strip().split('\n')
+            lines = response.strip().split("\n")
             rating = 0.5
             rationale = "No rationale provided"
 
             for line in lines:
-                if line.startswith('Rating:'):
-                    rating_str = line.replace('Rating:', '').strip()
+                if line.startswith("Rating:"):
+                    rating_str = line.replace("Rating:", "").strip()
                     try:
                         rating = float(rating_str)
                         rating = max(0.0, min(1.0, rating))  # Clamp to valid range
                     except ValueError:
                         pass
-                elif line.startswith('Rationale:'):
-                    rationale = line.replace('Rationale:', '').strip()
+                elif line.startswith("Rationale:"):
+                    rationale = line.replace("Rationale:", "").strip()
 
             return {"score": rating, "rationale": rationale}
 
@@ -409,7 +413,7 @@ Focus on:
             logger.warning(f"Failed to parse LLM response: {e}")
             return {"score": 0.5, "rationale": f"Parse error: {e}"}
 
-    def _generate_mock_rating(self, query: str, content: str) -> Dict[str, Any]:
+    def _generate_mock_rating(self, query: str, content: str) -> dict[str, Any]:
         """Generuje mock rating pro testování"""
         # Simple relevance scoring based on query terms
         query_terms = query.lower().split()
@@ -452,13 +456,9 @@ class DiscourseAwareChunker:
 
     def __init__(self, config: CompressionConfig):
         self.config = config
-        self.chunk_stats = {
-            "texts_chunked": 0,
-            "total_chunks_created": 0,
-            "avg_chunk_size": 0.0
-        }
+        self.chunk_stats = {"texts_chunked": 0, "total_chunks_created": 0, "avg_chunk_size": 0.0}
 
-    def chunk_text(self, text: str, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    def chunk_text(self, text: str, metadata: dict[str, Any] = None) -> list[dict[str, Any]]:
         """Chunková text s discourse awareness"""
         if not self.config.adaptive_chunking or len(text) < self.config.min_chunk_size:
             return [{"text": text, "chunk_index": 0, "chunk_type": "full"}]
@@ -478,7 +478,7 @@ class DiscourseAwareChunker:
                 "chunk_type": chunk["type"],
                 "chunk_size": len(chunk["text"]),
                 "discourse_markers": chunk.get("markers", []),
-                "salience_score": self._calculate_salience(chunk["text"])
+                "salience_score": self._calculate_salience(chunk["text"]),
             }
 
             if metadata:
@@ -491,55 +491,47 @@ class DiscourseAwareChunker:
 
         return enriched_chunks
 
-    def _detect_discourse_boundaries(self, text: str) -> List[Dict[str, Any]]:
+    def _detect_discourse_boundaries(self, text: str) -> list[dict[str, Any]]:
         """Detekuje discourse boundaries v textu"""
         boundaries = []
 
         # Heading patterns
         heading_patterns = [
-            r'^\s*#{1,6}\s+(.+)$',  # Markdown headings
-            r'^\s*([A-Z][^.!?]*):?\s*$',  # All caps headings
-            r'^\s*\d+\.\s+(.+)$',  # Numbered sections
+            r"^\s*#{1,6}\s+(.+)$",  # Markdown headings
+            r"^\s*([A-Z][^.!?]*):?\s*$",  # All caps headings
+            r"^\s*\d+\.\s+(.+)$",  # Numbered sections
         ]
 
-        lines = text.split('\n')
+        lines = text.split("\n")
         for i, line in enumerate(lines):
             line_stripped = line.strip()
 
             # Check for headings
             for pattern in heading_patterns:
                 if re.match(pattern, line_stripped, re.MULTILINE):
-                    boundaries.append({
-                        "position": i,
-                        "type": "heading",
-                        "text": line_stripped,
-                        "level": self._determine_heading_level(line_stripped)
-                    })
+                    boundaries.append(
+                        {
+                            "position": i,
+                            "type": "heading",
+                            "text": line_stripped,
+                            "level": self._determine_heading_level(line_stripped),
+                        }
+                    )
                     break
 
             # Check for other discourse markers
             if self._is_paragraph_break(line_stripped):
-                boundaries.append({
-                    "position": i,
-                    "type": "paragraph_break",
-                    "text": line_stripped
-                })
+                boundaries.append({"position": i, "type": "paragraph_break", "text": line_stripped})
             elif self._contains_citation(line_stripped):
-                boundaries.append({
-                    "position": i,
-                    "type": "citation",
-                    "text": line_stripped
-                })
+                boundaries.append({"position": i, "type": "citation", "text": line_stripped})
 
         return boundaries
 
     def _create_discourse_aware_chunks(
-        self,
-        text: str,
-        boundaries: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        self, text: str, boundaries: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Vytvoří chunks respektující discourse strukturu"""
-        lines = text.split('\n')
+        lines = text.split("\n")
         chunks = []
         current_chunk = []
         current_markers = []
@@ -564,25 +556,27 @@ class DiscourseAwareChunker:
                     should_break = True
 
             # Break if chunk is getting too long
-            chunk_text = '\n'.join(current_chunk)
+            chunk_text = "\n".join(current_chunk)
             if len(chunk_text) >= self.config.max_chunk_size:
                 should_break = True
 
             # Create chunk if breaking or at end
             if should_break or i == len(lines) - 1:
                 if current_chunk:
-                    chunk_text = '\n'.join(current_chunk).strip()
+                    chunk_text = "\n".join(current_chunk).strip()
                     if chunk_text:
                         chunk_type = self._determine_chunk_type(current_markers)
-                        chunks.append({
-                            "text": chunk_text,
-                            "type": chunk_type,
-                            "markers": current_markers.copy()
-                        })
+                        chunks.append(
+                            {
+                                "text": chunk_text,
+                                "type": chunk_type,
+                                "markers": current_markers.copy(),
+                            }
+                        )
 
                 # Start new chunk with overlap if needed
                 if should_break and i < len(lines) - 1:
-                    overlap_lines = current_chunk[-self._calculate_overlap_lines():]
+                    overlap_lines = current_chunk[-self._calculate_overlap_lines() :]
                     current_chunk = overlap_lines
                 else:
                     current_chunk = []
@@ -592,31 +586,30 @@ class DiscourseAwareChunker:
 
     def _determine_heading_level(self, text: str) -> int:
         """Určí level nadpisu"""
-        if text.startswith('#'):
-            return text.count('#')
-        elif text.isupper():
+        if text.startswith("#"):
+            return text.count("#")
+        if text.isupper():
             return 1
-        elif re.match(r'^\d+\.', text):
+        if re.match(r"^\d+\.", text):
             return 2
-        else:
-            return 3
+        return 3
 
     def _is_paragraph_break(self, line: str) -> bool:
         """Detekuje paragraph break"""
-        return len(line.strip()) == 0 or line.strip() in ['---', '***', '___']
+        return len(line.strip()) == 0 or line.strip() in ["---", "***", "___"]
 
     def _contains_citation(self, line: str) -> bool:
         """Detekuje citace"""
         citation_patterns = [
-            r'\[[\d,\s-]+\]',  # [1,2,3] style citations
-            r'\(\w+\s+et\s+al\.,?\s+\d{4}\)',  # (Author et al., 2023)
-            r'doi:',  # DOI references
-            r'http[s]?://',  # URLs
+            r"\[[\d,\s-]+\]",  # [1,2,3] style citations
+            r"\(\w+\s+et\s+al\.,?\s+\d{4}\)",  # (Author et al., 2023)
+            r"doi:",  # DOI references
+            r"http[s]?://",  # URLs
         ]
 
         return any(re.search(pattern, line, re.IGNORECASE) for pattern in citation_patterns)
 
-    def _determine_chunk_type(self, markers: List[Dict[str, Any]]) -> str:
+    def _determine_chunk_type(self, markers: list[dict[str, Any]]) -> str:
         """Určí typ chunku na základě discourse markers"""
         if not markers:
             return "paragraph"
@@ -625,10 +618,9 @@ class DiscourseAwareChunker:
 
         if "heading" in marker_types:
             return "section"
-        elif "citation" in marker_types:
+        if "citation" in marker_types:
             return "reference"
-        else:
-            return "paragraph"
+        return "paragraph"
 
     def _calculate_overlap_lines(self) -> int:
         """Vypočítá počet řádků pro overlap"""
@@ -673,9 +665,22 @@ class DiscourseAwareChunker:
         """Vypočítá hustotu klíčových slov"""
         # Simple keyword density based on common academic terms
         academic_keywords = [
-            "research", "study", "analysis", "method", "result", "conclusion",
-            "finding", "evidence", "data", "experiment", "theory", "model",
-            "significant", "correlation", "hypothesis", "validation"
+            "research",
+            "study",
+            "analysis",
+            "method",
+            "result",
+            "conclusion",
+            "finding",
+            "evidence",
+            "data",
+            "experiment",
+            "theory",
+            "model",
+            "significant",
+            "correlation",
+            "hypothesis",
+            "validation",
         ]
 
         text_lower = text.lower()
@@ -712,14 +717,12 @@ class ContextualCompressor:
         self.compression_stats = {
             "compressions_performed": 0,
             "avg_compression_ratio": 0.0,
-            "context_usage_efficiency": 0.0
+            "context_usage_efficiency": 0.0,
         }
 
     async def compress_documents(
-        self,
-        documents: List[Dict[str, Any]],
-        query: str = ""
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        self, documents: list[dict[str, Any]], query: str = ""
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Kompresuje dokumenty s source-aware budgetingem"""
         if not self.config.enabled or not documents:
             return documents, {"compression_enabled": False}
@@ -739,7 +742,7 @@ class ContextualCompressor:
             "original_documents": len(documents),
             "target_tokens": self.config.max_context_tokens,
             "source_categories": {},
-            "budget_allocation": budget_allocation
+            "budget_allocation": budget_allocation,
         }
 
         for source_type, docs in categorized_docs.items():
@@ -763,9 +766,8 @@ class ContextualCompressor:
                 "compressed_docs": len(category_compressed),
                 "allocated_tokens": allocated_tokens,
                 "estimated_tokens": sum(
-                    len(doc.get("content", "").split())
-                    for doc in category_compressed
-                )
+                    len(doc.get("content", "").split()) for doc in category_compressed
+                ),
             }
 
         # Finální seřazení podle skóre
@@ -779,30 +781,36 @@ class ContextualCompressor:
         compression_ratio = compressed_tokens / original_tokens if original_tokens > 0 else 0
         context_usage = compressed_tokens / self.config.max_context_tokens
 
-        compression_metadata.update({
-            "compression_time_seconds": elapsed_time,
-            "original_tokens": original_tokens,
-            "compressed_tokens": compressed_tokens,
-            "compression_ratio": compression_ratio,
-            "context_usage_efficiency": context_usage,
-            "target_compression_ratio": self.config.target_compression_ratio
-        })
+        compression_metadata.update(
+            {
+                "compression_time_seconds": elapsed_time,
+                "original_tokens": original_tokens,
+                "compressed_tokens": compressed_tokens,
+                "compression_ratio": compression_ratio,
+                "context_usage_efficiency": context_usage,
+                "target_compression_ratio": self.config.target_compression_ratio,
+            }
+        )
 
         # Update stats
         self._update_compression_stats(compression_ratio, context_usage)
 
-        logger.info(f"Contextual compression: {len(documents)} -> {len(compressed_docs)} docs, "
-                   f"ratio: {compression_ratio:.2f}")
+        logger.info(
+            f"Contextual compression: {len(documents)} -> {len(compressed_docs)} docs, "
+            f"ratio: {compression_ratio:.2f}"
+        )
 
         return compressed_docs, compression_metadata
 
-    def _categorize_sources(self, documents: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    def _categorize_sources(
+        self, documents: list[dict[str, Any]]
+    ) -> dict[str, list[dict[str, Any]]]:
         """Kategorizuje sources podle typu"""
         categories = {
             "primary_literature": [],
             "secondary_sources": [],
             "aggregators": [],
-            "unknown": []
+            "unknown": [],
         }
 
         for doc in documents:
@@ -818,14 +826,25 @@ class ContextualCompressor:
         """Klasifikuje source do kategorie"""
         # Primary literature patterns
         primary_domains = [
-            "arxiv.org", "nature.com", "science.org", "cell.com",
-            "pnas.org", "pubmed.ncbi.nlm.nih.gov", "acm.org", "ieee.org"
+            "arxiv.org",
+            "nature.com",
+            "science.org",
+            "cell.com",
+            "pnas.org",
+            "pubmed.ncbi.nlm.nih.gov",
+            "acm.org",
+            "ieee.org",
         ]
 
         # Aggregator patterns
         aggregator_domains = [
-            "wikipedia.org", "reddit.com", "twitter.com", "facebook.com",
-            "medium.com", "blog", "news"
+            "wikipedia.org",
+            "reddit.com",
+            "twitter.com",
+            "facebook.com",
+            "medium.com",
+            "blog",
+            "news",
         ]
 
         source_text = (url + " " + domain).lower()
@@ -844,7 +863,9 @@ class ContextualCompressor:
 
         return "unknown"
 
-    def _allocate_token_budget(self, categorized_docs: Dict[str, List[Dict[str, Any]]]) -> Dict[str, int]:
+    def _allocate_token_budget(
+        self, categorized_docs: dict[str, list[dict[str, Any]]]
+    ) -> dict[str, int]:
         """Alokuje token budget podle source priorities"""
         total_budget = self.config.max_context_tokens
 
@@ -853,7 +874,7 @@ class ContextualCompressor:
             "primary_literature": self.config.primary_source_weight,
             "secondary_sources": 1.0,
             "aggregators": self.config.aggregator_penalty,
-            "unknown": 0.8
+            "unknown": 0.8,
         }
 
         # Vypočítaj proporcionální alokaci
@@ -878,12 +899,8 @@ class ContextualCompressor:
         return allocation
 
     async def _compress_document_category(
-        self,
-        documents: List[Dict[str, Any]],
-        token_budget: int,
-        query: str,
-        source_type: str
-    ) -> List[Dict[str, Any]]:
+        self, documents: list[dict[str, Any]], token_budget: int, query: str, source_type: str
+    ) -> list[dict[str, Any]]:
         """Kompresuje dokumenty v kategorii"""
         if token_budget <= 0 or not documents:
             return []
@@ -896,20 +913,21 @@ class ContextualCompressor:
 
             # Obohatí chunks o document metadata
             for chunk in chunks:
-                chunk.update({
-                    "doc_id": doc.get("id"),
-                    "doc_score": doc.get("score", 0),
-                    "source_type": source_type,
-                    "url": doc.get("url", ""),
-                    "relevance_score": self._calculate_relevance_score(chunk["text"], query)
-                })
+                chunk.update(
+                    {
+                        "doc_id": doc.get("id"),
+                        "doc_score": doc.get("score", 0),
+                        "source_type": source_type,
+                        "url": doc.get("url", ""),
+                        "relevance_score": self._calculate_relevance_score(chunk["text"], query),
+                    }
+                )
 
             all_chunks.extend(chunks)
 
         # Seřaď chunks podle salience a relevance
         all_chunks.sort(
-            key=lambda x: (x["salience_score"] + x["relevance_score"]) / 2,
-            reverse=True
+            key=lambda x: (x["salience_score"] + x["relevance_score"]) / 2, reverse=True
         )
 
         # Vybírej chunks do token budgetu
@@ -966,13 +984,13 @@ class ContextualCompressor:
         truncated_text = " ".join(truncated_words)
 
         # Look for last complete sentence
-        sentences = truncated_text.split('.')
+        sentences = truncated_text.split(".")
         if len(sentences) > 1:
-            return '.'.join(sentences[:-1]) + '.'
+            return ".".join(sentences[:-1]) + "."
 
         return truncated_text
 
-    def _recombine_chunks(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _recombine_chunks(self, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Rekombinuje chunks zpět do dokumentů"""
         # Group chunks by document
         doc_chunks = {}
@@ -1007,8 +1025,8 @@ class ContextualCompressor:
                     "chunks_used": len(doc_chunk_list),
                     "total_chunks": len(doc_chunk_list),  # Simplified
                     "avg_salience": np.mean([c["salience_score"] for c in doc_chunk_list]),
-                    "truncated": any(c.get("truncated", False) for c in doc_chunk_list)
-                }
+                    "truncated": any(c.get("truncated", False) for c in doc_chunk_list),
+                },
             }
 
             compressed_docs.append(compressed_doc)
@@ -1026,16 +1044,16 @@ class ContextualCompressor:
             self.compression_stats["avg_compression_ratio"] = compression_ratio
         else:
             self.compression_stats["avg_compression_ratio"] = (
-                alpha * compression_ratio +
-                (1 - alpha) * self.compression_stats["avg_compression_ratio"]
+                alpha * compression_ratio
+                + (1 - alpha) * self.compression_stats["avg_compression_ratio"]
             )
 
         if self.compression_stats["context_usage_efficiency"] == 0:
             self.compression_stats["context_usage_efficiency"] = context_usage
         else:
             self.compression_stats["context_usage_efficiency"] = (
-                alpha * context_usage +
-                (1 - alpha) * self.compression_stats["context_usage_efficiency"]
+                alpha * context_usage
+                + (1 - alpha) * self.compression_stats["context_usage_efficiency"]
             )
 
 
@@ -1048,7 +1066,7 @@ class IntegratedReRankingSystem:
         rerank_config: ReRankingConfig,
         compression_config: CompressionConfig,
         embedding_model=None,
-        llm_client=None
+        llm_client=None,
     ):
         self.rerank_config = rerank_config
         self.compression_config = compression_config
@@ -1058,10 +1076,8 @@ class IntegratedReRankingSystem:
         self.compressor = ContextualCompressor(compression_config)
 
     async def process_documents(
-        self,
-        query: str,
-        documents: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        self, query: str, documents: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Kompletní processing: re-ranking + compression"""
         start_time = time.time()
 
@@ -1069,14 +1085,16 @@ class IntegratedReRankingSystem:
             "query": query,
             "input_documents": len(documents),
             "reranking": {},
-            "compression": {}
+            "compression": {},
         }
 
         # 1. Re-ranking
         reranked_docs = documents
         if self.rerank_config.enabled and len(documents) > 1:
             if self.rerank_config.strategy == ReRankingStrategy.CROSS_ENCODER:
-                reranked_docs, rerank_meta = await self.cross_encoder.rerank_documents(query, documents)
+                reranked_docs, rerank_meta = await self.cross_encoder.rerank_documents(
+                    query, documents
+                )
             elif self.rerank_config.strategy == ReRankingStrategy.LLM_RATER:
                 reranked_docs, rerank_meta = await self.llm_rater.rate_documents(query, documents)
             elif self.rerank_config.strategy == ReRankingStrategy.HYBRID:
@@ -1087,43 +1105,49 @@ class IntegratedReRankingSystem:
                 rerank_meta = {
                     "strategy": "hybrid",
                     "cross_encoder": cross_meta,
-                    "llm_rater": llm_meta
+                    "llm_rater": llm_meta,
                 }
 
             processing_metadata["reranking"] = rerank_meta
 
         # 2. Contextual compression
-        compressed_docs, compression_meta = await self.compressor.compress_documents(reranked_docs, query)
+        compressed_docs, compression_meta = await self.compressor.compress_documents(
+            reranked_docs, query
+        )
         processing_metadata["compression"] = compression_meta
 
         # 3. Final metadata
         elapsed_time = time.time() - start_time
-        processing_metadata.update({
-            "total_processing_time": elapsed_time,
-            "output_documents": len(compressed_docs),
-            "overall_compression_ratio": len(compressed_docs) / len(documents) if documents else 0
-        })
+        processing_metadata.update(
+            {
+                "total_processing_time": elapsed_time,
+                "output_documents": len(compressed_docs),
+                "overall_compression_ratio": (
+                    len(compressed_docs) / len(documents) if documents else 0
+                ),
+            }
+        )
 
-        logger.info(f"Re-ranking + compression completed in {elapsed_time:.2f}s: "
-                   f"{len(documents)} -> {len(compressed_docs)} documents")
+        logger.info(
+            f"Re-ranking + compression completed in {elapsed_time:.2f}s: "
+            f"{len(documents)} -> {len(compressed_docs)} documents"
+        )
 
         return compressed_docs, processing_metadata
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Získá statistiky celého systému"""
         return {
             "cross_encoder_stats": self.cross_encoder.rerank_stats,
             "llm_rater_stats": self.llm_rater.rating_stats,
             "compression_stats": self.compressor.compression_stats,
-            "chunker_stats": self.compressor.chunker.chunk_stats
+            "chunker_stats": self.compressor.chunker.chunk_stats,
         }
 
 
 # Factory funkce
 def create_reranking_system(
-    config: Dict[str, Any],
-    embedding_model=None,
-    llm_client=None
+    config: dict[str, Any], embedding_model=None, llm_client=None
 ) -> IntegratedReRankingSystem:
     """Factory funkce pro integrated re-ranking systém"""
     rerank_config_dict = config.get("reranking", {})
@@ -1132,18 +1156,13 @@ def create_reranking_system(
     rerank_config = ReRankingConfig(**rerank_config_dict)
     compression_config = CompressionConfig(**compression_config_dict)
 
-    return IntegratedReRankingSystem(
-        rerank_config,
-        compression_config,
-        embedding_model,
-        llm_client
-    )
+    return IntegratedReRankingSystem(rerank_config, compression_config, embedding_model, llm_client)
 
 
 # Export hlavních tříd
 __all__ = [
-    "ReRankingConfig",
     "CompressionConfig",
     "IntegratedReRankingSystem",
-    "create_reranking_system"
+    "ReRankingConfig",
+    "create_reranking_system",
 ]

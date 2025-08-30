@@ -88,26 +88,30 @@ except ImportError:
             pii_matches = []
 
             # Email detection
-            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
             for match in re.finditer(email_pattern, text):
-                pii_matches.append(PIIMatch(
-                    text=match.group(),
-                    category=PIICategory.EMAIL,
-                    confidence=0.95,
-                    start=match.start(),
-                    end=match.end()
-                ))
+                pii_matches.append(
+                    PIIMatch(
+                        text=match.group(),
+                        category=PIICategory.EMAIL,
+                        confidence=0.95,
+                        start=match.start(),
+                        end=match.end(),
+                    )
+                )
 
             # Phone detection
-            phone_pattern = r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b'
+            phone_pattern = r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"
             for match in re.finditer(phone_pattern, text):
-                pii_matches.append(PIIMatch(
-                    text=match.group(),
-                    category=PIICategory.PHONE,
-                    confidence=0.90,
-                    start=match.start(),
-                    end=match.end()
-                ))
+                pii_matches.append(
+                    PIIMatch(
+                        text=match.group(),
+                        category=PIICategory.PHONE,
+                        confidence=0.90,
+                        start=match.start(),
+                        end=match.end(),
+                    )
+                )
 
             return pii_matches
 
@@ -128,17 +132,17 @@ except ImportError:
             # Redact PII from text (work backwards to maintain indices)
             for match in sorted(pii_matches, key=lambda x: x.start, reverse=True):
                 redaction = f"[REDACTED_{match.category.upper()}]"
-                sanitized_text = sanitized_text[:match.start] + redaction + sanitized_text[match.end:]
-                redacted_items.append({
-                    "original": match.text,
-                    "category": match.category,
-                    "redacted_to": redaction
-                })
+                sanitized_text = (
+                    sanitized_text[: match.start] + redaction + sanitized_text[match.end :]
+                )
+                redacted_items.append(
+                    {"original": match.text, "category": match.category, "redacted_to": redaction}
+                )
 
             return SanitizationResult(
                 sanitized_text=sanitized_text,
                 pii_detected=pii_matches,
-                redacted_items=redacted_items
+                redacted_items=redacted_items,
             )
 
     class SecurityMonitor:
@@ -165,11 +169,13 @@ except ImportError:
             return {
                 "total_events": len(self.events),
                 "threat_levels": {
-                    "critical": sum(1 for e in self.events if e.threat_level == ThreatLevel.CRITICAL),
+                    "critical": sum(
+                        1 for e in self.events if e.threat_level == ThreatLevel.CRITICAL
+                    ),
                     "high": sum(1 for e in self.events if e.threat_level == ThreatLevel.HIGH),
                     "medium": sum(1 for e in self.events if e.threat_level == ThreatLevel.MEDIUM),
-                    "low": sum(1 for e in self.events if e.threat_level == ThreatLevel.LOW)
-                }
+                    "low": sum(1 for e in self.events if e.threat_level == ThreatLevel.LOW),
+                },
             }
 
     class DataEncryption:
@@ -185,7 +191,7 @@ except ImportError:
             return EncryptionResult(
                 encrypted_data=encrypted_data,
                 key_id=key_id or "default_key",
-                algorithm="AES-256-GCM"
+                algorithm="AES-256-GCM",
             )
 
         async def decrypt_data(self, encrypted_data, key_id):
@@ -203,22 +209,22 @@ class TestPhase6Components:
                 "pii_detection": {
                     "enabled": True,
                     "confidence_threshold": 0.8,
-                    "categories": ["email", "phone", "ssn", "credit_card", "name", "address"]
+                    "categories": ["email", "phone", "ssn", "credit_card", "name", "address"],
                 },
                 "content_sanitization": {
                     "redaction_strategy": "placeholder",
-                    "preserve_structure": True
+                    "preserve_structure": True,
                 },
                 "security_monitoring": {
                     "log_level": "info",
                     "threat_detection": True,
-                    "real_time_alerts": True
+                    "real_time_alerts": True,
                 },
                 "encryption": {
                     "algorithm": "AES-256-GCM",
                     "key_rotation": True,
-                    "key_expiry_days": 90
-                }
+                    "key_expiry_days": 90,
+                },
             }
         }
 
@@ -288,20 +294,20 @@ class TestPhase6Components:
                 event_type="authentication_failure",
                 threat_level=ThreatLevel.MEDIUM,
                 description="Failed login attempt",
-                metadata={"ip": "192.168.1.100", "user": "admin"}
+                metadata={"ip": "192.168.1.100", "user": "admin"},
             ),
             SecurityEvent(
                 event_type="data_access",
                 threat_level=ThreatLevel.LOW,
                 description="Normal data access",
-                metadata={"user": "researcher", "resource": "documents"}
+                metadata={"user": "researcher", "resource": "documents"},
             ),
             SecurityEvent(
                 event_type="password_breach",
                 threat_level=ThreatLevel.HIGH,
                 description="Potential password compromise",
-                metadata={"affected_accounts": 1}
-            )
+                metadata={"affected_accounts": 1},
+            ),
         ]
 
         # Log events
@@ -332,7 +338,7 @@ class TestPhase6Components:
         sensitive_data = {
             "user_id": "12345",
             "email": "john.doe@example.com",
-            "research_notes": "Confidential research findings..."
+            "research_notes": "Confidential research findings...",
         }
 
         # Encrypt data
@@ -345,8 +351,7 @@ class TestPhase6Components:
 
         # Test decryption
         decrypted_data = await encryption.decrypt_data(
-            encrypted_result.encrypted_data,
-            encrypted_result.key_id
+            encrypted_result.encrypted_data, encrypted_result.key_id
         )
 
         # Validate decryption (mock implementation returns placeholder)
@@ -362,11 +367,7 @@ async def main():
     print("=" * 50)
 
     start_time = datetime.now()
-    test_results = {
-        "phase": 6,
-        "start_time": start_time.isoformat(),
-        "tests": []
-    }
+    test_results = {"phase": 6, "start_time": start_time.isoformat(), "tests": []}
 
     try:
         tester = TestPhase6Components()
@@ -374,65 +375,65 @@ async def main():
         # Test 1: PII Detection
         try:
             result = await tester.test_pii_detection()
-            test_results["tests"].append({
-                "name": "PII Detection",
-                "status": "PASSED" if result else "FAILED",
-                "details": "Detection of personally identifiable information"
-            })
+            test_results["tests"].append(
+                {
+                    "name": "PII Detection",
+                    "status": "PASSED" if result else "FAILED",
+                    "details": "Detection of personally identifiable information",
+                }
+            )
         except Exception as e:
-            test_results["tests"].append({
-                "name": "PII Detection",
-                "status": "FAILED",
-                "error": str(e)
-            })
+            test_results["tests"].append(
+                {"name": "PII Detection", "status": "FAILED", "error": str(e)}
+            )
             print(f"❌ PII Detection test failed: {e}")
 
         # Test 2: Content Sanitization
         try:
             result = await tester.test_content_sanitization()
-            test_results["tests"].append({
-                "name": "Content Sanitization",
-                "status": "PASSED" if result else "FAILED",
-                "details": "Redaction and sanitization of sensitive content"
-            })
+            test_results["tests"].append(
+                {
+                    "name": "Content Sanitization",
+                    "status": "PASSED" if result else "FAILED",
+                    "details": "Redaction and sanitization of sensitive content",
+                }
+            )
         except Exception as e:
-            test_results["tests"].append({
-                "name": "Content Sanitization",
-                "status": "FAILED",
-                "error": str(e)
-            })
+            test_results["tests"].append(
+                {"name": "Content Sanitization", "status": "FAILED", "error": str(e)}
+            )
             print(f"❌ Content Sanitization test failed: {e}")
 
         # Test 3: Security Monitoring
         try:
             result = await tester.test_security_monitoring()
-            test_results["tests"].append({
-                "name": "Security Monitoring",
-                "status": "PASSED" if result else "FAILED",
-                "details": "Security event logging and threat assessment"
-            })
+            test_results["tests"].append(
+                {
+                    "name": "Security Monitoring",
+                    "status": "PASSED" if result else "FAILED",
+                    "details": "Security event logging and threat assessment",
+                }
+            )
         except Exception as e:
-            test_results["tests"].append({
-                "name": "Security Monitoring",
-                "status": "FAILED",
-                "error": str(e)
-            })
+            test_results["tests"].append(
+                {"name": "Security Monitoring", "status": "FAILED", "error": str(e)}
+            )
             print(f"❌ Security Monitoring test failed: {e}")
 
         # Test 4: Data Encryption
         try:
             result = await tester.test_data_encryption()
-            test_results["tests"].append({
-                "name": "Data Encryption",
-                "status": "PASSED" if result else "FAILED",
-                "details": "Encryption and decryption of sensitive data"
-            })
+            test_results["tests"].append(
+                {
+                    "name": "Data Encryption",
+                    "status": "PASSED" if result else "FAILED",
+                    "details": "Encryption and decryption of sensitive data",
+                }
+            )
         except Exception as e:
-            test_results["tests"].append({
-                "name": "Data Encryption",
-                "status": "FAILED",
-                "error": str(e)
-            })
+            test_results["tests"].append(
+                {"name": "Data Encryption", "status": "FAILED", "error": str(e)}
+            )
             print(f"❌ Data Encryption test failed: {e}")
 
     except Exception as e:
@@ -450,7 +451,7 @@ async def main():
         "total_tests": total_tests,
         "passed": passed_tests,
         "failed": total_tests - passed_tests,
-        "success_rate": passed_tests / total_tests if total_tests > 0 else 0
+        "success_rate": passed_tests / total_tests if total_tests > 0 else 0,
     }
 
     # Save results

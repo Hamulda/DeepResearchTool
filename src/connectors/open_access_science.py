@@ -1,33 +1,30 @@
 #!/usr/bin/env python3
-"""
-Open Access Science Connectors - OpenAlex, Crossref, Unpaywall, Europe PMC, arXiv
+"""Open Access Science Connectors - OpenAlex, Crossref, Unpaywall, Europe PMC, arXiv
 Implementuje unified OA resolver pro vědecké zdroje
 
 Author: Senior IT Specialist
 """
 
 import asyncio
-import aiohttp
-import logging
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
-from datetime import datetime
-import json
-import re
+from typing import Any
 from urllib.parse import quote
 
+import aiohttp
 import structlog
 
 logger = structlog.get_logger(__name__)
 
+
 @dataclass
 class ScientificDocument:
     """Vědecký dokument z OA zdrojů"""
+
     id: str
     title: str
     abstract: str
     full_text: str
-    authors: List[str]
+    authors: list[str]
     doi: str
     url: str
     source: str
@@ -35,14 +32,15 @@ class ScientificDocument:
     journal: str
     citation_count: int
     open_access: bool
-    pdf_url: Optional[str]
+    pdf_url: str | None
     citation: str
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
+
 
 class OpenAlexConnector:
     """Konektor pro OpenAlex"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config.get("connectors", {}).get("open_access", {}).get("openalex", {})
         self.base_url = "https://api.openalex.org"
         self.mailto = self.config.get("mailto", "research@example.com")
@@ -50,11 +48,10 @@ class OpenAlexConnector:
 
         self.logger = structlog.get_logger(__name__)
 
-    async def search_works(self,
-                          query: str,
-                          filters: Optional[Dict[str, Any]] = None) -> List[ScientificDocument]:
+    async def search_works(
+        self, query: str, filters: dict[str, Any] | None = None
+    ) -> list[ScientificDocument]:
         """Vyhledávání vědeckých prací"""
-
         self.logger.info("OpenAlex search", query=query)
 
         try:
@@ -66,7 +63,7 @@ class OpenAlexConnector:
                 "search": encoded_query,
                 "mailto": self.mailto,
                 "per-page": 25,
-                "sort": "cited_by_count:desc"
+                "sort": "cited_by_count:desc",
             }
 
             # Přidání filtrů
@@ -96,9 +93,8 @@ class OpenAlexConnector:
 
         return []
 
-    async def _parse_openalex_work(self, work: Dict[str, Any]) -> Optional[ScientificDocument]:
+    async def _parse_openalex_work(self, work: dict[str, Any]) -> ScientificDocument | None:
         """Parsování OpenAlex work objektu"""
-
         try:
             # Základní metadata
             title = work.get("title", "")
@@ -153,19 +149,23 @@ class OpenAlexConnector:
                     "openalex_id": work.get("id"),
                     "type": work.get("type"),
                     "concepts": [c.get("display_name") for c in work.get("concepts", [])[:5]],
-                    "institutions": [inst.get("display_name") for inst in
-                                   [auth.get("institutions", [{}])[0] for auth in work.get("authorships", [])]
-                                   if inst.get("display_name")][:3]
-                }
+                    "institutions": [
+                        inst.get("display_name")
+                        for inst in [
+                            auth.get("institutions", [{}])[0]
+                            for auth in work.get("authorships", [])
+                        ]
+                        if inst.get("display_name")
+                    ][:3],
+                },
             )
 
         except Exception as e:
             self.logger.warning("Chyba při parsování OpenAlex work", error=str(e))
             return None
 
-    def _reconstruct_abstract(self, inverted_index: Dict[str, List[int]]) -> str:
+    def _reconstruct_abstract(self, inverted_index: dict[str, list[int]]) -> str:
         """Rekonstrukce abstract z inverted index"""
-
         try:
             # Vytvoření seznamu slov podle pozice
             word_positions = []
@@ -182,26 +182,26 @@ class OpenAlexConnector:
         except Exception:
             return ""
 
+
 class CrossrefConnector:
     """Konektor pro Crossref"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config.get("connectors", {}).get("open_access", {}).get("crossref", {})
         self.base_url = "https://api.crossref.org"
         self.mailto = self.config.get("mailto", "research@example.com")
 
         self.logger = structlog.get_logger(__name__)
 
-    async def get_doi_metadata(self, doi: str) -> Optional[Dict[str, Any]]:
+    async def get_doi_metadata(self, doi: str) -> dict[str, Any] | None:
         """Získání metadat pro DOI"""
-
         try:
             url = f"{self.base_url}/works/{doi}"
 
             async with aiohttp.ClientSession() as session:
                 headers = {
                     "User-Agent": f"DeepResearchTool/1.0 (mailto:{self.mailto})",
-                    "Accept": "application/json"
+                    "Accept": "application/json",
                 }
 
                 async with session.get(url, headers=headers) as response:
@@ -214,22 +214,14 @@ class CrossrefConnector:
 
         return None
 
-    async def search_works(self, query: str) -> List[ScientificDocument]:
+    async def search_works(self, query: str) -> list[ScientificDocument]:
         """Vyhledávání v Crossref"""
-
         try:
             url = f"{self.base_url}/works"
-            params = {
-                "query": query,
-                "rows": 20,
-                "sort": "score",
-                "order": "desc"
-            }
+            params = {"query": query, "rows": 20, "sort": "score", "order": "desc"}
 
             async with aiohttp.ClientSession() as session:
-                headers = {
-                    "User-Agent": f"DeepResearchTool/1.0 (mailto:{self.mailto})"
-                }
+                headers = {"User-Agent": f"DeepResearchTool/1.0 (mailto:{self.mailto})"}
 
                 async with session.get(url, params=params, headers=headers) as response:
                     if response.status == 200:
@@ -248,9 +240,8 @@ class CrossrefConnector:
 
         return []
 
-    def _parse_crossref_work(self, work: Dict[str, Any]) -> Optional[ScientificDocument]:
+    def _parse_crossref_work(self, work: dict[str, Any]) -> ScientificDocument | None:
         """Parsování Crossref work"""
-
         try:
             # DOI
             doi = work.get("DOI", "")
@@ -273,7 +264,11 @@ class CrossrefConnector:
             # Journal
             journal = ""
             if work.get("container-title"):
-                journal = work["container-title"][0] if isinstance(work["container-title"], list) else work["container-title"]
+                journal = (
+                    work["container-title"][0]
+                    if isinstance(work["container-title"], list)
+                    else work["container-title"]
+                )
 
             # Publication date
             pub_date = ""
@@ -305,27 +300,27 @@ class CrossrefConnector:
                     "issn": work.get("ISSN", []),
                     "volume": work.get("volume"),
                     "issue": work.get("issue"),
-                    "page": work.get("page")
-                }
+                    "page": work.get("page"),
+                },
             )
 
         except Exception as e:
             self.logger.warning("Chyba při parsování Crossref work", error=str(e))
             return None
 
+
 class UnpaywallConnector:
     """Konektor pro Unpaywall"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config.get("connectors", {}).get("open_access", {}).get("unpaywall", {})
         self.base_url = "https://api.unpaywall.org/v2"
         self.mailto = self.config.get("mailto", "research@example.com")
 
         self.logger = structlog.get_logger(__name__)
 
-    async def get_oa_status(self, doi: str) -> Optional[Dict[str, Any]]:
+    async def get_oa_status(self, doi: str) -> dict[str, Any] | None:
         """Získání OA statusu pro DOI"""
-
         try:
             url = f"{self.base_url}/{doi}?email={self.mailto}"
 
@@ -339,9 +334,8 @@ class UnpaywallConnector:
 
         return None
 
-    async def find_oa_pdf(self, doi: str) -> Optional[str]:
+    async def find_oa_pdf(self, doi: str) -> str | None:
         """Hledání OA PDF pro DOI"""
-
         oa_data = await self.get_oa_status(doi)
 
         if oa_data and oa_data.get("is_oa"):
@@ -365,19 +359,19 @@ class UnpaywallConnector:
 
         return None
 
+
 class EuropePMCConnector:
     """Konektor pro Europe PMC"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config.get("connectors", {}).get("open_access", {}).get("europe_pmc", {})
         self.base_url = "https://www.ebi.ac.uk/europepmc/webservices/rest"
         self.rate_limit = self.config.get("rate_limit", 1000)  # per minute
 
         self.logger = structlog.get_logger(__name__)
 
-    async def search_articles(self, query: str) -> List[ScientificDocument]:
+    async def search_articles(self, query: str) -> list[ScientificDocument]:
         """Vyhledávání článků v Europe PMC"""
-
         try:
             url = f"{self.base_url}/search"
             params = {
@@ -385,7 +379,7 @@ class EuropePMCConnector:
                 "format": "json",
                 "resultType": "core",
                 "pageSize": 25,
-                "sort": "CITED_BY desc"
+                "sort": "CITED_BY desc",
             }
 
             async with aiohttp.ClientSession() as session:
@@ -406,9 +400,8 @@ class EuropePMCConnector:
 
         return []
 
-    def _parse_europepmc_article(self, article: Dict[str, Any]) -> Optional[ScientificDocument]:
+    def _parse_europepmc_article(self, article: dict[str, Any]) -> ScientificDocument | None:
         """Parsování Europe PMC článku"""
-
         try:
             # Základní info
             pmid = article.get("pmid", "")
@@ -449,32 +442,32 @@ class EuropePMCConnector:
                     "pmcid": pmcid,
                     "pubmed_central": bool(pmcid),
                     "publication_type": article.get("pubType"),
-                    "mesh_terms": article.get("meshHeadingList", {}).get("meshHeading", [])[:5]
-                }
+                    "mesh_terms": article.get("meshHeadingList", {}).get("meshHeading", [])[:5],
+                },
             )
 
         except Exception as e:
             self.logger.warning("Chyba při parsování Europe PMC článku", error=str(e))
             return None
 
+
 class ArxivConnector:
     """Konektor pro arXiv"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config.get("connectors", {}).get("open_access", {}).get("arxiv", {})
         self.base_url = "http://export.arxiv.org/api/query"
 
         self.logger = structlog.get_logger(__name__)
 
-    async def search_papers(self, query: str) -> List[ScientificDocument]:
+    async def search_papers(self, query: str) -> list[ScientificDocument]:
         """Vyhledávání v arXiv"""
-
         try:
             params = {
                 "search_query": f"all:{query}",
                 "sortBy": "submittedDate",
                 "sortOrder": "descending",
-                "max_results": 20
+                "max_results": 20,
             }
 
             async with aiohttp.ClientSession() as session:
@@ -488,9 +481,8 @@ class ArxivConnector:
 
         return []
 
-    def _parse_arxiv_xml(self, xml_content: str) -> List[ScientificDocument]:
+    def _parse_arxiv_xml(self, xml_content: str) -> list[ScientificDocument]:
         """Parsování arXiv XML response"""
-
         import xml.etree.ElementTree as ET
 
         try:
@@ -498,35 +490,35 @@ class ArxivConnector:
 
             # XML namespaces
             namespaces = {
-                'atom': 'http://www.w3.org/2005/Atom',
-                'arxiv': 'http://arxiv.org/schemas/atom'
+                "atom": "http://www.w3.org/2005/Atom",
+                "arxiv": "http://arxiv.org/schemas/atom",
             }
 
             results = []
 
-            for entry in root.findall('atom:entry', namespaces):
+            for entry in root.findall("atom:entry", namespaces):
                 try:
                     # Základní metadata
-                    title = entry.find('atom:title', namespaces).text.strip()
-                    summary = entry.find('atom:summary', namespaces).text.strip()
+                    title = entry.find("atom:title", namespaces).text.strip()
+                    summary = entry.find("atom:summary", namespaces).text.strip()
 
                     # arXiv ID a URL
-                    arxiv_id = entry.find('atom:id', namespaces).text.split('/')[-1]
+                    arxiv_id = entry.find("atom:id", namespaces).text.split("/")[-1]
                     pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
 
                     # Autoři
                     authors = []
-                    for author in entry.findall('atom:author', namespaces):
-                        name = author.find('atom:name', namespaces).text
+                    for author in entry.findall("atom:author", namespaces):
+                        name = author.find("atom:name", namespaces).text
                         authors.append(name)
 
                     # Datum publikace
-                    published = entry.find('atom:published', namespaces).text[:10]  # YYYY-MM-DD
+                    published = entry.find("atom:published", namespaces).text[:10]  # YYYY-MM-DD
 
                     # Kategorie
                     categories = []
-                    for category in entry.findall('atom:category', namespaces):
-                        categories.append(category.get('term'))
+                    for category in entry.findall("atom:category", namespaces):
+                        categories.append(category.get("term"))
 
                     doc = ScientificDocument(
                         id=f"arxiv_{arxiv_id}",
@@ -543,11 +535,7 @@ class ArxivConnector:
                         open_access=True,  # arXiv je vždy open access
                         pdf_url=pdf_url,
                         citation=f"arXiv:{arxiv_id}",
-                        metadata={
-                            "arxiv_id": arxiv_id,
-                            "categories": categories,
-                            "preprint": True
-                        }
+                        metadata={"arxiv_id": arxiv_id, "categories": categories, "preprint": True},
                     )
 
                     results.append(doc)
@@ -562,10 +550,11 @@ class ArxivConnector:
             self.logger.error("Chyba při parsování arXiv XML", error=str(e))
             return []
 
+
 class OAResolver:
     """Unified Open Access resolver"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
 
         # Inicializace konektorů
@@ -577,9 +566,8 @@ class OAResolver:
 
         self.logger = structlog.get_logger(__name__)
 
-    async def oa_resolver(self, doi: str) -> Optional[ScientificDocument]:
+    async def oa_resolver(self, doi: str) -> ScientificDocument | None:
         """Sekvence OpenAlex → Crossref → Unpaywall → Europe PMC pro nejkvalitnější OA kopii"""
-
         self.logger.info("OA resolver", doi=doi)
 
         # 1. OpenAlex - nejkompletnější metadata
@@ -619,7 +607,6 @@ class OAResolver:
 
     async def _enrich_with_oa_sources(self, doc: ScientificDocument) -> ScientificDocument:
         """Enrichment dokumentu z dalších OA zdrojů"""
-
         # Unpaywall enrichment pro PDF
         if doc.doi and not doc.pdf_url:
             pdf_url = await self.unpaywall.find_oa_pdf(doc.doi)
@@ -647,9 +634,8 @@ class OAResolver:
 
         return doc
 
-    def _create_minimal_doc_from_unpaywall(self, oa_data: Dict[str, Any]) -> ScientificDocument:
+    def _create_minimal_doc_from_unpaywall(self, oa_data: dict[str, Any]) -> ScientificDocument:
         """Vytvoření minimálního dokumentu pouze z Unpaywall dat"""
-
         doi = oa_data.get("doi", "")
 
         return ScientificDocument(
@@ -669,13 +655,12 @@ class OAResolver:
             citation=f"DOI:{doi}",
             metadata={
                 "oa_locations": oa_data.get("oa_locations", []),
-                "publisher": oa_data.get("publisher")
-            }
+                "publisher": oa_data.get("publisher"),
+            },
         )
 
-    async def search_all_oa_sources(self, query: str) -> List[ScientificDocument]:
+    async def search_all_oa_sources(self, query: str) -> list[ScientificDocument]:
         """Vyhledávání napříč všemi OA zdroji"""
-
         self.logger.info("Searching all OA sources", query=query)
 
         all_results = []
@@ -685,7 +670,7 @@ class OAResolver:
             self.openalex.search_works(query),
             self.crossref.search_works(query),
             self.europepmc.search_articles(query),
-            self.arxiv.search_papers(query)
+            self.arxiv.search_papers(query),
         ]
 
         try:
@@ -714,9 +699,10 @@ class OAResolver:
 
         return enriched_results
 
-    def _deduplicate_scientific_docs(self, docs: List[ScientificDocument]) -> List[ScientificDocument]:
+    def _deduplicate_scientific_docs(
+        self, docs: list[ScientificDocument]
+    ) -> list[ScientificDocument]:
         """Deduplikace vědeckých dokumentů"""
-
         seen_identifiers = set()
         unique_docs = []
 

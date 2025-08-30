@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""
-Reciprocal Rank Fusion (RRF) s authority/recency priory a MMR diversifikací
+"""Reciprocal Rank Fusion (RRF) s authority/recency priory a MMR diversifikací
 FÁZE 2: Advanced re-ranking a diversifikace
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
+from dataclasses import dataclass
+from datetime import datetime
 import logging
 import math
-from typing import Dict, Any, List, Optional, Tuple, Set
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-import numpy as np
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,72 +18,79 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RRFResult:
     """Výsledek RRF fúze"""
-    fused_results: List[Dict[str, Any]]
-    fusion_metadata: Dict[str, Any]
-    rrf_scores: Dict[str, float]
-    source_contributions: Dict[str, float]
+
+    fused_results: list[dict[str, Any]]
+    fusion_metadata: dict[str, Any]
+    rrf_scores: dict[str, float]
+    source_contributions: dict[str, float]
 
 
 @dataclass
 class MMRResult:
     """Výsledek MMR diversifikace"""
-    diversified_results: List[Dict[str, Any]]
+
+    diversified_results: list[dict[str, Any]]
     diversity_score: float
     removed_duplicates: int
-    diversity_metadata: Dict[str, Any]
+    diversity_metadata: dict[str, Any]
 
 
 class RRFWithPriors:
     """RRF s configurable priory pro authority/recency/source type"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.rrf_config = config.get("retrieval", {}).get("rrf", {})
 
         # RRF parameters
         self.k = self.rrf_config.get("k", 60)
-        self.weights = self.rrf_config.get("weights", {
-            "bm25": 0.3,
-            "dense": 0.4,
-            "hyde": 0.3
-        })
+        self.weights = self.rrf_config.get("weights", {"bm25": 0.3, "dense": 0.4, "hyde": 0.3})
 
         # Authority priors (per-source credibility)
-        self.authority_priors = self.rrf_config.get("authority_priors", {
-            "academic": 1.2,
-            "government": 1.1,
-            "news_tier1": 1.0,
-            "news_tier2": 0.9,
-            "blog": 0.7,
-            "social": 0.5,
-            "unknown": 0.8
-        })
+        self.authority_priors = self.rrf_config.get(
+            "authority_priors",
+            {
+                "academic": 1.2,
+                "government": 1.1,
+                "news_tier1": 1.0,
+                "news_tier2": 0.9,
+                "blog": 0.7,
+                "social": 0.5,
+                "unknown": 0.8,
+            },
+        )
 
         # Recency priors (time-based decay)
-        self.recency_config = self.rrf_config.get("recency", {
-            "enabled": True,
-            "half_life_days": 365,  # Score halves after 1 year
-            "min_multiplier": 0.5   # Minimum recency multiplier
-        })
+        self.recency_config = self.rrf_config.get(
+            "recency",
+            {
+                "enabled": True,
+                "half_life_days": 365,  # Score halves after 1 year
+                "min_multiplier": 0.5,  # Minimum recency multiplier
+            },
+        )
 
         # Source type priors
-        self.source_type_priors = self.rrf_config.get("source_type_priors", {
-            "primary_literature": 1.3,
-            "review_article": 1.1,
-            "news_article": 0.9,
-            "blog_post": 0.7,
-            "social_media": 0.5
-        })
+        self.source_type_priors = self.rrf_config.get(
+            "source_type_priors",
+            {
+                "primary_literature": 1.3,
+                "review_article": 1.1,
+                "news_article": 0.9,
+                "blog_post": 0.7,
+                "social_media": 0.5,
+            },
+        )
 
-    async def fuse_results(self, ranked_lists: Dict[str, List[Dict[str, Any]]]) -> RRFResult:
-        """
-        Fúze multiple ranked lists pomocí RRF s priory
+    async def fuse_results(self, ranked_lists: dict[str, list[dict[str, Any]]]) -> RRFResult:
+        """Fúze multiple ranked lists pomocí RRF s priory
 
         Args:
             ranked_lists: Dict[source_name, List[documents]]
 
         Returns:
             RRFResult s fused výsledky
+
         """
         start_time = asyncio.get_event_loop().time()
 
@@ -108,7 +113,7 @@ class RRFWithPriors:
                 doc_rankings[doc_id][source_name] = {
                     "rank": rank,
                     "rrf_score": rrf_score,
-                    "weight": weight
+                    "weight": weight,
                 }
 
         # Apply priors and calculate final scores
@@ -118,8 +123,7 @@ class RRFWithPriors:
         for doc_id, doc in all_docs.items():
             # Base RRF score (sum across sources)
             base_rrf = sum(
-                ranking_info["rrf_score"]
-                for ranking_info in doc_rankings[doc_id].values()
+                ranking_info["rrf_score"] for ranking_info in doc_rankings[doc_id].values()
             )
 
             # Apply priors
@@ -137,7 +141,7 @@ class RRFWithPriors:
                 "recency_prior": recency_prior,
                 "source_type_prior": source_type_prior,
                 "combined_prior": combined_prior,
-                "final_score": final_scores[doc_id]
+                "final_score": final_scores[doc_id],
             }
 
         # Sort by final score
@@ -153,7 +157,7 @@ class RRFWithPriors:
 
         # Calculate source contributions
         source_contributions = {}
-        for source_name in ranked_lists.keys():
+        for source_name in ranked_lists:
             contribution = sum(
                 doc_rankings.get(doc_id, {}).get(source_name, {}).get("rrf_score", 0.0)
                 for doc_id in sorted_doc_ids[:20]  # Top 20 docs
@@ -169,27 +173,29 @@ class RRFWithPriors:
             "priors_applied": {
                 "authority": True,
                 "recency": self.recency_config["enabled"],
-                "source_type": True
-            }
+                "source_type": True,
+            },
         }
 
-        logger.info(f"RRF fusion completed: {len(fused_results)} docs in {fusion_metadata['fusion_time']:.3f}s")
+        logger.info(
+            f"RRF fusion completed: {len(fused_results)} docs in {fusion_metadata['fusion_time']:.3f}s"
+        )
 
         return RRFResult(
             fused_results=fused_results,
             fusion_metadata=fusion_metadata,
             rrf_scores={doc_id: score for doc_id, score in final_scores.items()},
-            source_contributions=source_contributions
+            source_contributions=source_contributions,
         )
 
-    def _get_authority_prior(self, doc: Dict[str, Any]) -> float:
+    def _get_authority_prior(self, doc: dict[str, Any]) -> float:
         """Výpočet authority prior based on source"""
         source_domain = doc.get("metadata", {}).get("domain", "unknown")
         source_type = doc.get("metadata", {}).get("authority_type", "unknown")
 
         return self.authority_priors.get(source_type, self.authority_priors["unknown"])
 
-    def _get_recency_prior(self, doc: Dict[str, Any]) -> float:
+    def _get_recency_prior(self, doc: dict[str, Any]) -> float:
         """Výpočet recency prior based on document age"""
         if not self.recency_config["enabled"]:
             return 1.0
@@ -219,7 +225,7 @@ class RRFWithPriors:
             logger.debug(f"Could not parse date {pub_date_str}: {e}")
             return 0.8
 
-    def _get_source_type_prior(self, doc: Dict[str, Any]) -> float:
+    def _get_source_type_prior(self, doc: dict[str, Any]) -> float:
         """Výpočet source type prior"""
         source_type = doc.get("metadata", {}).get("source_type", "unknown")
         return self.source_type_priors.get(source_type, 0.8)
@@ -228,7 +234,7 @@ class RRFWithPriors:
 class MMRDiversifier:
     """Maximum Marginal Relevance diversifikace"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.mmr_config = config.get("retrieval", {}).get("mmr", {})
 
@@ -238,19 +244,20 @@ class MMRDiversifier:
         self.similarity_threshold = self.mmr_config.get("similarity_threshold", 0.8)
 
         # Diversity features to consider
-        self.diversity_features = self.mmr_config.get("diversity_features", [
-            "domain", "source_type", "author", "publication_year", "topic_keywords"
-        ])
+        self.diversity_features = self.mmr_config.get(
+            "diversity_features",
+            ["domain", "source_type", "author", "publication_year", "topic_keywords"],
+        )
 
-    async def diversify_results(self, ranked_results: List[Dict[str, Any]]) -> MMRResult:
-        """
-        Aplikuje MMR diversifikaci na ranked results
+    async def diversify_results(self, ranked_results: list[dict[str, Any]]) -> MMRResult:
+        """Aplikuje MMR diversifikaci na ranked results
 
         Args:
             ranked_results: List dokumentů seřazených podle relevance
 
         Returns:
             MMRResult s diversifikovanými výsledky
+
         """
         start_time = asyncio.get_event_loop().time()
 
@@ -263,8 +270,8 @@ class MMRDiversifier:
                 diversity_metadata={
                     "diversification_applied": False,
                     "reason": "insufficient_results",
-                    "total_time": asyncio.get_event_loop().time() - start_time
-                }
+                    "total_time": asyncio.get_event_loop().time() - start_time,
+                },
             )
 
         # Step 1: Remove near-duplicates
@@ -293,8 +300,7 @@ class MMRDiversifier:
 
                 # MMR score
                 mmr_score = (
-                    self.lambda_param * relevance_score +
-                    (1 - self.lambda_param) * diversity_score
+                    self.lambda_param * relevance_score + (1 - self.lambda_param) * diversity_score
                 )
 
                 if mmr_score > best_mmr_score:
@@ -311,7 +317,7 @@ class MMRDiversifier:
         selected_results.extend(remaining_results)
 
         # Calculate diversity metrics
-        diversity_score = self._calculate_overall_diversity(selected_results[:self.diversity_k])
+        diversity_score = self._calculate_overall_diversity(selected_results[: self.diversity_k])
 
         processing_time = asyncio.get_event_loop().time() - start_time
 
@@ -322,19 +328,23 @@ class MMRDiversifier:
             "deduplication_removed": removed_count,
             "diversity_features_used": self.diversity_features,
             "total_time": processing_time,
-            "final_diversity_score": diversity_score
+            "final_diversity_score": diversity_score,
         }
 
-        logger.info(f"MMR diversification completed: {len(selected_results)} docs, diversity={diversity_score:.3f}, removed {removed_count} duplicates")
+        logger.info(
+            f"MMR diversification completed: {len(selected_results)} docs, diversity={diversity_score:.3f}, removed {removed_count} duplicates"
+        )
 
         return MMRResult(
             diversified_results=selected_results,
             diversity_score=diversity_score,
             removed_duplicates=removed_count,
-            diversity_metadata=diversity_metadata
+            diversity_metadata=diversity_metadata,
         )
 
-    async def _remove_near_duplicates(self, results: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
+    async def _remove_near_duplicates(
+        self, results: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], int]:
         """Odstraní near-duplicate dokumenty"""
         deduplicated = []
         removed_count = 0
@@ -347,7 +357,10 @@ class MMRDiversifier:
             # Check for near-duplicates
             is_duplicate = False
             for seen_sig in seen_signatures:
-                if self._calculate_signature_similarity(signature, seen_sig) > self.similarity_threshold:
+                if (
+                    self._calculate_signature_similarity(signature, seen_sig)
+                    > self.similarity_threshold
+                ):
                     is_duplicate = True
                     break
 
@@ -359,7 +372,7 @@ class MMRDiversifier:
 
         return deduplicated, removed_count
 
-    def _create_content_signature(self, doc: Dict[str, Any]) -> str:
+    def _create_content_signature(self, doc: dict[str, Any]) -> str:
         """Vytvoří content signature pro deduplication"""
         content = doc.get("content", "")
         title = doc.get("title", "")
@@ -387,7 +400,9 @@ class MMRDiversifier:
 
         return intersection / union if union > 0 else 0.0
 
-    def _calculate_diversity_score(self, candidate: Dict[str, Any], selected_docs: List[Dict[str, Any]]) -> float:
+    def _calculate_diversity_score(
+        self, candidate: dict[str, Any], selected_docs: list[dict[str, Any]]
+    ) -> float:
         """Výpočet diversity score pro kandidáta vůči vybraným dokumentům"""
         if not selected_docs:
             return 1.0
@@ -413,7 +428,7 @@ class MMRDiversifier:
         # Average dissimilarity
         return sum(dissimilarities) / len(dissimilarities) if dissimilarities else 0.5
 
-    def _calculate_overall_diversity(self, docs: List[Dict[str, Any]]) -> float:
+    def _calculate_overall_diversity(self, docs: list[dict[str, Any]]) -> float:
         """Výpočet overall diversity score pro sadu dokumentů"""
         if len(docs) <= 1:
             return 1.0

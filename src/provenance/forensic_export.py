@@ -1,551 +1,519 @@
-#!/usr/bin/env python3
-"""
-Forensic JSON-LD Export
-Standards-compliant export of claim graphs with full provenance chains
+"""Forensic Export System
+Generování forenzních reportů s kompletní proveniencí dat
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, List, Any, Optional, Union
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
-import json
+import asyncio
+import csv
+from dataclasses import dataclass
+from datetime import UTC, datetime
 import hashlib
+import json
 import logging
 from pathlib import Path
-import uuid
-
-from .warc_tracking import ProvenanceRecord, ProvenanceTracker
-from ..verification.contradiction_sets import Claim, Contradiction, ContradictionSet
+from typing import Any
+import zipfile
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class ForensicContext:
-    """Context information for forensic export"""
-    export_id: str
-    export_timestamp: datetime
-    software_version: str
-    export_reason: str
-    operator_id: Optional[str] = None
-    chain_of_custody: List[str] = None
+class ForensicReport:
+    """Struktura forenzního reportu"""
 
-    def __post_init__(self):
-        if self.chain_of_custody is None:
-            self.chain_of_custody = []
+    report_id: str
+    query: str
+    timestamp: datetime
+    total_sources: int
+    verified_sources: int
+    claim_count: int
+    contradiction_count: int
+    confidence_score: float
+    processing_time: float
+    methodology: str = "LangGraph Research Agent"
 
 
-class JSONLDExporter:
-    """JSON-LD exporter with W3C compliance and forensic standards"""
+class ForensicExporter:
+    """Hlavní třída pro export forenzních reportů
+    """
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.export_config = config.get("forensic_export", {})
+    def __init__(self, output_dir: str = "./forensic_reports"):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(exist_ok=True)
 
-        # JSON-LD context
-        self.base_context = {
-            "@vocab": "https://schema.org/",
-            "prov": "http://www.w3.org/ns/prov#",
-            "sec": "https://w3id.org/security#",
-            "xsd": "http://www.w3.org/2001/XMLSchema#",
-            "drt": "https://deepresearchtool.ai/vocab#",
-            "claim": "drt:Claim",
-            "evidence": "drt:Evidence",
-            "contradiction": "drt:Contradiction",
-            "provenance": "prov:Entity",
-            "verification": "sec:Verification",
-            "timestamp": {
-                "@id": "prov:generatedAtTime",
-                "@type": "xsd:dateTime"
-            },
-            "hash": {
-                "@id": "sec:digestValue",
-                "@type": "xsd:string"
-            },
-            "confidence": {
-                "@id": "drt:confidence",
-                "@type": "xsd:decimal"
-            }
+    def _generate_report_id(self, query: str) -> str:
+        """Generování unique ID pro report"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        query_hash = hashlib.md5(query.encode()).hexdigest()[:8]
+        return f"report_{timestamp}_{query_hash}"
+
+    def _calculate_confidence_score(self,
+                                  validation_scores: dict[str, float],
+                                  claim_graph_stats: dict[str, Any]) -> float:
+        """Výpočet celkového confidence score"""
+        # Váhy pro různé faktory
+        weights = {
+            "source_quality": 0.3,
+            "citation_completeness": 0.25,
+            "claim_support": 0.25,
+            "verification_completeness": 0.2
         }
 
-        logger.info("JSON-LD forensic exporter initialized")
+        # Získání skóre z validace
+        source_quality = validation_scores.get("quality", 0.5)
+        relevance = validation_scores.get("relevance", 0.5)
 
-    def export_claim_graph(
+        # Skóre z claim graph
+        total_claims = claim_graph_stats.get("total_claims", 0)
+        supported_claims = claim_graph_stats.get("verification_status_counts", {}).get("supported", 0)
+
+        # Výpočty
+        citation_completeness = min(1.0, validation_scores.get("coverage", 0.5))
+        claim_support = supported_claims / total_claims if total_claims > 0 else 0.5
+        verification_completeness = min(1.0, claim_graph_stats.get("total_evidence", 0) / max(total_claims, 1))
+
+        # Vážený průměr
+        confidence = (
+            weights["source_quality"] * source_quality +
+            weights["citation_completeness"] * citation_completeness +
+            weights["claim_support"] * claim_support +
+            weights["verification_completeness"] * verification_completeness
+        )
+
+        return min(1.0, max(0.0, confidence))
+
+    async def generate_markdown_report(
         self,
-        claims: List[Claim],
-        contradictions: List[Contradiction],
-        contradiction_sets: List[ContradictionSet],
-        provenance_tracker: ProvenanceTracker,
-        context: ForensicContext
-    ) -> Dict[str, Any]:
-        """Export complete claim graph as forensic JSON-LD"""
+        query: str,
+        synthesis: str,
+        sources: list[dict[str, Any]],
+        claim_graph: Any,
+        validation_scores: dict[str, float],
+        processing_time: float,
+        metadata: dict[str, Any] = None
+    ) -> str:
+        """Generuje kompletní Markdown report s kompletní proveniencí
 
-        # Build the main JSON-LD document
-        document = {
-            "@context": self.base_context,
-            "@type": "drt:ForensicClaimGraph",
-            "@id": f"urn:uuid:{context.export_id}",
-            "export_metadata": self._build_export_metadata(context),
-            "claims": self._export_claims(claims, provenance_tracker),
-            "contradictions": self._export_contradictions(contradictions),
-            "contradiction_sets": self._export_contradiction_sets(contradiction_sets),
-            "provenance_chain": self._build_provenance_chain(claims, provenance_tracker),
-            "verification_data": self._build_verification_data(claims, contradictions, provenance_tracker),
-            "integrity_hash": ""  # Will be calculated last
-        }
+        Args:
+            query: Původní výzkumný dotaz
+            synthesis: Finální syntéza
+            sources: Seznam použitých zdrojů
+            claim_graph: ClaimGraph instance
+            validation_scores: Skóre validace
+            processing_time: Doba zpracování
+            metadata: Dodatečná metadata
 
-        # Calculate integrity hash
-        document["integrity_hash"] = self._calculate_document_hash(document)
+        Returns:
+            Markdown formátovaný report
 
-        logger.info(f"Exported claim graph: {len(claims)} claims, {len(contradictions)} contradictions")
-        return document
+        """
+        # Příprava základních informací
+        report_id = self._generate_report_id(query)
+        timestamp = datetime.now(UTC)
 
-    def _build_export_metadata(self, context: ForensicContext) -> Dict[str, Any]:
-        """Build export metadata section"""
-        return {
-            "@type": "drt:ExportMetadata",
-            "@id": f"urn:uuid:{context.export_id}",
-            "export_timestamp": context.export_timestamp.isoformat(),
-            "software_version": context.software_version,
-            "export_reason": context.export_reason,
-            "operator_id": context.operator_id,
-            "chain_of_custody": context.chain_of_custody,
-            "compliance_standards": [
-                "W3C JSON-LD 1.1",
-                "W3C PROV-O",
-                "W3C Security Vocabulary",
-                "ISO 27037:2012 (Digital Evidence)"
-            ]
-        }
-
-    def _export_claims(
-        self,
-        claims: List[Claim],
-        provenance_tracker: ProvenanceTracker
-    ) -> List[Dict[str, Any]]:
-        """Export claims with full provenance"""
-
-        exported_claims = []
-
-        for claim in claims:
-            claim_data = {
-                "@type": "drt:Claim",
-                "@id": f"urn:uuid:{claim.id}",
-                "text": claim.text,
-                "confidence": claim.confidence,
-                "evidence": self._export_evidence(claim.evidence, provenance_tracker),
-                "source_urls": claim.source_urls,
-                "metadata": claim.metadata,
-                "creation_timestamp": datetime.now(timezone.utc).isoformat(),
-                "provenance": self._get_claim_provenance(claim, provenance_tracker)
-            }
-
-            exported_claims.append(claim_data)
-
-        return exported_claims
-
-    def _export_evidence(
-        self,
-        evidence: List[Dict[str, Any]],
-        provenance_tracker: ProvenanceTracker
-    ) -> List[Dict[str, Any]]:
-        """Export evidence with provenance tracking"""
-
-        exported_evidence = []
-
-        for item in evidence:
-            evidence_data = {
-                "@type": "drt:Evidence",
-                "@id": f"urn:uuid:{uuid.uuid4()}",
-                "text": item.get("text", ""),
-                "source": item.get("source", ""),
-                "confidence": item.get("confidence", 0.0),
-                "metadata": item.get("metadata", {}),
-                "verification_status": self._verify_evidence(item, provenance_tracker)
-            }
-
-            # Add provenance if available
-            source_url = item.get("source_url")
-            if source_url:
-                evidence_data["provenance"] = self._get_url_provenance(source_url, provenance_tracker)
-
-            exported_evidence.append(evidence_data)
-
-        return exported_evidence
-
-    def _export_contradictions(self, contradictions: List[Contradiction]) -> List[Dict[str, Any]]:
-        """Export contradictions with detailed analysis"""
-
-        exported_contradictions = []
-
-        for contradiction in contradictions:
-            contradiction_data = {
-                "@type": "drt:Contradiction",
-                "@id": f"urn:uuid:{contradiction.id}",
-                "claim_a": f"urn:uuid:{contradiction.claim_a.id}",
-                "claim_b": f"urn:uuid:{contradiction.claim_b.id}",
-                "contradiction_type": contradiction.contradiction_type.value,
-                "confidence": contradiction.confidence,
-                "evidence": contradiction.evidence,
-                "resolution_suggestion": contradiction.resolution_suggestion,
-                "detection_timestamp": datetime.now(timezone.utc).isoformat(),
-                "analysis_metadata": {
-                    "detection_method": "automated_nlp_analysis",
-                    "verification_required": contradiction.confidence < 0.8
-                }
-            }
-
-            exported_contradictions.append(contradiction_data)
-
-        return exported_contradictions
-
-    def _export_contradiction_sets(self, contradiction_sets: List[ContradictionSet]) -> List[Dict[str, Any]]:
-        """Export contradiction sets with pro/contra analysis"""
-
-        exported_sets = []
-
-        for cs in contradiction_sets:
-            set_data = {
-                "@type": "drt:ContradictionSet",
-                "@id": f"urn:uuid:{uuid.uuid4()}",
-                "topic": cs.topic,
-                "supporting_claims": [f"urn:uuid:{claim.id}" for claim in cs.supporting_claims],
-                "contradicting_claims": [f"urn:uuid:{claim.id}" for claim in cs.contradicting_claims],
-                "contradictions": [f"urn:uuid:{c.id}" for c in cs.contradictions],
-                "confidence_score": cs.confidence_score,
-                "calibration_hint": cs.calibration_hint,
-                "evidence_summary": {
-                    "pro_evidence_count": cs.pro_evidence_count,
-                    "contra_evidence_count": cs.contra_evidence_count,
-                    "total_evidence_count": cs.total_evidence_count,
-                    "evidence_balance": cs.pro_evidence_count / max(cs.total_evidence_count, 1)
-                }
-            }
-
-            exported_sets.append(set_data)
-
-        return exported_sets
-
-    def _build_provenance_chain(
-        self,
-        claims: List[Claim],
-        provenance_tracker: ProvenanceTracker
-    ) -> List[Dict[str, Any]]:
-        """Build complete provenance chain for all content"""
-
-        provenance_chain = []
-        tracked_urls = set()
-
-        for claim in claims:
-            for url in claim.source_urls:
-                if url not in tracked_urls:
-                    provenance = self._get_url_provenance(url, provenance_tracker)
-                    if provenance:
-                        provenance_chain.append(provenance)
-                        tracked_urls.add(url)
-
-        return provenance_chain
-
-    def _get_claim_provenance(
-        self,
-        claim: Claim,
-        provenance_tracker: ProvenanceTracker
-    ) -> Dict[str, Any]:
-        """Get provenance information for a claim"""
-
-        provenance_data = {
-            "@type": "prov:Entity",
-            "generation_method": "automated_extraction",
-            "source_count": len(claim.source_urls),
-            "evidence_count": len(claim.evidence),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-
-        # Add source-specific provenance
-        if claim.source_urls:
-            source_provenance = []
-            for url in claim.source_urls:
-                url_prov = self._get_url_provenance(url, provenance_tracker)
-                if url_prov:
-                    source_provenance.append(url_prov)
-
-            if source_provenance:
-                provenance_data["source_provenance"] = source_provenance
-
-        return provenance_data
-
-    def _get_url_provenance(
-        self,
-        url: str,
-        provenance_tracker: ProvenanceTracker
-    ) -> Optional[Dict[str, Any]]:
-        """Get provenance information for a URL"""
-
-        # Search for provenance records
-        for content_id, record in provenance_tracker.tracked_content.items():
-            if record.source_url == url:
-                return {
-                    "@type": "prov:Entity",
-                    "@id": f"urn:uuid:{content_id}",
-                    "source_url": record.source_url,
-                    "capture_timestamp": record.timestamp.isoformat(),
-                    "content_hash": record.content_hash,
-                    "warc_record_id": record.warc_record_id,
-                    "cdx_line": record.cdx_line,
-                    "http_headers": record.http_headers,
-                    "domain_risk": provenance_tracker.assess_domain_risk(url).to_dict()
-                }
-
-        # Return basic provenance if not tracked
-        return {
-            "@type": "prov:Entity",
-            "source_url": url,
-            "tracking_status": "not_tracked",
-            "domain_risk": provenance_tracker.assess_domain_risk(url).to_dict()
-        }
-
-    def _verify_evidence(
-        self,
-        evidence: Dict[str, Any],
-        provenance_tracker: ProvenanceTracker
-    ) -> Dict[str, Any]:
-        """Verify evidence integrity"""
-
-        verification = {
-            "verification_timestamp": datetime.now(timezone.utc).isoformat(),
-            "verified": False,
-            "verification_method": "hash_comparison"
-        }
-
-        source_url = evidence.get("source_url")
-        if source_url:
-            # Check if content is tracked
-            for content_id, record in provenance_tracker.tracked_content.items():
-                if record.source_url == source_url:
-                    # Verify integrity if content is available
-                    content = evidence.get("text", "")
-                    if content:
-                        integrity_check = provenance_tracker.verify_content_integrity(content_id, content)
-                        verification.update(integrity_check)
-                    break
-
-        return verification
-
-    def _build_verification_data(
-        self,
-        claims: List[Claim],
-        contradictions: List[Contradiction],
-        provenance_tracker: ProvenanceTracker
-    ) -> Dict[str, Any]:
-        """Build comprehensive verification data"""
-
-        verification_summary = {
-            "@type": "sec:VerificationSummary",
-            "verification_timestamp": datetime.now(timezone.utc).isoformat(),
-            "total_claims": len(claims),
-            "total_contradictions": len(contradictions),
-            "verification_methods": [
-                "content_hash_verification",
-                "domain_risk_assessment",
-                "contradiction_detection",
-                "provenance_chain_validation"
-            ]
-        }
-
-        # Calculate verification statistics
-        verified_claims = 0
-        total_evidence = 0
-        verified_evidence = 0
-
-        for claim in claims:
-            has_verification = False
-            for url in claim.source_urls:
-                for record in provenance_tracker.tracked_content.values():
-                    if record.source_url == url:
-                        has_verification = True
-                        break
-                if has_verification:
-                    break
-
-            if has_verification:
-                verified_claims += 1
-
-            total_evidence += len(claim.evidence)
-            # Count verified evidence (simplified)
-            verified_evidence += sum(1 for e in claim.evidence if e.get("source_url"))
-
-        verification_summary.update({
-            "claims_with_provenance": verified_claims,
-            "claims_verification_rate": verified_claims / max(len(claims), 1),
-            "evidence_verification_rate": verified_evidence / max(total_evidence, 1),
-            "contradiction_confidence_avg": sum(c.confidence for c in contradictions) / max(len(contradictions), 1) if contradictions else 0.0
-        })
-
-        return verification_summary
-
-    def _calculate_document_hash(self, document: Dict[str, Any]) -> str:
-        """Calculate integrity hash for the entire document"""
-
-        # Create a copy without the hash field
-        doc_copy = document.copy()
-        doc_copy.pop("integrity_hash", None)
-
-        # Serialize deterministically
-        doc_json = json.dumps(doc_copy, sort_keys=True, separators=(',', ':'))
-
-        # Calculate SHA-256 hash
-        return hashlib.sha256(doc_json.encode('utf-8')).hexdigest()
-
-    def save_export(
-        self,
-        document: Dict[str, Any],
-        output_path: Path,
-        compress: bool = True
-    ) -> Path:
-        """Save JSON-LD export to file"""
-
-        if compress:
-            import gzip
-            output_path = output_path.with_suffix(output_path.suffix + '.gz')
-
-            with gzip.open(output_path, 'wt', encoding='utf-8') as f:
-                json.dump(document, f, indent=2, ensure_ascii=False)
+        # Statistiky claim graph
+        if hasattr(claim_graph, 'get_statistics'):
+            claim_stats = claim_graph.get_statistics()
         else:
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(document, f, indent=2, ensure_ascii=False)
+            claim_stats = {}
 
-        logger.info(f"Forensic export saved to: {output_path}")
-        return output_path
+        # Výpočet confidence score
+        confidence = self._calculate_confidence_score(validation_scores, claim_stats)
 
-    def validate_export(self, document: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate JSON-LD export for compliance and integrity"""
+        # Vytvoření forenzního reportu
+        forensic_report = ForensicReport(
+            report_id=report_id,
+            query=query,
+            timestamp=timestamp,
+            total_sources=len(sources),
+            verified_sources=len([s for s in sources if s.get('verified', False)]),
+            claim_count=claim_stats.get('total_claims', 0),
+            contradiction_count=claim_stats.get('relation_type_counts', {}).get('contradict', 0),
+            confidence_score=confidence,
+            processing_time=processing_time
+        )
 
-        validation_result = {
-            "valid": True,
-            "errors": [],
-            "warnings": [],
-            "compliance_checks": {}
-        }
+        # Generování Markdown reportu
+        report_lines = []
 
-        # Check required fields
-        required_fields = ["@context", "@type", "@id", "export_metadata", "claims", "integrity_hash"]
-        for field in required_fields:
-            if field not in document:
-                validation_result["errors"].append(f"Missing required field: {field}")
-                validation_result["valid"] = False
+        # Header
+        report_lines.extend([
+            "# Forenzní výzkumný report",
+            "",
+            f"**Report ID:** `{report_id}`  ",
+            f"**Datum:** {timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}  ",
+            f"**Metodologie:** {forensic_report.methodology}  ",
+            f"**Confidence Score:** {confidence:.2f}/1.00  ",
+            "",
+            "---",
+            ""
+        ])
 
-        # Validate JSON-LD structure
-        if "@context" in document:
-            context = document["@context"]
-            if not isinstance(context, dict):
-                validation_result["errors"].append("@context must be an object")
-                validation_result["valid"] = False
+        # Původní dotaz
+        report_lines.extend([
+            "## 📋 Výzkumný dotaz",
+            "",
+            f"> {query}",
+            "",
+        ])
 
-        # Validate integrity hash
-        if "integrity_hash" in document:
-            stored_hash = document["integrity_hash"]
-            calculated_hash = self._calculate_document_hash(document)
+        # Exekutivní souhrn
+        report_lines.extend([
+            "## 📊 Exekutivní souhrn",
+            "",
+            f"- **Celkem zdrojů:** {forensic_report.total_sources}",
+            f"- **Ověřené zdroje:** {forensic_report.verified_sources}",
+            f"- **Extrahovaná tvrzení:** {forensic_report.claim_count}",
+            f"- **Nalezené rozpory:** {forensic_report.contradiction_count}",
+            f"- **Doba zpracování:** {forensic_report.processing_time:.2f} sekund",
+            f"- **Celkové skóre důvěryhodnosti:** {confidence:.2f}/1.00",
+            "",
+        ])
 
-            if stored_hash != calculated_hash:
-                validation_result["errors"].append("Integrity hash mismatch")
-                validation_result["valid"] = False
+        # Validační metriky
+        if validation_scores:
+            report_lines.extend([
+                "## ✅ Validační metriky",
+                "",
+                "| Metrika | Skóre | Status |",
+                "|---------|-------|--------|",
+            ])
+
+            for metric, score in validation_scores.items():
+                status = "✅ Vyhovující" if score >= 0.7 else "⚠️ Slabé" if score >= 0.5 else "❌ Nevyhovující"
+                report_lines.append(f"| {metric.capitalize()} | {score:.2f} | {status} |")
+
+            report_lines.append("")
+
+        # Hlavní syntéza
+        report_lines.extend([
+            "## 📄 Hlavní syntéza",
+            "",
+            synthesis,
+            "",
+        ])
+
+        # Analýza tvrzení s proveniencí
+        if hasattr(claim_graph, 'claims') and claim_graph.claims:
+            report_lines.extend([
+                "## 🧩 Analýza tvrzení s kompletní proveniencí",
+                "",
+            ])
+
+            for claim_id, claim in claim_graph.claims.items():
+                # Získání podpory pro tvrzení
+                if hasattr(claim_graph, 'get_claim_support'):
+                    support_data = claim_graph.get_claim_support(claim_id)
+                else:
+                    support_data = {}
+
+                verification_status = support_data.get('verification_status', 'neověřeno')
+                support_score = support_data.get('support_score', 0.0)
+
+                # Status emoji
+                status_emoji = {
+                    'supported': '✅',
+                    'partially_supported': '🟡',
+                    'disputed': '⚠️',
+                    'contradicted': '❌',
+                    'neutral': '⚪'
+                }.get(verification_status, '❓')
+
+                report_lines.extend([
+                    f"### {status_emoji} Tvrzení: {claim.text}",
+                    "",
+                    f"**Status:** {verification_status}  ",
+                    f"**Podpora:** {support_score:.2f}/1.00  ",
+                    f"**Confidence:** {claim.confidence:.2f}/1.00  ",
+                    f"**Extrahováno:** {claim.created_at.strftime('%Y-%m-%d %H:%M:%S')}  ",
+                    "",
+                ])
+
+                # Evidence
+                evidence_list = support_data.get('evidence', [])
+                if evidence_list:
+                    report_lines.extend([
+                        "**Důkazy:**",
+                        "",
+                    ])
+
+                    for i, evidence in enumerate(evidence_list, 1):
+                        credibility = evidence.credibility_score if hasattr(evidence, 'credibility_score') else 0.7
+                        relevance = evidence.relevance_score if hasattr(evidence, 'relevance_score') else 0.7
+                        source_url = evidence.source_url if hasattr(evidence, 'source_url') else "N/A"
+
+                        report_lines.extend([
+                            f"{i}. **Důkaz ID:** `{evidence.id}`",
+                            f"   - **Text:** {evidence.text[:200]}{'...' if len(evidence.text) > 200 else ''}",
+                            f"   - **Zdroj:** {evidence.source_id}",
+                            f"   - **URL:** {source_url}",
+                            f"   - **Důvěryhodnost:** {credibility:.2f}/1.00",
+                            f"   - **Relevance:** {relevance:.2f}/1.00",
+                            "",
+                        ])
+
+                # Supporting/Contradicting claims
+                supporting_claims = support_data.get('supporting_claims', [])
+                contradicting_claims = support_data.get('contradicting_claims', [])
+
+                if supporting_claims:
+                    report_lines.extend([
+                        "**Podporující tvrzení:**",
+                        "",
+                    ])
+                    for supporting in supporting_claims:
+                        report_lines.append(f"- {supporting.text}")
+                    report_lines.append("")
+
+                if contradicting_claims:
+                    report_lines.extend([
+                        "**Protiřečící tvrzení:**",
+                        "",
+                    ])
+                    for contradicting in contradicting_claims:
+                        report_lines.append(f"- {contradicting.text}")
+                    report_lines.append("")
+
+                report_lines.append("---")
+                report_lines.append("")
+
+        # Zdroje a citace
+        report_lines.extend([
+            "## 📚 Kompletní seznam zdrojů a citací",
+            "",
+            "| # | Zdroj | URL | Typ | Časový otisk | Status |",
+            "|---|-------|-----|-----|--------------|--------|",
+        ])
+
+        for i, source in enumerate(sources, 1):
+            source_type = source.get('metadata', {}).get('source_type', 'neznámý')
+            url = source.get('source', 'N/A')
+            timestamp_str = source.get('metadata', {}).get('timestamp', 'N/A')
+            verified = "✅ Ověřeno" if source.get('verified', False) else "⚪ Neověřeno"
+
+            # Zkrácení URL pro lepší čitelnost
+            display_url = url[:50] + "..." if len(url) > 50 else url
+
+            report_lines.append(f"| {i} | {source_type} | {display_url} | {source_type} | {timestamp_str} | {verified} |")
+
+        report_lines.extend([
+            "",
+            "## 🔍 Metodologie a omezení",
+            "",
+            "### Metodologie",
+            "- **Vyhledávání:** Hybridní přístup kombinující sémantické a lexikální vyhledávání",
+            "- **Validace:** Automatická validace zdrojů s LLM-based hodnocením",
+            "- **Extrakce tvrzení:** Automatická extrakce pomocí LLM s pattern matching",
+            "- **Verification:** Cross-referencing mezi zdroji a detekce rozporů",
+            "",
+            "### Omezení",
+            "- Automatická extrakce tvrzení může být neúplná",
+            "- Validace zdrojů je založena na heuristikách",
+            "- Některé nuance mohou být ztraceny při kompresi",
+            "- Časové razítko odpovídá času stažení, ne publikování",
+            "",
+            "### Doporučení pro další výzkum",
+            "- Manuální verifikace klíčových tvrzení",
+            "- Konzultace s domain experty",
+            "- Rozšíření zdrojové báze pro komplexnější témata",
+            "",
+            "---",
+            "",
+            f"*Report generován automaticky systémem Deep Research Tool v {timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}*",
+            f"*Report ID: {report_id}*"
+        ])
+
+        return "\n".join(report_lines)
+
+    async def export_complete_investigation(
+        self,
+        query: str,
+        results: dict[str, Any],
+        output_dir: str = "./forensic_reports"
+    ) -> dict[str, str]:
+        """Exportuje kompletní forenzní investigaci
+
+        Args:
+            query: Výzkumný dotaz
+            results: Kompletní výsledky z agenta
+            output_dir: Výstupní adresář
+
+        Returns:
+            Dict s cestami k vytvořeným souborům
+
+        """
+        output_path = Path(output_dir)
+        output_path.mkdir(exist_ok=True)
+
+        report_id = self._generate_report_id(query)
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        exported_files = {}
+
+        try:
+            # 1. Markdown report
+            markdown_report = await self.generate_markdown_report(
+                query=query,
+                synthesis=results.get("synthesis", ""),
+                sources=results.get("retrieved_docs", []),
+                claim_graph=results.get("claim_graph"),
+                validation_scores=results.get("validation_scores", {}),
+                processing_time=results.get("processing_time", 0),
+                metadata=results.get("metadata", {})
+            )
+
+            markdown_path = output_path / f"{report_id}_report.md"
+            with open(markdown_path, 'w', encoding='utf-8') as f:
+                f.write(markdown_report)
+            exported_files["markdown_report"] = str(markdown_path)
+
+            # 2. JSON dump všech dat
+            json_path = output_path / f"{report_id}_raw_data.json"
+
+            # Příprava dat pro JSON export
+            json_data = {
+                "report_metadata": {
+                    "report_id": report_id,
+                    "query": query,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "version": "1.0"
+                },
+                "results": self._serialize_results_for_json(results)
+            }
+
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(json_data, f, indent=2, ensure_ascii=False, default=str)
+            exported_files["raw_data"] = str(json_path)
+
+            # 3. Claim graph export
+            if results.get("claim_graph") and hasattr(results["claim_graph"], "export_to_json"):
+                claim_graph_path = output_path / f"{report_id}_claim_graph.json"
+                results["claim_graph"].export_to_json(str(claim_graph_path))
+                exported_files["claim_graph"] = str(claim_graph_path)
+
+            # 4. CSV export zdrojů
+            sources_csv_path = output_path / f"{report_id}_sources.csv"
+            await self._export_sources_csv(results.get("retrieved_docs", []), sources_csv_path)
+            exported_files["sources_csv"] = str(sources_csv_path)
+
+            # 5. Komprimovaný archiv
+            zip_path = output_path / f"{report_id}_complete_investigation.zip"
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file_type, file_path in exported_files.items():
+                    zipf.write(file_path, Path(file_path).name)
+
+            exported_files["archive"] = str(zip_path)
+
+            logger.info(f"✅ Forenzní investigace exportována: {report_id}")
+
+        except Exception as e:
+            logger.error(f"Chyba při exportu forenzní investigace: {e}")
+            exported_files["error"] = str(e)
+
+        return exported_files
+
+    def _serialize_results_for_json(self, results: dict[str, Any]) -> dict[str, Any]:
+        """Serializuje výsledky pro JSON export"""
+        serialized = {}
+
+        for key, value in results.items():
+            if key == "claim_graph":
+                # ClaimGraph není přímo serializovatelný
+                if hasattr(value, 'get_statistics'):
+                    serialized[key] = {
+                        "statistics": value.get_statistics(),
+                        "type": "ClaimGraph"
+                    }
+                else:
+                    serialized[key] = {"type": "ClaimGraph", "data": "not_serializable"}
+            elif isinstance(value, (str, int, float, bool, list, dict)):
+                serialized[key] = value
             else:
-                validation_result["compliance_checks"]["integrity_verified"] = True
+                serialized[key] = str(value)
 
-        # Check claim references
-        claim_ids = set()
-        if "claims" in document:
-            for claim in document["claims"]:
-                if "@id" in claim:
-                    claim_ids.add(claim["@id"])
+        return serialized
 
-        # Validate contradiction references
-        if "contradictions" in document:
-            for contradiction in document["contradictions"]:
-                claim_a = contradiction.get("claim_a")
-                claim_b = contradiction.get("claim_b")
+    async def _export_sources_csv(self, sources: list[dict[str, Any]], csv_path: Path):
+        """Exportuje zdroje do CSV formátu"""
+        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['source_id', 'url', 'source_type', 'timestamp', 'content_length', 'verified', 'metadata']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-                if claim_a and claim_a not in claim_ids:
-                    validation_result["warnings"].append(f"Contradiction references unknown claim: {claim_a}")
+            writer.writeheader()
 
-                if claim_b and claim_b not in claim_ids:
-                    validation_result["warnings"].append(f"Contradiction references unknown claim: {claim_b}")
-
-        # Compliance checks
-        validation_result["compliance_checks"].update({
-            "w3c_jsonld_compliant": "@context" in document and "@type" in document,
-            "prov_ontology_used": any("prov:" in str(v) for v in document.get("@context", {}).values()),
-            "security_vocab_used": any("sec:" in str(v) for v in document.get("@context", {}).values()),
-            "timestamped": "export_metadata" in document and "export_timestamp" in document.get("export_metadata", {})
-        })
-
-        logger.info(f"Export validation: {'PASSED' if validation_result['valid'] else 'FAILED'}")
-        return validation_result
+            for i, source in enumerate(sources):
+                writer.writerow({
+                    'source_id': f"source_{i+1}",
+                    'url': source.get('source', ''),
+                    'source_type': source.get('metadata', {}).get('source_type', 'unknown'),
+                    'timestamp': source.get('metadata', {}).get('timestamp', ''),
+                    'content_length': len(source.get('content', '')),
+                    'verified': source.get('verified', False),
+                    'metadata': json.dumps(source.get('metadata', {}))
+                })
 
 
-def create_forensic_exporter(config: Dict[str, Any]) -> JSONLDExporter:
-    """Factory function for forensic JSON-LD exporter"""
-    return JSONLDExporter(config)
+# Utility funkce pro rychlé použití
+async def export_investigation_report(
+    query: str,
+    results: dict[str, Any],
+    output_dir: str = "./forensic_reports"
+) -> dict[str, str]:
+    """Convenience funkce pro rychlý export forenzní investigace
+
+    Args:
+        query: Výzkumný dotaz
+        results: Výsledky z research agenta
+        output_dir: Výstupní adresář
+
+    Returns:
+        Dict s cestami k vytvořeným souborům
+
+    """
+    exporter = ForensicExporter(output_dir)
+    return await exporter.export_complete_investigation(query, results, output_dir)
 
 
-# Usage example
-if __name__ == "__main__":
-    from datetime import datetime, timezone
-    import uuid
-
-    config = {
-        "forensic_export": {
-            "compression": True,
-            "validation": True
+# Příklad použití
+async def example_forensic_export():
+    """Příklad použití forenzního exportu"""
+    # Simulovaná data
+    mock_results = {
+        "synthesis": "## Ukázková syntéza\n\nToto je příklad syntézy výzkumu...",
+        "retrieved_docs": [
+            {
+                "content": "Obsah dokumentu 1...",
+                "source": "https://example.com/doc1",
+                "metadata": {
+                    "source_type": "academic",
+                    "timestamp": "2023-12-01T10:00:00Z"
+                },
+                "verified": True
+            }
+        ],
+        "validation_scores": {
+            "relevance": 0.85,
+            "quality": 0.78,
+            "coverage": 0.92
+        },
+        "processing_time": 45.2,
+        "metadata": {
+            "architecture": "langgraph",
+            "total_documents": 1
         }
     }
 
-    exporter = JSONLDExporter(config)
-
-    # Create sample data
-    context = ForensicContext(
-        export_id=str(uuid.uuid4()),
-        export_timestamp=datetime.now(timezone.utc),
-        software_version="DeepResearchTool-v2.0",
-        export_reason="forensic_investigation",
-        operator_id="investigator_001",
-        chain_of_custody=["initial_capture", "analysis", "export"]
-    )
-
-    # Mock data
-    sample_claims = [
-        Claim(
-            id=str(uuid.uuid4()),
-            text="COVID-19 vaccines are effective",
-            evidence=[{"text": "Clinical trial data", "confidence": 0.9}],
-            confidence=0.9,
-            source_urls=["https://example.com/study1"]
-        )
-    ]
-
-    # Create mock provenance tracker
-    from .warc_tracking import ProvenanceTracker
-    provenance_tracker = ProvenanceTracker({"provenance_storage": "test_forensic"})
-
     # Export
-    document = exporter.export_claim_graph(
-        claims=sample_claims,
-        contradictions=[],
-        contradiction_sets=[],
-        provenance_tracker=provenance_tracker,
-        context=context
+    exported = await export_investigation_report(
+        "Jaké jsou trendy v AI?",
+        mock_results
     )
 
-    print(f"Export created with ID: {document['@id']}")
-    print(f"Integrity hash: {document['integrity_hash']}")
+    print("📁 Exportované soubory:")
+    for file_type, path in exported.items():
+        print(f"  {file_type}: {path}")
 
-    # Validate
-    validation = exporter.validate_export(document)
-    print(f"Validation result: {'PASSED' if validation['valid'] else 'FAILED'}")
 
-    if validation["errors"]:
-        print(f"Errors: {validation['errors']}")
-
-    if validation["warnings"]:
-        print(f"Warnings: {validation['warnings']}")
+if __name__ == "__main__":
+    asyncio.run(example_forensic_export())

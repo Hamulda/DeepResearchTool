@@ -14,7 +14,7 @@ from typing import Dict, List, Any
 import subprocess
 
 # Nastavení loggingu
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -30,17 +30,9 @@ class ProductionValidation:
         """Kontrola environment variables"""
         logger.info("🔍 Kontrola environment variables...")
 
-        required_vars = [
-            "OPENAI_API_KEY",
-            "LANGFUSE_SECRET_KEY",
-            "LANGFUSE_PUBLIC_KEY"
-        ]
+        required_vars = ["OPENAI_API_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_PUBLIC_KEY"]
 
-        optional_vars = [
-            "ANTHROPIC_API_KEY",
-            "DATABASE_URL",
-            "REDIS_URL"
-        ]
+        optional_vars = ["ANTHROPIC_API_KEY", "DATABASE_URL", "REDIS_URL"]
 
         missing_required = []
         missing_optional = []
@@ -75,7 +67,7 @@ class ProductionValidation:
             "docker-compose.observability.yml",
             ".github/workflows/ci-cd-pipeline.yml",
             "docs/production_scaling_plan.md",
-            "tests/test_evaluation_pipeline.py"
+            "tests/test_evaluation_pipeline.py",
         ]
 
         missing_files = []
@@ -98,6 +90,7 @@ class ProductionValidation:
             import langfuse
             import pytest
             import docker
+
             logger.info("✅ Hlavní závislosti OK")
             return True
         except ImportError as e:
@@ -114,7 +107,7 @@ class ProductionValidation:
             return False
 
         try:
-            with open(dataset_path, 'r') as f:
+            with open(dataset_path, "r") as f:
                 dataset = json.load(f)
 
             if len(dataset) < 15:
@@ -166,13 +159,17 @@ class ProductionValidation:
 
             # Mock LLM client pro test
             class MockLLMClient:
-                async def generate(self, prompt: str, temperature: float = 0.1, max_tokens: int = 100):
+                async def generate(
+                    self, prompt: str, temperature: float = 0.1, max_tokens: int = 100
+                ):
                     return "0.8"  # Mock odpověď
 
             evaluator = RAGEvaluator(MockLLMClient())
 
             # Test základních metrik
-            precision = await evaluator.evaluate_context_precision("test query", ["context1", "context2"])
+            precision = await evaluator.evaluate_context_precision(
+                "test query", ["context1", "context2"]
+            )
             if not (0.0 <= precision <= 1.0):
                 logger.error("❌ Context precision mimo rozsah")
                 return False
@@ -193,7 +190,9 @@ class ProductionValidation:
 
             # Mock LLM a tools pro test
             class MockLLMClient:
-                async def generate(self, prompt: str, temperature: float = 0.1, max_tokens: int = 1000):
+                async def generate(
+                    self, prompt: str, temperature: float = 0.1, max_tokens: int = 1000
+                ):
                     return '{"relevance_score": 0.8, "confidence": 0.7}'
 
             tools_registry = {"academic": [], "web": [], "technical": []}
@@ -214,11 +213,7 @@ class ProductionValidation:
         """Kontrola Docker konfigurace"""
         logger.info("🔍 Kontrola Docker setup...")
 
-        docker_files = [
-            "docker-compose.observability.yml",
-            "Dockerfile",
-            "Dockerfile.production"
-        ]
+        docker_files = ["docker-compose.observability.yml", "Dockerfile", "Dockerfile.production"]
 
         missing_files = [f for f in docker_files if not Path(f).exists()]
 
@@ -228,8 +223,9 @@ class ProductionValidation:
 
         # Kontrola Docker daemon
         try:
-            result = subprocess.run(["docker", "--version"],
-                                  capture_output=True, text=True, timeout=10)
+            result = subprocess.run(
+                ["docker", "--version"], capture_output=True, text=True, timeout=10
+            )
             if result.returncode == 0:
                 logger.info("✅ Docker je dostupný")
             else:
@@ -250,10 +246,7 @@ class ProductionValidation:
             return False
 
         # Kontrola test souborů
-        test_files = [
-            "tests/test_evaluation_pipeline.py",
-            "tests/conftest.py"
-        ]
+        test_files = ["tests/test_evaluation_pipeline.py", "tests/conftest.py"]
 
         missing_tests = [f for f in test_files if not Path(f).exists()]
         if missing_tests:
@@ -275,7 +268,7 @@ class ProductionValidation:
             ("Evaluation Pipeline", self.check_evaluation_pipeline),
             ("Expert Committee", self.check_expert_committee),
             ("Docker Setup", self.check_docker_setup),
-            ("CI/CD Pipeline", self.check_ci_cd_pipeline)
+            ("CI/CD Pipeline", self.check_ci_cd_pipeline),
         ]
 
         results = {}
@@ -334,7 +327,7 @@ Detailní výsledky:
 async def main():
     """Hlavní funkce validace"""
     print("🎯 RESEARCH AGENT - PRODUCTION VALIDATION")
-    print("="*80)
+    print("=" * 80)
 
     validator = ProductionValidation()
     await validator.run_validation()
@@ -344,7 +337,7 @@ async def main():
 
     # Uložení reportu
     report_path = Path("validation_report.txt")
-    with open(report_path, 'w', encoding='utf-8') as f:
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
 
     logger.info(f"📄 Report uložen do {report_path}")

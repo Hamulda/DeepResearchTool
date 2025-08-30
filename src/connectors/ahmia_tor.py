@@ -1,27 +1,28 @@
 #!/usr/bin/env python3
-"""
-Ahmia/Tor konektor s legal-only režimem
+"""Ahmia/Tor konektor s legal-only režimem
 Whitelist onion zdrojů, právní filtry a rate-limity
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import json
-import hashlib
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Any
 from datetime import datetime
-import aiohttp
-import aiofiles
+import hashlib
+import json
 from pathlib import Path
 import re
-from urllib.parse import urlparse, urljoin
+from typing import Any
+from urllib.parse import urlparse
+
+import aiofiles
+import aiohttp
 
 
 @dataclass
 class OnionSource:
     """Onion zdroj s metadaty"""
+
     onion_url: str
     title: str
     description: str
@@ -35,7 +36,7 @@ class OnionSource:
 class AhmiaConnector:
     """Ahmia/Tor konektor s právními filtry"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.legal_only = config.get("legal_only", True)
         self.cache_dir = Path(config.get("cache_dir", "research_cache/ahmia"))
@@ -50,12 +51,12 @@ class AhmiaConnector:
         self.retry_delay = config.get("retry_delay", 3.0)
         self.rate_limit_delay = config.get("rate_limit_delay", 2.0)
 
-    def _load_legal_whitelist(self) -> Set[str]:
+    def _load_legal_whitelist(self) -> set[str]:
         """Načte whitelist legálních onion domén"""
         whitelist_file = Path("configs/tor_legal_whitelist.json")
 
         if whitelist_file.exists():
-            with open(whitelist_file, 'r') as f:
+            with open(whitelist_file) as f:
                 data = json.load(f)
                 return set(data.get("legal_domains", []))
 
@@ -65,18 +66,27 @@ class AhmiaConnector:
             "facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion",  # Facebook
             "expyuzz4wqqyqhjn.onion",  # ProPublica
             "www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion",
-            "3g2upl4pq6kufc4m.onion"  # DuckDuckGo old
+            "3g2upl4pq6kufc4m.onion",  # DuckDuckGo old
         }
 
-    def _load_content_blacklist(self) -> Set[str]:
+    def _load_content_blacklist(self) -> set[str]:
         """Načte blacklist zakázaných kategorií"""
         return {
-            "illegal", "drugs", "weapons", "fraud", "hacking",
-            "violence", "extremism", "terrorism", "child",
-            "pornography", "gambling", "stolen"
+            "illegal",
+            "drugs",
+            "weapons",
+            "fraud",
+            "hacking",
+            "violence",
+            "extremism",
+            "terrorism",
+            "child",
+            "pornography",
+            "gambling",
+            "stolen",
         }
 
-    async def search_ahmia(self, query: str, max_results: int = 20) -> List[OnionSource]:
+    async def search_ahmia(self, query: str, max_results: int = 20) -> list[OnionSource]:
         """Vyhledá v Ahmia indexu"""
         print(f"🔍 Searching Ahmia for: {query}")
 
@@ -89,11 +99,11 @@ class AhmiaConnector:
 
         # Kontrola cache
         if cache_file.exists():
-            async with aiofiles.open(cache_file, 'r') as f:
+            async with aiofiles.open(cache_file) as f:
                 cached_data = json.loads(await f.read())
                 sources = []
                 for item in cached_data:
-                    item['last_verified'] = datetime.fromisoformat(item['last_verified'])
+                    item["last_verified"] = datetime.fromisoformat(item["last_verified"])
                     sources.append(OnionSource(**item))
                 return sources
 
@@ -107,13 +117,10 @@ class AhmiaConnector:
                 await asyncio.sleep(self.rate_limit_delay)
 
                 async with aiohttp.ClientSession() as session:
-                    params = {
-                        "q": query,
-                        "redirect": "false"
-                    }
+                    params = {"q": query, "redirect": "false"}
                     headers = {
                         "User-Agent": "DeepResearchTool/1.0 (+research@example.com)",
-                        "Accept": "text/html,application/xhtml+xml"
+                        "Accept": "text/html,application/xhtml+xml",
                     }
 
                     async with session.get(search_url, params=params, headers=headers) as response:
@@ -128,8 +135,7 @@ class AhmiaConnector:
                             # Limituj výsledky
                             sources = sources[:max_results]
                             break
-                        else:
-                            raise aiohttp.ClientError(f"HTTP {response.status}")
+                        raise aiohttp.ClientError(f"HTTP {response.status}")
 
             except Exception as e:
                 retry_count += 1
@@ -149,11 +155,11 @@ class AhmiaConnector:
                 "legal_status": source.legal_status,
                 "last_verified": source.last_verified.isoformat(),
                 "content_hash": source.content_hash,
-                "safety_score": source.safety_score
+                "safety_score": source.safety_score,
             }
             cache_data.append(item)
 
-        async with aiofiles.open(cache_file, 'w') as f:
+        async with aiofiles.open(cache_file, "w") as f:
             await f.write(json.dumps(cache_data, indent=2))
 
         print(f"✅ Found {len(sources)} legal onion sources")
@@ -165,8 +171,17 @@ class AhmiaConnector:
 
         # Blacklist keywords
         illegal_keywords = [
-            "hack", "crack", "exploit", "weapon", "drug", "fraud",
-            "stolen", "illegal", "child", "porn", "violence"
+            "hack",
+            "crack",
+            "exploit",
+            "weapon",
+            "drug",
+            "fraud",
+            "stolen",
+            "illegal",
+            "child",
+            "porn",
+            "violence",
         ]
 
         for keyword in illegal_keywords:
@@ -175,13 +190,12 @@ class AhmiaConnector:
 
         return True
 
-    def _parse_ahmia_results(self, html_content: str) -> List[OnionSource]:
+    def _parse_ahmia_results(self, html_content: str) -> list[OnionSource]:
         """Parsuje výsledky z Ahmia"""
         sources = []
 
         # Simple HTML parsing pro Ahmia výsledky
         # V produkci by se použil BeautifulSoup
-        import re
 
         # Extract result blocks
         result_pattern = r'<li class="result">.*?</li>'
@@ -196,7 +210,7 @@ class AhmiaConnector:
                 onion_url = url_match.group(1)
 
                 # Extract title
-                title_match = re.search(r'<h4[^>]*>(.*?)</h4>', result, re.DOTALL)
+                title_match = re.search(r"<h4[^>]*>(.*?)</h4>", result, re.DOTALL)
                 title = title_match.group(1).strip() if title_match else "Unknown"
 
                 # Extract description
@@ -215,7 +229,7 @@ class AhmiaConnector:
                     legal_status=self._determine_legal_status(onion_url, category),
                     last_verified=datetime.now(),
                     content_hash="",
-                    safety_score=safety_score
+                    safety_score=safety_score,
                 )
 
                 sources.append(source)
@@ -238,7 +252,7 @@ class AhmiaConnector:
             "social": ["forum", "discussion", "community", "social", "chat"],
             "commercial": ["shop", "store", "business", "commercial", "service"],
             "government": ["government", "official", "public", "agency"],
-            "ngo": ["nonprofit", "charity", "organization", "foundation"]
+            "ngo": ["nonprofit", "charity", "organization", "foundation"],
         }
 
         for category, keywords in categories.items():
@@ -255,14 +269,30 @@ class AhmiaConnector:
 
         # Positive indicators
         positive_indicators = [
-            "official", "verified", "legitimate", "legal", "academic",
-            "research", "news", "information", "education", "nonprofit"
+            "official",
+            "verified",
+            "legitimate",
+            "legal",
+            "academic",
+            "research",
+            "news",
+            "information",
+            "education",
+            "nonprofit",
         ]
 
         # Negative indicators
         negative_indicators = [
-            "anonymous", "hidden", "secret", "underground", "illegal",
-            "hack", "crack", "exploit", "fraud", "stolen"
+            "anonymous",
+            "hidden",
+            "secret",
+            "underground",
+            "illegal",
+            "hack",
+            "crack",
+            "exploit",
+            "fraud",
+            "stolen",
         ]
 
         # URL whitelist bonus
@@ -296,7 +326,7 @@ class AhmiaConnector:
 
         return "questionable"
 
-    def _filter_legal_sources(self, sources: List[OnionSource]) -> List[OnionSource]:
+    def _filter_legal_sources(self, sources: list[OnionSource]) -> list[OnionSource]:
         """Filtruje pouze legální zdroje"""
         if not self.legal_only:
             return sources
@@ -308,9 +338,7 @@ class AhmiaConnector:
 
         return legal_sources
 
-    async def fetch_onion_content(self,
-                                source: OnionSource,
-                                timeout: int = 30) -> Optional[str]:
+    async def fetch_onion_content(self, source: OnionSource, timeout: int = 30) -> str | None:
         """Stáhne obsah z onion zdroje"""
         # Note: V produkci by bylo potřeba Tor proxy
         print(f"⚠️  Onion content fetching requires Tor proxy: {source.onion_url}")
@@ -329,14 +357,16 @@ class AhmiaConnector:
         source.content_hash = hashlib.md5(placeholder_content.encode()).hexdigest()
         return placeholder_content
 
-    def get_legal_compliance_report(self, sources: List[OnionSource]) -> Dict[str, Any]:
+    def get_legal_compliance_report(self, sources: list[OnionSource]) -> dict[str, Any]:
         """Generuje report legal compliance"""
         total_sources = len(sources)
         verified_sources = sum(1 for s in sources if s.legal_status == "verified")
         questionable_sources = sum(1 for s in sources if s.legal_status == "questionable")
         blacklisted_sources = sum(1 for s in sources if s.legal_status == "blacklisted")
 
-        avg_safety_score = sum(s.safety_score for s in sources) / total_sources if total_sources > 0 else 0
+        avg_safety_score = (
+            sum(s.safety_score for s in sources) / total_sources if total_sources > 0 else 0
+        )
 
         return {
             "timestamp": datetime.now().isoformat(),
@@ -344,10 +374,10 @@ class AhmiaConnector:
             "legal_breakdown": {
                 "verified": verified_sources,
                 "questionable": questionable_sources,
-                "blacklisted": blacklisted_sources
+                "blacklisted": blacklisted_sources,
             },
             "compliance_rate": verified_sources / total_sources if total_sources > 0 else 0,
             "average_safety_score": avg_safety_score,
             "legal_only_mode": self.legal_only,
-            "whitelist_size": len(self.legal_whitelist)
+            "whitelist_size": len(self.legal_whitelist),
         }

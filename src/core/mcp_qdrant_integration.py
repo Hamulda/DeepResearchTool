@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
-"""
-MCP Qdrant Integration (Optional Feature)
+"""MCP Qdrant Integration (Optional Feature)
 MCP server client for Qdrant collection inspection and health checks from IDE
 
 Author: Senior IT Specialist
 """
 
 import asyncio
-import json
-import logging
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, asdict
+import logging
+from typing import Any
 
 try:
     from qdrant_client import QdrantClient
     from qdrant_client.http.exceptions import UnexpectedResponse
+
     QDRANT_AVAILABLE = True
 except ImportError:
     QDRANT_AVAILABLE = False
@@ -24,18 +23,20 @@ except ImportError:
 @dataclass
 class QdrantCollectionInfo:
     """Qdrant collection information"""
+
     name: str
     vectors_count: int
     points_count: int
     status: str
-    config: Dict[str, Any]
-    disk_usage: Optional[int] = None
-    ram_usage: Optional[int] = None
+    config: dict[str, Any]
+    disk_usage: int | None = None
+    ram_usage: int | None = None
 
 
 @dataclass
 class QdrantHealthStatus:
     """Qdrant cluster health status"""
+
     status: str  # "green", "yellow", "red"
     version: str
     collections_count: int
@@ -43,13 +44,13 @@ class QdrantHealthStatus:
     total_points: int
     disk_usage: int
     memory_usage: int
-    uptime: Optional[str] = None
+    uptime: str | None = None
 
 
 class MCPQdrantClient:
     """MCP client for Qdrant inspection and management"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
 
@@ -61,7 +62,9 @@ class MCPQdrantClient:
             return
 
         if not QDRANT_AVAILABLE:
-            self.logger.error("Qdrant client not available - install with: pip install qdrant-client")
+            self.logger.error(
+                "Qdrant client not available - install with: pip install qdrant-client"
+            )
             self.enabled = False
             return
 
@@ -89,7 +92,7 @@ class MCPQdrantClient:
             self.connected = False
             return False
 
-    async def get_health_status(self) -> Optional[QdrantHealthStatus]:
+    async def get_health_status(self) -> QdrantHealthStatus | None:
         """Get comprehensive Qdrant health status"""
         if not self.connected:
             if not await self.connect():
@@ -110,8 +113,7 @@ class MCPQdrantClient:
             for collection in collections:
                 try:
                     collection_info = await asyncio.to_thread(
-                        self.client.get_collection,
-                        collection_name=collection.name
+                        self.client.get_collection, collection_name=collection.name
                     )
                     total_vectors += collection_info.vectors_count or 0
                     total_points += collection_info.points_count or 0
@@ -122,7 +124,7 @@ class MCPQdrantClient:
             status = "green"
             if len(collections) == 0:
                 status = "yellow"  # No collections
-            elif any(getattr(col, 'status', 'green') != 'green' for col in collections):
+            elif any(getattr(col, "status", "green") != "green" for col in collections):
                 status = "red"  # Collection issues
 
             health = QdrantHealthStatus(
@@ -132,7 +134,7 @@ class MCPQdrantClient:
                 total_vectors=total_vectors,
                 total_points=total_points,
                 disk_usage=0,  # Would need additional API calls
-                memory_usage=0  # Would need additional API calls
+                memory_usage=0,  # Would need additional API calls
             )
 
             return health
@@ -146,10 +148,10 @@ class MCPQdrantClient:
                 total_vectors=0,
                 total_points=0,
                 disk_usage=0,
-                memory_usage=0
+                memory_usage=0,
             )
 
-    async def list_collections(self) -> List[QdrantCollectionInfo]:
+    async def list_collections(self) -> list[QdrantCollectionInfo]:
         """List all collections with detailed information"""
         if not self.connected:
             if not await self.connect():
@@ -165,25 +167,30 @@ class MCPQdrantClient:
                 try:
                     # Get detailed collection info
                     collection_info = await asyncio.to_thread(
-                        self.client.get_collection,
-                        collection_name=collection.name
+                        self.client.get_collection, collection_name=collection.name
                     )
 
                     # Extract configuration
                     config = {}
-                    if hasattr(collection_info, 'config'):
+                    if hasattr(collection_info, "config"):
                         config = {
-                            "distance": getattr(collection_info.config.params.vectors, 'distance', 'unknown'),
-                            "size": getattr(collection_info.config.params.vectors, 'size', 0),
-                            "hnsw_config": getattr(collection_info.config.hnsw_config, '__dict__', {}) if collection_info.config.hnsw_config else {}
+                            "distance": getattr(
+                                collection_info.config.params.vectors, "distance", "unknown"
+                            ),
+                            "size": getattr(collection_info.config.params.vectors, "size", 0),
+                            "hnsw_config": (
+                                getattr(collection_info.config.hnsw_config, "__dict__", {})
+                                if collection_info.config.hnsw_config
+                                else {}
+                            ),
                         }
 
                     info = QdrantCollectionInfo(
                         name=collection.name,
                         vectors_count=collection_info.vectors_count or 0,
                         points_count=collection_info.points_count or 0,
-                        status=getattr(collection_info, 'status', 'active'),
-                        config=config
+                        status=getattr(collection_info, "status", "active"),
+                        config=config,
                     )
 
                     collection_infos.append(info)
@@ -196,7 +203,7 @@ class MCPQdrantClient:
                         vectors_count=0,
                         points_count=0,
                         status="unknown",
-                        config={}
+                        config={},
                     )
                     collection_infos.append(info)
 
@@ -205,7 +212,7 @@ class MCPQdrantClient:
 
         return collection_infos
 
-    async def inspect_collection(self, collection_name: str) -> Optional[Dict[str, Any]]:
+    async def inspect_collection(self, collection_name: str) -> dict[str, Any] | None:
         """Inspect specific collection in detail"""
         if not self.connected:
             if not await self.connect():
@@ -214,23 +221,22 @@ class MCPQdrantClient:
         try:
             # Get collection info
             collection_info = await asyncio.to_thread(
-                self.client.get_collection,
-                collection_name=collection_name
+                self.client.get_collection, collection_name=collection_name
             )
 
             # Get sample points
             sample_points = []
             try:
                 points_response = await asyncio.to_thread(
-                    self.client.scroll,
-                    collection_name=collection_name,
-                    limit=5
+                    self.client.scroll, collection_name=collection_name, limit=5
                 )
                 sample_points = [
                     {
                         "id": point.id,
                         "payload_keys": list(point.payload.keys()) if point.payload else [],
-                        "vector_size": len(point.vector) if hasattr(point, 'vector') and point.vector else 0
+                        "vector_size": (
+                            len(point.vector) if hasattr(point, "vector") and point.vector else 0
+                        ),
                     }
                     for point in points_response[0]
                 ]
@@ -240,17 +246,33 @@ class MCPQdrantClient:
             # Compile inspection results
             inspection = {
                 "collection_name": collection_name,
-                "status": getattr(collection_info, 'status', 'unknown'),
+                "status": getattr(collection_info, "status", "unknown"),
                 "vectors_count": collection_info.vectors_count or 0,
                 "points_count": collection_info.points_count or 0,
                 "config": {
-                    "vector_size": getattr(collection_info.config.params.vectors, 'size', 0) if collection_info.config else 0,
-                    "distance_metric": getattr(collection_info.config.params.vectors, 'distance', 'unknown') if collection_info.config else 'unknown',
-                    "hnsw_config": getattr(collection_info.config.hnsw_config, '__dict__', {}) if collection_info.config and collection_info.config.hnsw_config else {},
-                    "quantization": getattr(collection_info.config.quantization_config, '__dict__', {}) if collection_info.config and collection_info.config.quantization_config else None
+                    "vector_size": (
+                        getattr(collection_info.config.params.vectors, "size", 0)
+                        if collection_info.config
+                        else 0
+                    ),
+                    "distance_metric": (
+                        getattr(collection_info.config.params.vectors, "distance", "unknown")
+                        if collection_info.config
+                        else "unknown"
+                    ),
+                    "hnsw_config": (
+                        getattr(collection_info.config.hnsw_config, "__dict__", {})
+                        if collection_info.config and collection_info.config.hnsw_config
+                        else {}
+                    ),
+                    "quantization": (
+                        getattr(collection_info.config.quantization_config, "__dict__", {})
+                        if collection_info.config and collection_info.config.quantization_config
+                        else None
+                    ),
                 },
                 "sample_points": sample_points,
-                "inspection_timestamp": datetime.now().isoformat()
+                "inspection_timestamp": datetime.now().isoformat(),
             }
 
             return inspection
@@ -259,12 +281,12 @@ class MCPQdrantClient:
             self.logger.error(f"Failed to inspect collection {collection_name}: {e}")
             return None
 
-    async def run_health_check(self) -> Dict[str, Any]:
+    async def run_health_check(self) -> dict[str, Any]:
         """Run comprehensive health check"""
         if not self.enabled:
             return {
                 "status": "disabled",
-                "message": "MCP Qdrant integration disabled by feature flag"
+                "message": "MCP Qdrant integration disabled by feature flag",
             }
 
         health_report = {
@@ -274,7 +296,7 @@ class MCPQdrantClient:
             "health_status": None,
             "collections": [],
             "issues": [],
-            "recommendations": []
+            "recommendations": [],
         }
 
         # Test connection
@@ -324,12 +346,12 @@ class MCPQdrantClient:
             health_report["recommendations"] = [
                 "Check Qdrant server is running",
                 f"Verify connection URL: {self.qdrant_url}",
-                "Check network connectivity"
+                "Check network connectivity",
             ]
 
         return health_report
 
-    def generate_mcp_inspection_report(self, health_report: Dict[str, Any]) -> str:
+    def generate_mcp_inspection_report(self, health_report: dict[str, Any]) -> str:
         """Generate human-readable inspection report for IDE"""
         lines = []
         lines.append("# Qdrant MCP Inspection Report")
@@ -393,7 +415,7 @@ class MCPQdrantClient:
 class MCPQdrantIntegration:
     """Main MCP Qdrant integration manager"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
 
@@ -401,7 +423,9 @@ class MCPQdrantIntegration:
 
         # Integration settings
         self.auto_health_check = config.get("mcp", {}).get("auto_health_check", True)
-        self.health_check_interval = config.get("mcp", {}).get("health_check_interval", 300)  # 5 minutes
+        self.health_check_interval = config.get("mcp", {}).get(
+            "health_check_interval", 300
+        )  # 5 minutes
 
     async def initialize(self) -> bool:
         """Initialize MCP integration"""
@@ -417,13 +441,15 @@ class MCPQdrantIntegration:
             health_report = await self.mcp_client.run_health_check()
 
             if health_report["issues"]:
-                self.logger.warning(f"Qdrant health issues detected: {len(health_report['issues'])} issues")
+                self.logger.warning(
+                    f"Qdrant health issues detected: {len(health_report['issues'])} issues"
+                )
                 for issue in health_report["issues"]:
                     self.logger.warning(f"  - {issue}")
 
         return success
 
-    async def get_inspection_summary(self) -> Optional[str]:
+    async def get_inspection_summary(self) -> str | None:
         """Get inspection summary for IDE display"""
         if not self.mcp_client.enabled:
             return "MCP Qdrant integration disabled"
@@ -435,7 +461,7 @@ class MCPQdrantIntegration:
             self.logger.error(f"Failed to generate inspection summary: {e}")
             return f"MCP inspection failed: {e}"
 
-    async def inspect_collection_for_ide(self, collection_name: str) -> Optional[str]:
+    async def inspect_collection_for_ide(self, collection_name: str) -> str | None:
         """Inspect specific collection and format for IDE"""
         if not self.mcp_client.enabled:
             return "MCP Qdrant integration disabled"
@@ -459,22 +485,22 @@ class MCPQdrantIntegration:
             lines.append("")
 
             lines.append("## Configuration")
-            config = inspection['config']
+            config = inspection["config"]
             lines.append(f"Vector Size: {config['vector_size']}")
             lines.append(f"Distance Metric: {config['distance_metric']}")
 
-            if config['hnsw_config']:
+            if config["hnsw_config"]:
                 lines.append("HNSW Config:")
-                for key, value in config['hnsw_config'].items():
+                for key, value in config["hnsw_config"].items():
                     lines.append(f"  - {key}: {value}")
 
-            if config['quantization']:
+            if config["quantization"]:
                 lines.append("Quantization: Enabled")
             lines.append("")
 
-            if inspection['sample_points']:
+            if inspection["sample_points"]:
                 lines.append("## Sample Points")
-                for i, point in enumerate(inspection['sample_points'][:3], 1):
+                for i, point in enumerate(inspection["sample_points"][:3], 1):
                     lines.append(f"Point {i}:")
                     lines.append(f"  - ID: {point['id']}")
                     lines.append(f"  - Vector Size: {point['vector_size']}")
@@ -487,6 +513,6 @@ class MCPQdrantIntegration:
             return f"Collection inspection failed: {e}"
 
 
-def create_mcp_qdrant_integration(config: Dict[str, Any]) -> MCPQdrantIntegration:
+def create_mcp_qdrant_integration(config: dict[str, Any]) -> MCPQdrantIntegration:
     """Factory function for MCP Qdrant integration"""
     return MCPQdrantIntegration(config)

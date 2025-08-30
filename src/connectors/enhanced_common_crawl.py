@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
-"""
-Enhanced Common Crawl Connector
+"""Enhanced Common Crawl Connector
 Stabilní práce s WARC offsety, retries a idempotentní cache
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import logging
-import aiohttp
-import gzip
-import time
-from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator
 from dataclasses import dataclass
-from pathlib import Path
+import gzip
 import hashlib
 import json
-import re
-from urllib.parse import urljoin, urlparse
+import logging
+from pathlib import Path
+import time
+from typing import Any
+
+import aiohttp
 import backoff
 
 logger = logging.getLogger(__name__)
@@ -26,6 +24,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class WARCRecord:
     """WARC record s metadata"""
+
     record_id: str
     url: str
     timestamp: str
@@ -34,27 +33,28 @@ class WARCRecord:
     warc_offset: int
     warc_filename: str
     content: str
-    headers: Dict[str, str]
-    extraction_metadata: Dict[str, Any]
+    headers: dict[str, str]
+    extraction_metadata: dict[str, Any]
 
 
 @dataclass
 class CommonCrawlResult:
     """Výsledek Common Crawl query"""
+
     query: str
     total_results: int
-    warc_records: List[WARCRecord]
+    warc_records: list[WARCRecord]
     processing_time: float
     cache_hits: int
     cache_misses: int
     error_count: int
-    quality_metrics: Dict[str, float]
+    quality_metrics: dict[str, float]
 
 
 class EnhancedCommonCrawlConnector:
     """Enhanced Common Crawl connector s WARC offset handling a caching"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.cc_config = config.get("common_crawl", {})
 
@@ -76,7 +76,9 @@ class EnhancedCommonCrawlConnector:
         # Quality filters
         self.min_content_length = self.cc_config.get("min_content_length", 500)
         self.max_content_length = self.cc_config.get("max_content_length", 100000)
-        self.allowed_content_types = self.cc_config.get("allowed_content_types", ["text/html", "text/plain"])
+        self.allowed_content_types = self.cc_config.get(
+            "allowed_content_types", ["text/html", "text/plain"]
+        )
 
         # Processing settings
         self.concurrent_downloads = self.cc_config.get("concurrent_downloads", 5)
@@ -91,7 +93,6 @@ class EnhancedCommonCrawlConnector:
 
     async def initialize(self):
         """Inicializace konektoru"""
-
         logger.info("Initializing Enhanced Common Crawl Connector...")
 
         # Create HTTP session with appropriate settings
@@ -103,7 +104,7 @@ class EnhancedCommonCrawlConnector:
         self.session = aiohttp.ClientSession(
             timeout=timeout,
             headers=headers,
-            connector=aiohttp.TCPConnector(limit=10, limit_per_host=5)
+            connector=aiohttp.TCPConnector(limit=10, limit_per_host=5),
         )
 
         logger.info("✅ Enhanced Common Crawl Connector initialized")
@@ -113,12 +114,10 @@ class EnhancedCommonCrawlConnector:
         if self.session:
             await self.session.close()
 
-    async def search_and_fetch(self,
-                              query: str,
-                              crawl_id: Optional[str] = None,
-                              url_pattern: Optional[str] = None) -> CommonCrawlResult:
-        """
-        Hlavní search a fetch funkce
+    async def search_and_fetch(
+        self, query: str, crawl_id: str | None = None, url_pattern: str | None = None
+    ) -> CommonCrawlResult:
+        """Hlavní search a fetch funkce
 
         Args:
             query: Search query
@@ -127,8 +126,8 @@ class EnhancedCommonCrawlConnector:
 
         Returns:
             CommonCrawlResult s WARC records
-        """
 
+        """
         start_time = time.time()
         cache_hits = 0
         cache_misses = 0
@@ -146,7 +145,7 @@ class EnhancedCommonCrawlConnector:
             # Process in batches for concurrent downloads
             batch_size = self.concurrent_downloads
             for i in range(0, len(index_results), batch_size):
-                batch = index_results[i:i + batch_size]
+                batch = index_results[i : i + batch_size]
 
                 # Concurrent fetch of WARC records
                 batch_tasks = []
@@ -183,10 +182,12 @@ class EnhancedCommonCrawlConnector:
                 cache_hits=cache_hits,
                 cache_misses=cache_misses,
                 error_count=error_count,
-                quality_metrics=quality_metrics
+                quality_metrics=quality_metrics,
             )
 
-            logger.info(f"Common Crawl search completed: {len(warc_records)}/{len(index_results)} records fetched")
+            logger.info(
+                f"Common Crawl search completed: {len(warc_records)}/{len(index_results)} records fetched"
+            )
             logger.info(f"Cache efficiency: {cache_hits}/{cache_hits + cache_misses} hits")
 
             return result
@@ -195,12 +196,10 @@ class EnhancedCommonCrawlConnector:
             logger.error(f"Common Crawl search failed: {e}")
             raise
 
-    async def _search_index(self,
-                           query: str,
-                           crawl_id: Optional[str] = None,
-                           url_pattern: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def _search_index(
+        self, query: str, crawl_id: str | None = None, url_pattern: str | None = None
+    ) -> list[dict[str, Any]]:
         """Vyhledání v Common Crawl indexu"""
-
         # Determine crawl to search
         if not crawl_id:
             crawl_id = await self._get_latest_crawl_id()
@@ -212,7 +211,7 @@ class EnhancedCommonCrawlConnector:
         params = {
             "url": query if query.startswith("http") else f"*{query}*",
             "output": "json",
-            "limit": self.max_results
+            "limit": self.max_results,
         }
 
         if url_pattern:
@@ -227,7 +226,7 @@ class EnhancedCommonCrawlConnector:
 
                     # Parse JSONL response
                     results = []
-                    for line in content.strip().split('\n'):
+                    for line in content.strip().split("\n"):
                         if line:
                             try:
                                 result = json.loads(line)
@@ -237,9 +236,8 @@ class EnhancedCommonCrawlConnector:
 
                     logger.info(f"Found {len(results)} index results")
                     return results
-                else:
-                    logger.error(f"Index search failed: {response.status}")
-                    return []
+                logger.error(f"Index search failed: {response.status}")
+                return []
 
         except Exception as e:
             logger.error(f"Index search error: {e}")
@@ -247,7 +245,6 @@ class EnhancedCommonCrawlConnector:
 
     async def _get_latest_crawl_id(self) -> str:
         """Získání ID nejnovějšího crawlu"""
-
         try:
             # Check available crawls
             crawls_url = f"{self.index_api_base}/collinfo.json"
@@ -269,9 +266,8 @@ class EnhancedCommonCrawlConnector:
         return "CC-MAIN-2023-40"
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=3)
-    async def _fetch_warc_record(self, index_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def _fetch_warc_record(self, index_result: dict[str, Any]) -> dict[str, Any] | None:
         """Fetch WARC record s retry logic"""
-
         filename = index_result.get("filename")
         offset = index_result.get("offset")
         length = index_result.get("length")
@@ -287,10 +283,7 @@ class EnhancedCommonCrawlConnector:
         cached_record = await self._get_from_cache(cache_key)
 
         if cached_record:
-            return {
-                "warc_record": cached_record,
-                "cache_hit": True
-            }
+            return {"warc_record": cached_record, "cache_hit": True}
 
         # Fetch from Common Crawl
         try:
@@ -300,10 +293,7 @@ class EnhancedCommonCrawlConnector:
                 # Cache the result
                 await self._save_to_cache(cache_key, warc_record)
 
-                return {
-                    "warc_record": warc_record,
-                    "cache_hit": False
-                }
+                return {"warc_record": warc_record, "cache_hit": False}
 
         except Exception as e:
             logger.error(f"Failed to fetch WARC record: {e}")
@@ -311,21 +301,15 @@ class EnhancedCommonCrawlConnector:
 
         return None
 
-    async def _fetch_warc_content(self,
-                                 filename: str,
-                                 offset: int,
-                                 length: int,
-                                 url: str,
-                                 timestamp: str) -> Optional[WARCRecord]:
+    async def _fetch_warc_content(
+        self, filename: str, offset: int, length: int, url: str, timestamp: str
+    ) -> WARCRecord | None:
         """Fetch konkrétního WARC record content"""
-
         # Build download URL
         download_url = f"{self.download_base}/{filename}"
 
         # Set range header for specific offset
-        headers = {
-            "Range": f"bytes={offset}-{offset + length - 1}"
-        }
+        headers = {"Range": f"bytes={offset}-{offset + length - 1}"}
 
         try:
             async with self.session.get(download_url, headers=headers) as response:
@@ -333,7 +317,7 @@ class EnhancedCommonCrawlConnector:
                     raw_content = await response.read()
 
                     # Decompress if gzipped
-                    if filename.endswith('.gz'):
+                    if filename.endswith(".gz"):
                         try:
                             raw_content = gzip.decompress(raw_content)
                         except Exception as e:
@@ -347,29 +331,24 @@ class EnhancedCommonCrawlConnector:
 
                     return warc_record
 
-                else:
-                    logger.error(f"Failed to fetch WARC content: {response.status}")
-                    return None
+                logger.error(f"Failed to fetch WARC content: {response.status}")
+                return None
 
         except Exception as e:
             logger.error(f"WARC fetch error: {e}")
             return None
 
-    async def _parse_warc_record(self,
-                                raw_content: bytes,
-                                filename: str,
-                                offset: int,
-                                url: str,
-                                timestamp: str) -> Optional[WARCRecord]:
+    async def _parse_warc_record(
+        self, raw_content: bytes, filename: str, offset: int, url: str, timestamp: str
+    ) -> WARCRecord | None:
         """Parse WARC record content"""
-
         try:
-            content_str = raw_content.decode('utf-8', errors='ignore')
+            content_str = raw_content.decode("utf-8", errors="ignore")
 
             # Simple WARC parsing - split headers and content
-            parts = content_str.split('\r\n\r\n', 2)
+            parts = content_str.split("\r\n\r\n", 2)
             if len(parts) < 2:
-                parts = content_str.split('\n\n', 2)
+                parts = content_str.split("\n\n", 2)
 
             if len(parts) < 2:
                 logger.warning("Invalid WARC record format")
@@ -385,9 +364,9 @@ class EnhancedCommonCrawlConnector:
 
             # Parse WARC headers
             warc_headers = {}
-            for line in warc_headers_text.split('\n'):
-                if ':' in line:
-                    key, value = line.split(':', 1)
+            for line in warc_headers_text.split("\n"):
+                if ":" in line:
+                    key, value = line.split(":", 1)
                     warc_headers[key.strip()] = value.strip()
 
             # Quality filtering
@@ -396,7 +375,7 @@ class EnhancedCommonCrawlConnector:
                 return None
 
             if len(content) > self.max_content_length:
-                content = content[:self.max_content_length]
+                content = content[: self.max_content_length]
                 logger.debug(f"Content truncated to {self.max_content_length} characters")
 
             # Extract clean text content if enabled
@@ -419,8 +398,8 @@ class EnhancedCommonCrawlConnector:
                 extraction_metadata={
                     "extraction_timestamp": time.time(),
                     "original_length": len(raw_content),
-                    "processed_length": len(content)
-                }
+                    "processed_length": len(content),
+                },
             )
 
             return warc_record
@@ -431,20 +410,23 @@ class EnhancedCommonCrawlConnector:
 
     def _extract_text_content(self, html_content: str) -> str:
         """Extrakce čistého textu z HTML"""
-
         try:
             # Simple HTML tag removal
             import re
 
             # Remove script and style elements
-            html_content = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
-            html_content = re.sub(r'<style[^>]*>.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+            html_content = re.sub(
+                r"<script[^>]*>.*?</script>", "", html_content, flags=re.DOTALL | re.IGNORECASE
+            )
+            html_content = re.sub(
+                r"<style[^>]*>.*?</style>", "", html_content, flags=re.DOTALL | re.IGNORECASE
+            )
 
             # Remove HTML tags
-            text = re.sub(r'<[^>]+>', '', html_content)
+            text = re.sub(r"<[^>]+>", "", html_content)
 
             # Clean up whitespace
-            text = re.sub(r'\s+', ' ', text).strip()
+            text = re.sub(r"\s+", " ", text).strip()
 
             return text
 
@@ -457,9 +439,8 @@ class EnhancedCommonCrawlConnector:
         key_data = f"{filename}:{offset}:{length}"
         return hashlib.sha256(key_data.encode()).hexdigest()
 
-    async def _get_from_cache(self, cache_key: str) -> Optional[WARCRecord]:
+    async def _get_from_cache(self, cache_key: str) -> WARCRecord | None:
         """Získání z cache"""
-
         if not self.cache_enabled:
             return None
 
@@ -473,7 +454,7 @@ class EnhancedCommonCrawlConnector:
                     cache_file.unlink()  # Remove expired cache
                     return None
 
-                with open(cache_file, 'r', encoding='utf-8') as f:
+                with open(cache_file, encoding="utf-8") as f:
                     cache_data = json.load(f)
 
                 # Reconstruct WARCRecord
@@ -486,7 +467,6 @@ class EnhancedCommonCrawlConnector:
 
     async def _save_to_cache(self, cache_key: str, warc_record: WARCRecord):
         """Uložení do cache"""
-
         if not self.cache_enabled:
             return
 
@@ -504,20 +484,19 @@ class EnhancedCommonCrawlConnector:
                 "warc_filename": warc_record.warc_filename,
                 "content": warc_record.content,
                 "headers": warc_record.headers,
-                "extraction_metadata": warc_record.extraction_metadata
+                "extraction_metadata": warc_record.extraction_metadata,
             }
 
-            with open(cache_file, 'w', encoding='utf-8') as f:
+            with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(cache_data, f, indent=2, ensure_ascii=False)
 
         except Exception as e:
             logger.warning(f"Cache write error: {e}")
 
-    def _calculate_quality_metrics(self,
-                                  warc_records: List[WARCRecord],
-                                  index_results: List[Dict[str, Any]]) -> Dict[str, float]:
+    def _calculate_quality_metrics(
+        self, warc_records: list[WARCRecord], index_results: list[dict[str, Any]]
+    ) -> dict[str, float]:
         """Výpočet quality metrics"""
-
         if not warc_records:
             return {"success_rate": 0.0, "avg_content_length": 0.0, "content_type_diversity": 0.0}
 
@@ -525,7 +504,9 @@ class EnhancedCommonCrawlConnector:
         success_rate = len(warc_records) / len(index_results) if index_results else 0
 
         # Average content length
-        avg_content_length = sum(record.content_length for record in warc_records) / len(warc_records)
+        avg_content_length = sum(record.content_length for record in warc_records) / len(
+            warc_records
+        )
 
         # Content type diversity
         content_types = set(record.content_type for record in warc_records)
@@ -533,18 +514,19 @@ class EnhancedCommonCrawlConnector:
 
         # Temporal distribution
         timestamps = [record.timestamp for record in warc_records]
-        temporal_diversity = len(set(ts[:8] for ts in timestamps)) / len(warc_records)  # Unique dates
+        temporal_diversity = len(set(ts[:8] for ts in timestamps)) / len(
+            warc_records
+        )  # Unique dates
 
         return {
             "success_rate": success_rate,
             "avg_content_length": avg_content_length,
             "content_type_diversity": content_type_diversity,
-            "temporal_diversity": temporal_diversity
+            "temporal_diversity": temporal_diversity,
         }
 
-    async def get_connector_status(self) -> Dict[str, Any]:
+    async def get_connector_status(self) -> dict[str, Any]:
         """Získání status konektoru"""
-
         try:
             # Test connection
             test_url = f"{self.index_api_base}/collinfo.json"
@@ -558,7 +540,9 @@ class EnhancedCommonCrawlConnector:
         cache_size_mb = 0
         if self.cache_enabled and self.cache_dir.exists():
             cache_files = len(list(self.cache_dir.glob("*.json")))
-            cache_size_mb = sum(f.stat().st_size for f in self.cache_dir.glob("*.json")) / (1024 * 1024)
+            cache_size_mb = sum(f.stat().st_size for f in self.cache_dir.glob("*.json")) / (
+                1024 * 1024
+            )
 
         return {
             "connector_type": "common_crawl",
@@ -567,5 +551,5 @@ class EnhancedCommonCrawlConnector:
             "cache_files": cache_files,
             "cache_size_mb": round(cache_size_mb, 2),
             "max_results": self.max_results,
-            "concurrent_downloads": self.concurrent_downloads
+            "concurrent_downloads": self.concurrent_downloads,
         }

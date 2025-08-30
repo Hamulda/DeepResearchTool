@@ -1,41 +1,43 @@
 #!/usr/bin/env python3
-"""
-Enhanced PDF Scraper with async processing and job queue
+"""Enhanced PDF Scraper with async processing and job queue
 Supports parallel PDF processing with memory management
 """
 
 import asyncio
-import aiofiles
-import logging
-import time
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
-from pathlib import Path
-import PyPDF2
-import hashlib
-import mimetypes
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-import json
+from datetime import datetime
+import logging
+import mimetypes
+from pathlib import Path
+import time
+from typing import Any
+
+import PyPDF2
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class PDFProcessingJob:
     """Represents a PDF processing job"""
+
     file_path: Path
     priority: int = 0
-    metadata: Dict[str, Any] = None
+    metadata: dict[str, Any] = None
+
 
 @dataclass
 class PDFProcessingResult:
     """Result of PDF processing"""
+
     file_path: Path
     success: bool
     content: str = ""
-    metadata: Dict[str, Any] = None
-    error: Optional[str] = None
+    metadata: dict[str, Any] = None
+    error: str | None = None
     processing_time: float = 0.0
+
 
 class AsyncPDFProcessor:
     """Asynchronous PDF processor with job queue and memory management"""
@@ -62,24 +64,20 @@ class AsyncPDFProcessor:
                 return PDFProcessingResult(
                     file_path=file_path,
                     success=False,
-                    error=f"File too large: {file_path.stat().st_size / 1024 / 1024:.1f}MB"
+                    error=f"File too large: {file_path.stat().st_size / 1024 / 1024:.1f}MB",
                 )
 
             # Verify it's actually a PDF
             mime_type, _ = mimetypes.guess_type(str(file_path))
-            if mime_type != 'application/pdf':
+            if mime_type != "application/pdf":
                 return PDFProcessingResult(
-                    file_path=file_path,
-                    success=False,
-                    error=f"Not a PDF file: {mime_type}"
+                    file_path=file_path, success=False, error=f"Not a PDF file: {mime_type}"
                 )
 
             # Process PDF in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             content, metadata = await loop.run_in_executor(
-                self.executor,
-                self._extract_pdf_content,
-                file_path
+                self.executor, self._extract_pdf_content, file_path
             )
 
             processing_time = time.time() - start_time
@@ -89,7 +87,7 @@ class AsyncPDFProcessor:
                 success=True,
                 content=content,
                 metadata=metadata,
-                processing_time=processing_time
+                processing_time=processing_time,
             )
 
         except Exception as e:
@@ -98,26 +96,30 @@ class AsyncPDFProcessor:
                 file_path=file_path,
                 success=False,
                 error=str(e),
-                processing_time=time.time() - start_time
+                processing_time=time.time() - start_time,
             )
 
-    def _extract_pdf_content(self, file_path: Path) -> Tuple[str, Dict[str, Any]]:
+    def _extract_pdf_content(self, file_path: Path) -> tuple[str, dict[str, Any]]:
         """Extract content from PDF file (runs in thread pool)"""
         try:
-            with open(file_path, 'rb') as file:
+            with open(file_path, "rb") as file:
                 pdf_reader = PyPDF2.PdfReader(file)
 
                 # Extract metadata
                 metadata = {
-                    'title': pdf_reader.metadata.title if pdf_reader.metadata else None,
-                    'author': pdf_reader.metadata.author if pdf_reader.metadata else None,
-                    'subject': pdf_reader.metadata.subject if pdf_reader.metadata else None,
-                    'creator': pdf_reader.metadata.creator if pdf_reader.metadata else None,
-                    'creation_date': str(pdf_reader.metadata.creation_date) if pdf_reader.metadata else None,
-                    'modification_date': str(pdf_reader.metadata.modification_date) if pdf_reader.metadata else None,
-                    'num_pages': len(pdf_reader.pages),
-                    'file_size': file_path.stat().st_size,
-                    'file_path': str(file_path)
+                    "title": pdf_reader.metadata.title if pdf_reader.metadata else None,
+                    "author": pdf_reader.metadata.author if pdf_reader.metadata else None,
+                    "subject": pdf_reader.metadata.subject if pdf_reader.metadata else None,
+                    "creator": pdf_reader.metadata.creator if pdf_reader.metadata else None,
+                    "creation_date": (
+                        str(pdf_reader.metadata.creation_date) if pdf_reader.metadata else None
+                    ),
+                    "modification_date": (
+                        str(pdf_reader.metadata.modification_date) if pdf_reader.metadata else None
+                    ),
+                    "num_pages": len(pdf_reader.pages),
+                    "file_size": file_path.stat().st_size,
+                    "file_path": str(file_path),
                 }
 
                 # Extract text content
@@ -158,8 +160,9 @@ class AsyncPDFProcessor:
             except Exception as e:
                 logger.error(f"Error in queue worker: {e}")
 
-    async def process_directory_async(self, directory: Path,
-                                    pattern: str = "*.pdf") -> List[PDFProcessingResult]:
+    async def process_directory_async(
+        self, directory: Path, pattern: str = "*.pdf"
+    ) -> list[PDFProcessingResult]:
         """Process all PDFs in directory asynchronously"""
         # Find all PDF files
         pdf_files = list(directory.glob(pattern))
@@ -171,8 +174,7 @@ class AsyncPDFProcessor:
 
         # Start workers
         workers = [
-            asyncio.create_task(self.process_queue_worker())
-            for _ in range(self.max_concurrent)
+            asyncio.create_task(self.process_queue_worker()) for _ in range(self.max_concurrent)
         ]
 
         # Add jobs to queue
@@ -205,6 +207,7 @@ class AsyncPDFProcessor:
         """Cleanup resources"""
         self.executor.shutdown(wait=True)
 
+
 class EnhancedPDFScraper:
     """Enhanced PDF scraper with async capabilities"""
 
@@ -213,7 +216,9 @@ class EnhancedPDFScraper:
         self.last_request_time = 0
         self.processor = AsyncPDFProcessor()
 
-    async def search_async(self, topic: str, time_range: Optional[Tuple[datetime, datetime]] = None) -> List[Dict[str, Any]]:
+    async def search_async(
+        self, topic: str, time_range: tuple[datetime, datetime] | None = None
+    ) -> list[dict[str, Any]]:
         """Async search for PDF documents"""
         await self._rate_limit()
 
@@ -221,7 +226,7 @@ class EnhancedPDFScraper:
         search_dirs = [
             Path("./data/pdf_archives"),
             Path("./research_cache/pdfs"),
-            Path("/tmp/pdf_downloads")  # Temporary download location
+            Path("/tmp/pdf_downloads"),  # Temporary download location
         ]
 
         all_results = []
@@ -237,27 +242,29 @@ class EnhancedPDFScraper:
                         # Check if content matches topic
                         if self._content_matches_topic(result.content, topic):
                             search_result = {
-                                'title': result.metadata.get('title', result.file_path.name),
-                                'content': result.content[:2000],  # Limit content size
-                                'url': f"file://{result.file_path}",
-                                'source_type': 'pdf_document',
-                                'source_url': str(result.file_path),
-                                'date': self._extract_date_from_metadata(result.metadata),
-                                'metadata': result.metadata,
-                                'content_type': 'pdf',
-                                'processing_time': result.processing_time
+                                "title": result.metadata.get("title", result.file_path.name),
+                                "content": result.content[:2000],  # Limit content size
+                                "url": f"file://{result.file_path}",
+                                "source_type": "pdf_document",
+                                "source_url": str(result.file_path),
+                                "date": self._extract_date_from_metadata(result.metadata),
+                                "metadata": result.metadata,
+                                "content_type": "pdf",
+                                "processing_time": result.processing_time,
                             }
 
                             # Apply time range filter if specified
-                            if time_range and search_result['date']:
-                                doc_date = search_result['date']
+                            if time_range and search_result["date"]:
+                                doc_date = search_result["date"]
                                 if isinstance(doc_date, str):
                                     try:
                                         doc_date = datetime.fromisoformat(doc_date)
                                     except:
                                         doc_date = None
 
-                                if doc_date and (doc_date < time_range[0] or doc_date > time_range[1]):
+                                if doc_date and (
+                                    doc_date < time_range[0] or doc_date > time_range[1]
+                                ):
                                     continue
 
                             all_results.append(search_result)
@@ -277,9 +284,9 @@ class EnhancedPDFScraper:
         # Require at least 50% of topic words to match
         return matches >= len(topic_words) * 0.5
 
-    def _extract_date_from_metadata(self, metadata: Dict[str, Any]) -> Optional[datetime]:
+    def _extract_date_from_metadata(self, metadata: dict[str, Any]) -> datetime | None:
         """Extract date from PDF metadata"""
-        date_fields = ['creation_date', 'modification_date']
+        date_fields = ["creation_date", "modification_date"]
 
         for field in date_fields:
             date_str = metadata.get(field)
@@ -288,7 +295,11 @@ class EnhancedPDFScraper:
                     # Handle various date formats
                     if isinstance(date_str, str):
                         # Remove timezone info for simplicity
-                        date_str = date_str.split('+')[0].split('-')[0] if '+' in date_str or '-' in date_str else date_str
+                        date_str = (
+                            date_str.split("+")[0].split("-")[0]
+                            if "+" in date_str or "-" in date_str
+                            else date_str
+                        )
                         return datetime.fromisoformat(date_str)
                 except:
                     continue
@@ -306,13 +317,16 @@ class EnhancedPDFScraper:
 
         self.last_request_time = time.time()
 
-    def search(self, topic: str, time_range: Optional[Tuple[datetime, datetime]] = None) -> List[Dict[str, Any]]:
+    def search(
+        self, topic: str, time_range: tuple[datetime, datetime] | None = None
+    ) -> list[dict[str, Any]]:
         """Synchronous search wrapper"""
         return asyncio.run(self.search_async(topic, time_range))
 
     async def cleanup(self):
         """Cleanup resources"""
         await self.processor.cleanup()
+
 
 # Backward compatibility
 PDFScraper = EnhancedPDFScraper

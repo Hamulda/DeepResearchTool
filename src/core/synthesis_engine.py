@@ -1,44 +1,43 @@
 #!/usr/bin/env python3
-"""
-Synthesis Engine s Evidence Binding pro Deep Research Tool
+"""Synthesis Engine s Evidence Binding pro Deep Research Tool
 Implementuje syntézu s povinným per-claim evidence binding
 
 Author: Senior IT Specialist
 """
 
-import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 import json
 import re
-from datetime import datetime
-import hashlib
+from typing import Any
 
 import structlog
 
 logger = structlog.get_logger(__name__)
 
+
 @dataclass
 class Evidence:
     """Evidence pro claim"""
+
     source_id: str
     source_url: str
     passage: str
     confidence: float
     citation: str  # WARC:{filename}:{offset}, DOI:{doi}, etc.
     timestamp: str
-    offset_start: Optional[int] = None
-    offset_end: Optional[int] = None
+    offset_start: int | None = None
+    offset_end: int | None = None
     verification_status: str = "pending"
+
 
 @dataclass
 class Claim:
     """Jednotlivý claim s evidence"""
+
     id: str
     text: str
     confidence: float
-    evidence_list: List[Evidence] = field(default_factory=list)
+    evidence_list: list[Evidence] = field(default_factory=list)
     topic: str = ""
     claim_type: str = "factual"  # factual, opinion, prediction
 
@@ -51,10 +50,11 @@ class Claim:
         sources = set(evidence.source_id for evidence in self.evidence_list)
         return len(sources)
 
+
 class SynthesisEngine:
     """Engine pro syntézu s evidence binding"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.synthesis_config = config.get("workflow", {}).get("phases", {}).get("synthesis", {})
         self.evidence_config = config.get("evidence_binding", {})
@@ -63,7 +63,9 @@ class SynthesisEngine:
         # Konfigurace evidence binding
         self.min_evidence_per_claim = self.synthesis_config.get("min_evidence_per_claim", 2)
         self.confidence_threshold = self.synthesis_config.get("confidence_threshold", 0.7)
-        self.max_confidence_without_evidence = self.evidence_config.get("max_confidence_without_evidence", 0.3)
+        self.max_confidence_without_evidence = self.evidence_config.get(
+            "max_confidence_without_evidence", 0.3
+        )
 
         # Citation formáty
         self.citation_formats = self.evidence_config.get("citation_formats", {})
@@ -76,26 +78,32 @@ class SynthesisEngine:
 
         # Import Ollama agenta pro syntézu
         from ..core.ollama_agent import OllamaResearchAgent
+
         self.ollama_agent = OllamaResearchAgent(self.config)
 
         # Model pro syntézu
-        self.synthesis_model = self.m1_config.get("ollama", {}).get("models", {}).get("synthesis", "llama3.2:8b")
+        self.synthesis_model = (
+            self.m1_config.get("ollama", {}).get("models", {}).get("synthesis", "llama3.2:8b")
+        )
 
         self.logger.info("Synthesis engine inicializován")
 
-    async def synthesize_with_evidence(self,
-                                     query: str,
-                                     documents: List[Dict[str, Any]],
-                                     min_evidence_per_claim: Optional[int] = None) -> Dict[str, Any]:
+    async def synthesize_with_evidence(
+        self,
+        query: str,
+        documents: list[dict[str, Any]],
+        min_evidence_per_claim: int | None = None,
+    ) -> dict[str, Any]:
         """Hlavní metoda pro syntézu s evidence binding"""
-
         if min_evidence_per_claim is None:
             min_evidence_per_claim = self.min_evidence_per_claim
 
-        self.logger.info("Spouštím syntézu s evidence binding",
-                        query=query,
-                        documents=len(documents),
-                        min_evidence=min_evidence_per_claim)
+        self.logger.info(
+            "Spouštím syntézu s evidence binding",
+            query=query,
+            documents=len(documents),
+            min_evidence=min_evidence_per_claim,
+        )
 
         # Krok 1: Extrakce claims z dokumentů
         extracted_claims = await self._extract_claims_from_documents(query, documents)
@@ -104,7 +112,9 @@ class SynthesisEngine:
         claims_with_evidence = await self._bind_evidence_to_claims(extracted_claims, documents)
 
         # Krok 3: Filtrování claims bez dostatečných důkazů
-        verified_claims = self._filter_claims_by_evidence(claims_with_evidence, min_evidence_per_claim)
+        verified_claims = self._filter_claims_by_evidence(
+            claims_with_evidence, min_evidence_per_claim
+        )
 
         # Krok 4: Syntéza finálního odpovědi
         final_synthesis = await self._generate_final_synthesis(query, verified_claims)
@@ -124,15 +134,14 @@ class SynthesisEngine:
                 "total_extracted_claims": len(extracted_claims),
                 "verified_claims": len(verified_claims),
                 "filtered_claims": len(extracted_claims) - len(verified_claims),
-                "evidence_requirement": min_evidence_per_claim
-            }
+                "evidence_requirement": min_evidence_per_claim,
+            },
         }
 
-    async def _extract_claims_from_documents(self,
-                                           query: str,
-                                           documents: List[Dict[str, Any]]) -> List[Claim]:
+    async def _extract_claims_from_documents(
+        self, query: str, documents: list[dict[str, Any]]
+    ) -> list[Claim]:
         """Extrakce claims z dokumentů"""
-
         # Připrava dokumentů pro analýzu
         documents_text = ""
         for i, doc in enumerate(documents[:10]):  # Limit pro kontext
@@ -179,9 +188,7 @@ Extrauj maximálně 15 nejdůležitějších claims.
 
         try:
             response = await self.ollama_agent.generate_response(
-                extraction_prompt,
-                model=self.synthesis_model,
-                max_tokens=1500
+                extraction_prompt, model=self.synthesis_model, max_tokens=1500
             )
 
             # Parsování JSON odpovědi
@@ -196,7 +203,7 @@ Extrauj maximálně 15 nejdůležitějších claims.
                     text=claim_data.get("text", ""),
                     confidence=claim_data.get("confidence", 0.5),
                     topic=claim_data.get("topic", ""),
-                    claim_type=claim_data.get("type", "factual")
+                    claim_type=claim_data.get("type", "factual"),
                 )
                 extracted_claims.append(claim)
 
@@ -207,11 +214,10 @@ Extrauj maximálně 15 nejdůležitějších claims.
             self.logger.error("Chyba při extrakci claims", error=str(e))
             return []
 
-    async def _bind_evidence_to_claims(self,
-                                     claims: List[Claim],
-                                     documents: List[Dict[str, Any]]) -> List[Claim]:
+    async def _bind_evidence_to_claims(
+        self, claims: list[Claim], documents: list[dict[str, Any]]
+    ) -> list[Claim]:
         """Binding evidence k claims"""
-
         self.logger.info("Provádím evidence binding", claims=len(claims))
 
         for claim in claims:
@@ -224,20 +230,17 @@ Extrauj maximálně 15 nejdůležitějších claims.
 
         return claims
 
-    async def _find_evidence_for_claim(self,
-                                     claim: Claim,
-                                     documents: List[Dict[str, Any]]) -> List[Evidence]:
+    async def _find_evidence_for_claim(
+        self, claim: Claim, documents: list[dict[str, Any]]
+    ) -> list[Evidence]:
         """Hledání evidence pro konkrétní claim"""
-
         evidence_list = []
         claim_keywords = self._extract_keywords(claim.text)
 
         for doc in documents:
             # Hledání relevantních pasáží
             relevant_passages = self._find_relevant_passages(
-                claim.text,
-                doc.get("content", ""),
-                claim_keywords
+                claim.text, doc.get("content", ""), claim_keywords
             )
 
             for passage, confidence in relevant_passages:
@@ -252,7 +255,7 @@ Extrauj maximálně 15 nejdůležitějších claims.
                     citation=citation,
                     timestamp=doc.get("timestamp", ""),
                     offset_start=doc.get("content", "").find(passage),
-                    offset_end=doc.get("content", "").find(passage) + len(passage)
+                    offset_end=doc.get("content", "").find(passage) + len(passage),
                 )
 
                 evidence_list.append(evidence)
@@ -269,17 +272,15 @@ Extrauj maximálně 15 nejdůležitějších claims.
 
         return independent_evidence[:4]  # Maximum 4 evidence na claim
 
-    def _find_relevant_passages(self,
-                              claim_text: str,
-                              document_content: str,
-                              claim_keywords: List[str]) -> List[Tuple[str, float]]:
+    def _find_relevant_passages(
+        self, claim_text: str, document_content: str, claim_keywords: list[str]
+    ) -> list[tuple[str, float]]:
         """Hledání relevantních pasáží v dokumentu"""
-
         if not document_content:
             return []
 
         passages = []
-        sentences = re.split(r'[.!?]+', document_content)
+        sentences = re.split(r"[.!?]+", document_content)
 
         for sentence in sentences:
             sentence = sentence.strip()
@@ -291,8 +292,9 @@ Extrauj maximálně 15 nejdůležitějších claims.
             claim_lower = claim_text.lower()
 
             # Keyword matching
-            keyword_matches = sum(1 for keyword in claim_keywords
-                                if keyword.lower() in sentence_lower)
+            keyword_matches = sum(
+                1 for keyword in claim_keywords if keyword.lower() in sentence_lower
+            )
             keyword_score = keyword_matches / len(claim_keywords) if claim_keywords else 0
 
             # Semantic similarity (jednoduchá heuristika)
@@ -310,25 +312,56 @@ Extrauj maximálně 15 nejdůležitějších claims.
 
         return passages[:3]  # Top 3 pasáže na dokument
 
-    def _extract_keywords(self, text: str) -> List[str]:
+    def _extract_keywords(self, text: str) -> list[str]:
         """Extrakce klíčových slov z textu"""
-
         # Jednoduché odstranění stop words a extrakce klíčových slov
         stop_words = {
-            "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-            "has", "he", "in", "is", "it", "its", "of", "on", "that", "the",
-            "to", "was", "will", "with", "že", "je", "se", "na", "v", "do",
-            "za", "s", "o", "nebo", "ale", "když", "jak"
+            "a",
+            "an",
+            "and",
+            "are",
+            "as",
+            "at",
+            "be",
+            "by",
+            "for",
+            "from",
+            "has",
+            "he",
+            "in",
+            "is",
+            "it",
+            "its",
+            "of",
+            "on",
+            "that",
+            "the",
+            "to",
+            "was",
+            "will",
+            "with",
+            "že",
+            "je",
+            "se",
+            "na",
+            "v",
+            "do",
+            "za",
+            "s",
+            "o",
+            "nebo",
+            "ale",
+            "když",
+            "jak",
         }
 
-        words = re.findall(r'\b\w+\b', text.lower())
+        words = re.findall(r"\b\w+\b", text.lower())
         keywords = [word for word in words if len(word) > 3 and word not in stop_words]
 
         return list(set(keywords))  # Unique keywords
 
-    def _create_citation(self, document: Dict[str, Any]) -> str:
+    def _create_citation(self, document: dict[str, Any]) -> str:
         """Vytvoření citace podle typu zdroje"""
-
         source = document.get("source", "").lower()
         url = document.get("url", "")
 
@@ -336,8 +369,7 @@ Extrauj maximálně 15 nejdůležitějších claims.
         if "warc" in document.get("metadata", {}):
             warc_info = document["metadata"]["warc"]
             return self.citation_formats.get("warc", "WARC:{filename}:{offset}").format(
-                filename=warc_info.get("filename", ""),
-                offset=warc_info.get("offset", "")
+                filename=warc_info.get("filename", ""), offset=warc_info.get("offset", "")
             )
 
         # DOI format
@@ -347,7 +379,7 @@ Extrauj maximálně 15 nejdůležitějších claims.
 
         # arXiv format
         if "arxiv.org" in url:
-            arxiv_id = re.search(r'arxiv\.org/abs/([^/]+)', url)
+            arxiv_id = re.search(r"arxiv\.org/abs/([^/]+)", url)
             if arxiv_id:
                 return self.citation_formats.get("arxiv", "arXiv:{id}").format(id=arxiv_id.group(1))
 
@@ -356,30 +388,28 @@ Extrauj maximálně 15 nejdůležitějších claims.
             return self.citation_formats.get("sec", "SEC:{cik}:{form}:{accession}").format(
                 cik=document.get("metadata", {}).get("cik", ""),
                 form=document.get("metadata", {}).get("form", ""),
-                accession=document.get("metadata", {}).get("accession", "")
+                accession=document.get("metadata", {}).get("accession", ""),
             )
 
         # Court format
         if "courtlistener" in source:
             return self.citation_formats.get("court", "Court:{docket_id}:{document_id}").format(
                 docket_id=document.get("metadata", {}).get("docket_id", ""),
-                document_id=document.get("metadata", {}).get("document_id", "")
+                document_id=document.get("metadata", {}).get("document_id", ""),
             )
 
         # Memento format
         if "memento" in document.get("metadata", {}):
             memento_info = document["metadata"]["memento"]
             return self.citation_formats.get("memento", "Memento:{datetime}:{url}").format(
-                datetime=memento_info.get("datetime", ""),
-                url=memento_info.get("url", "")
+                datetime=memento_info.get("datetime", ""), url=memento_info.get("url", "")
             )
 
         # Default URL citation
         return f"URL:{url}"
 
-    def _ensure_independent_sources(self, evidence_list: List[Evidence]) -> List[Evidence]:
+    def _ensure_independent_sources(self, evidence_list: list[Evidence]) -> list[Evidence]:
         """Zajištění nezávislých zdrojů pro evidence"""
-
         independent_evidence = []
         seen_sources = set()
 
@@ -398,7 +428,6 @@ Extrauj maximálně 15 nejdůležitějších claims.
 
     def _extract_domain(self, url: str) -> str:
         """Extrakce domény z URL"""
-
         import urllib.parse
 
         try:
@@ -407,11 +436,8 @@ Extrauj maximálně 15 nejdůležitějších claims.
         except:
             return url
 
-    def _filter_claims_by_evidence(self,
-                                 claims: List[Claim],
-                                 min_evidence: int) -> List[Claim]:
+    def _filter_claims_by_evidence(self, claims: list[Claim], min_evidence: int) -> list[Claim]:
         """Filtrování claims podle dostatečných důkazů"""
-
         verified_claims = []
 
         for claim in claims:
@@ -422,27 +448,28 @@ Extrauj maximálně 15 nejdůležitějších claims.
                 if independent_sources >= min_evidence:
                     verified_claims.append(claim)
                 else:
-                    self.logger.warning("Claim nemá dostatečně nezávislé zdroje",
-                                      claim_id=claim.id,
-                                      sources=independent_sources,
-                                      required=min_evidence)
+                    self.logger.warning(
+                        "Claim nemá dostatečně nezávislé zdroje",
+                        claim_id=claim.id,
+                        sources=independent_sources,
+                        required=min_evidence,
+                    )
             else:
-                self.logger.warning("Claim nemá dostatečné evidence",
-                                  claim_id=claim.id,
-                                  evidence_count=len(claim.evidence_list),
-                                  required=min_evidence)
+                self.logger.warning(
+                    "Claim nemá dostatečné evidence",
+                    claim_id=claim.id,
+                    evidence_count=len(claim.evidence_list),
+                    required=min_evidence,
+                )
 
-        self.logger.info("Claims filtrovány podle evidence",
-                        original=len(claims),
-                        verified=len(verified_claims))
+        self.logger.info(
+            "Claims filtrovány podle evidence", original=len(claims), verified=len(verified_claims)
+        )
 
         return verified_claims
 
-    async def _generate_final_synthesis(self,
-                                      query: str,
-                                      verified_claims: List[Claim]) -> str:
+    async def _generate_final_synthesis(self, query: str, verified_claims: list[Claim]) -> str:
         """Generování finální syntézy"""
-
         if not verified_claims:
             return "Na základě dostupných zdrojů nebylo možné najít dostatečně podložená tvrzení pro odpověď na dotaz."
 
@@ -471,9 +498,7 @@ Odpověz ve strukturovaném formátu s jasným označením citací.
 
         try:
             synthesis = await self.ollama_agent.generate_response(
-                synthesis_prompt,
-                model=self.synthesis_model,
-                max_tokens=1000
+                synthesis_prompt, model=self.synthesis_model, max_tokens=1000
             )
 
             return synthesis
@@ -482,9 +507,8 @@ Odpověz ve strukturovaném formátu s jasným označením citací.
             self.logger.error("Chyba při generování syntézy", error=str(e))
             return "Chyba při generování finální syntézy."
 
-    def _calculate_overall_confidence(self, claims: List[Claim]) -> float:
+    def _calculate_overall_confidence(self, claims: list[Claim]) -> float:
         """Výpočet celkové confidence"""
-
         if not claims:
             return 0.0
 
@@ -506,32 +530,32 @@ Odpověz ve strukturovaném formátu s jasným označením citací.
 
         return total_weighted_confidence / total_weight
 
-    def _create_evidence_bindings(self, claims: List[Claim]) -> Dict[str, List[Dict[str, Any]]]:
+    def _create_evidence_bindings(self, claims: list[Claim]) -> dict[str, list[dict[str, Any]]]:
         """Vytvoření evidence bindings pro export"""
-
         bindings = {}
 
         for claim in claims:
             evidence_data = []
             for evidence in claim.evidence_list:
-                evidence_data.append({
-                    "source": evidence.source_id,
-                    "url": evidence.source_url,
-                    "citation": evidence.citation,
-                    "passage": evidence.passage,
-                    "confidence": evidence.confidence,
-                    "timestamp": evidence.timestamp,
-                    "offset_start": evidence.offset_start,
-                    "offset_end": evidence.offset_end
-                })
+                evidence_data.append(
+                    {
+                        "source": evidence.source_id,
+                        "url": evidence.source_url,
+                        "citation": evidence.citation,
+                        "passage": evidence.passage,
+                        "confidence": evidence.confidence,
+                        "timestamp": evidence.timestamp,
+                        "offset_start": evidence.offset_start,
+                        "offset_end": evidence.offset_end,
+                    }
+                )
 
             bindings[claim.id] = evidence_data
 
         return bindings
 
-    def _claim_to_dict(self, claim: Claim) -> Dict[str, Any]:
+    def _claim_to_dict(self, claim: Claim) -> dict[str, Any]:
         """Konverze Claim objektu na dictionary"""
-
         return {
             "id": claim.id,
             "text": claim.text,
@@ -540,5 +564,5 @@ Odpověz ve strukturovaném formátu s jasným označením citací.
             "type": claim.claim_type,
             "evidence_count": len(claim.evidence_list),
             "independent_sources": claim.get_independent_sources(),
-            "has_sufficient_evidence": claim.has_sufficient_evidence(self.min_evidence_per_claim)
+            "has_sufficient_evidence": claim.has_sufficient_evidence(self.min_evidence_per_claim),
         }

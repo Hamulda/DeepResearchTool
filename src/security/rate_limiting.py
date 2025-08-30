@@ -1,14 +1,12 @@
-"""
-FÁZE 7: Rate Limiting Engine
+"""FÁZE 7: Rate Limiting Engine
 Per-domain rate limiting s exponential backoff a inteligentním throttling
 """
 
 import asyncio
-import logging
-import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+import logging
+import time
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -17,6 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RateLimitConfig:
     """Konfigurace rate limitingu pro doménu"""
+
     domain: str
     requests_per_minute: int = 30
     requests_per_hour: int = 1000
@@ -29,6 +28,7 @@ class RateLimitConfig:
 @dataclass
 class DomainState:
     """Stav rate limitingu pro doménu"""
+
     request_times: deque = field(default_factory=deque)
     hourly_request_times: deque = field(default_factory=deque)
     consecutive_failures: int = 0
@@ -41,6 +41,7 @@ class DomainState:
 @dataclass
 class RateLimitResult:
     """Výsledek rate limit kontroly"""
+
     allowed: bool
     wait_time: float = 0.0
     reason: str = ""
@@ -49,8 +50,7 @@ class RateLimitResult:
 
 
 class RateLimitEngine:
-    """
-    Advanced rate limiting engine s per-domain tracking
+    """Advanced rate limiting engine s per-domain tracking
 
     Features:
     - Per-domain rate limiting (minutové a hodinové limity)
@@ -65,7 +65,7 @@ class RateLimitEngine:
         default_requests_per_minute: int = 30,
         default_requests_per_hour: int = 1000,
         default_burst_allowance: int = 5,
-        cleanup_interval_minutes: int = 60
+        cleanup_interval_minutes: int = 60,
     ):
         self.default_requests_per_minute = default_requests_per_minute
         self.default_requests_per_hour = default_requests_per_hour
@@ -73,31 +73,35 @@ class RateLimitEngine:
         self.cleanup_interval_minutes = cleanup_interval_minutes
 
         # Per-domain konfigurace
-        self.domain_configs: Dict[str, RateLimitConfig] = {}
+        self.domain_configs: dict[str, RateLimitConfig] = {}
 
         # Per-domain stav
-        self.domain_states: Dict[str, DomainState] = defaultdict(DomainState)
+        self.domain_states: dict[str, DomainState] = defaultdict(DomainState)
 
         # Global statistiky
         self.global_stats = {
             "total_requests": 0,
             "total_blocked": 0,
             "total_domains": 0,
-            "backoff_events": 0
+            "backoff_events": 0,
         }
 
         # Lock pro thread safety
         self._lock = asyncio.Lock()
 
         # Cleanup task
-        self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_task: asyncio.Task | None = None
 
-        logger.info(f"RateLimitEngine initialized: {default_requests_per_minute}/min, {default_requests_per_hour}/hour")
+        logger.info(
+            f"RateLimitEngine initialized: {default_requests_per_minute}/min, {default_requests_per_hour}/hour"
+        )
 
     def add_domain_config(self, config: RateLimitConfig) -> None:
         """Přidání specifické konfigurace pro doménu"""
         self.domain_configs[config.domain] = config
-        logger.info(f"Added rate limit config for {config.domain}: {config.requests_per_minute}/min")
+        logger.info(
+            f"Added rate limit config for {config.domain}: {config.requests_per_minute}/min"
+        )
 
     def _extract_domain(self, url: str) -> str:
         """Extrakce domény z URL"""
@@ -112,32 +116,33 @@ class RateLimitEngine:
             domain=domain,
             requests_per_minute=self.default_requests_per_minute,
             requests_per_hour=self.default_requests_per_hour,
-            burst_allowance=self.default_burst_allowance
+            burst_allowance=self.default_burst_allowance,
         )
 
     def _cleanup_old_requests(self, domain_state: DomainState, current_time: float) -> None:
         """Vyčištění starých requestů z historie"""
         # Minutové requesty (starší než 60 sekund)
-        while (domain_state.request_times and
-               current_time - domain_state.request_times[0] > 60):
+        while domain_state.request_times and current_time - domain_state.request_times[0] > 60:
             domain_state.request_times.popleft()
 
         # Hodinové requesty (starší než 3600 sekund)
-        while (domain_state.hourly_request_times and
-               current_time - domain_state.hourly_request_times[0] > 3600):
+        while (
+            domain_state.hourly_request_times
+            and current_time - domain_state.hourly_request_times[0] > 3600
+        ):
             domain_state.hourly_request_times.popleft()
 
     def _calculate_backoff_time(self, config: RateLimitConfig, failures: int) -> float:
         """Výpočet exponential backoff času"""
-        backoff_time = config.backoff_factor ** failures
+        backoff_time = config.backoff_factor**failures
         return min(backoff_time, config.max_backoff_seconds)
 
     async def check_rate_limit(self, url: str) -> RateLimitResult:
-        """
-        Kontrola rate limitu pro URL
+        """Kontrola rate limitu pro URL
 
         Returns:
             RateLimitResult s informacemi o povolení/blokování
+
         """
         async with self._lock:
             domain = self._extract_domain(url)
@@ -160,7 +165,7 @@ class RateLimitEngine:
                     wait_time=wait_time,
                     reason=f"Domain in backoff until {time.ctime(state.backoff_until)}",
                     requests_remaining=0,
-                    reset_time=state.backoff_until
+                    reset_time=state.backoff_until,
                 )
 
             # Kontrola minutového limitu
@@ -168,7 +173,10 @@ class RateLimitEngine:
             if minute_requests >= config.requests_per_minute:
                 # Kontrola burst allowance
                 time_since_last = current_time - state.last_request_time
-                if time_since_last < 1.0 and minute_requests >= config.requests_per_minute + config.burst_allowance:
+                if (
+                    time_since_last < 1.0
+                    and minute_requests >= config.requests_per_minute + config.burst_allowance
+                ):
                     wait_time = 60 - (current_time - state.request_times[0])
                     self.global_stats["total_blocked"] += 1
                     state.blocked_requests += 1
@@ -178,7 +186,7 @@ class RateLimitEngine:
                         wait_time=max(wait_time, 0),
                         reason="Minute rate limit exceeded",
                         requests_remaining=0,
-                        reset_time=current_time + wait_time
+                        reset_time=current_time + wait_time,
                     )
 
             # Kontrola hodinového limitu
@@ -193,7 +201,7 @@ class RateLimitEngine:
                     wait_time=max(wait_time, 0),
                     reason="Hour rate limit exceeded",
                     requests_remaining=0,
-                    reset_time=current_time + wait_time
+                    reset_time=current_time + wait_time,
                 )
 
             # Request povolen - aktualizace stavu
@@ -213,12 +221,11 @@ class RateLimitEngine:
                 wait_time=0.0,
                 reason="Request allowed",
                 requests_remaining=config.requests_per_minute - len(state.request_times),
-                reset_time=current_time + 60
+                reset_time=current_time + 60,
             )
 
     async def record_failure(self, url: str, apply_backoff: bool = True) -> None:
-        """
-        Zaznamenání selhání requestu (pro exponential backoff)
+        """Zaznamenání selhání requestu (pro exponential backoff)
         """
         async with self._lock:
             domain = self._extract_domain(url)
@@ -258,11 +265,11 @@ class RateLimitEngine:
         return result.wait_time if not result.allowed else 0.0
 
     async def wait_if_needed(self, url: str) -> bool:
-        """
-        Počkání pokud je to potřeba kvůli rate limitu
+        """Počkání pokud je to potřeba kvůli rate limitu
 
         Returns:
             bool: True pokud byl request povolen (po případném čekání)
+
         """
         result = await self.check_rate_limit(url)
 
@@ -275,7 +282,7 @@ class RateLimitEngine:
 
         return result.allowed
 
-    def get_domain_stats(self, domain: str) -> Dict[str, any]:
+    def get_domain_stats(self, domain: str) -> dict[str, any]:
         """Statistiky pro konkrétní doménu"""
         if domain not in self.domain_states:
             return {"error": "Domain not found"}
@@ -288,7 +295,8 @@ class RateLimitEngine:
             "domain": domain,
             "total_requests": state.total_requests,
             "blocked_requests": state.blocked_requests,
-            "success_rate": (state.total_requests - state.blocked_requests) / max(state.total_requests, 1),
+            "success_rate": (state.total_requests - state.blocked_requests)
+            / max(state.total_requests, 1),
             "consecutive_failures": state.consecutive_failures,
             "in_backoff": current_time < state.backoff_until,
             "backoff_remaining": max(0, state.backoff_until - current_time),
@@ -297,10 +305,10 @@ class RateLimitEngine:
             "minute_limit": config.requests_per_minute,
             "hour_limit": config.requests_per_hour,
             "minute_utilization": len(state.request_times) / max(config.requests_per_minute, 1),
-            "hour_utilization": len(state.hourly_request_times) / max(config.requests_per_hour, 1)
+            "hour_utilization": len(state.hourly_request_times) / max(config.requests_per_hour, 1),
         }
 
-    def get_global_stats(self) -> Dict[str, any]:
+    def get_global_stats(self) -> dict[str, any]:
         """Globální statistiky rate limiteru"""
         active_domains = len([d for d in self.domain_states.values() if d.total_requests > 0])
 
@@ -308,10 +316,10 @@ class RateLimitEngine:
             **self.global_stats,
             "active_domains": active_domains,
             "average_success_rate": (
-                (self.global_stats["total_requests"] - self.global_stats["total_blocked"]) /
-                max(self.global_stats["total_requests"], 1)
+                (self.global_stats["total_requests"] - self.global_stats["total_blocked"])
+                / max(self.global_stats["total_requests"], 1)
             ),
-            "configured_domains": len(self.domain_configs)
+            "configured_domains": len(self.domain_configs),
         }
 
     async def start_cleanup_task(self) -> None:
@@ -353,8 +361,9 @@ class RateLimitEngine:
                 self._cleanup_old_requests(state, current_time)
 
                 # Odstranění neaktivních domén
-                if (state.total_requests == 0 or
-                    (current_time - state.last_request_time > 86400)):  # 24 hodin
+                if state.total_requests == 0 or (
+                    current_time - state.last_request_time > 86400
+                ):  # 24 hodin
                     domains_to_remove.append(domain)
 
             # Odstranění neaktivních domén
@@ -373,15 +382,14 @@ def create_rate_limit_engine(**kwargs) -> RateLimitEngine:
 
 # Demo použití
 if __name__ == "__main__":
+
     async def demo():
         engine = RateLimitEngine(default_requests_per_minute=5)
 
         # Přidání specifické konfigurace
-        engine.add_domain_config(RateLimitConfig(
-            domain="example.com",
-            requests_per_minute=10,
-            burst_allowance=3
-        ))
+        engine.add_domain_config(
+            RateLimitConfig(domain="example.com", requests_per_minute=10, burst_allowance=3)
+        )
 
         await engine.start_cleanup_task()
 
@@ -390,7 +398,7 @@ if __name__ == "__main__":
             test_urls = [
                 "https://example.com/page1",
                 "https://example.com/page2",
-                "https://test.com/data"
+                "https://test.com/data",
             ]
 
             for i in range(12):

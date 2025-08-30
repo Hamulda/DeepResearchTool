@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-"""
-Near-Duplicate Deduplication a Per-Collection Qdrant Optimalizace
+"""Near-Duplicate Deduplication a Per-Collection Qdrant Optimalizace
 MinHash/Cosine deduplication + collection-specific ef_search tuning
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple, Set
+from collections import defaultdict
 from dataclasses import dataclass
 import hashlib
+import logging
 import time
+from typing import Any
+
 import numpy as np
-from collections import defaultdict
-import json
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +21,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DeduplicationConfig:
     """Konfigurace deduplikace"""
+
     enabled: bool = True
     similarity_threshold: float = 0.85  # Práh pro near-duplicates
     use_minhash: bool = True  # MinHash pro rychlou deduplikaci
-    use_cosine: bool = True   # Cosine similarity pro přesnou deduplikaci
+    use_cosine: bool = True  # Cosine similarity pro přesnou deduplikaci
     content_field: str = "content"  # Pole pro porovnání obsahu
 
     # MinHash parameters
@@ -45,6 +44,7 @@ class DeduplicationConfig:
 @dataclass
 class QdrantCollectionConfig:
     """Konfigurace pro Qdrant kolekci"""
+
     name: str
     ef_search: int = 128  # Search parameter
     ef_construct: int = 200  # Construction parameter
@@ -66,13 +66,9 @@ class MinHashDeduplicator:
     def __init__(self, config: DeduplicationConfig):
         self.config = config
         self.permutations = self._generate_permutations()
-        self.dedup_stats = {
-            "total_processed": 0,
-            "duplicates_found": 0,
-            "avg_processing_time": 0.0
-        }
+        self.dedup_stats = {"total_processed": 0, "duplicates_found": 0, "avg_processing_time": 0.0}
 
-    def _generate_permutations(self) -> List[Tuple[int, int]]:
+    def _generate_permutations(self) -> list[tuple[int, int]]:
         """Generuje permutace pro MinHash"""
         # Velké prvočíslo pro hash functions
         large_prime = 2**31 - 1
@@ -107,7 +103,7 @@ class MinHashDeduplicator:
 
         return np.array(signature, dtype=np.int64)
 
-    def _create_shingles(self, content: str) -> Set[str]:
+    def _create_shingles(self, content: str) -> set[str]:
         """Vytvoří shingles z obsahu"""
         # Normalizuj text
         content = content.lower().strip()
@@ -118,7 +114,7 @@ class MinHashDeduplicator:
 
         shingles = set()
         for i in range(len(words) - self.config.shingle_size + 1):
-            shingle = " ".join(words[i:i + self.config.shingle_size])
+            shingle = " ".join(words[i : i + self.config.shingle_size])
             shingles.add(shingle)
 
         return shingles
@@ -135,7 +131,7 @@ class MinHashDeduplicator:
         matches = np.sum(sig1 == sig2)
         return matches / len(sig1)
 
-    def find_near_duplicates(self, documents: List[Dict[str, Any]]) -> List[List[int]]:
+    def find_near_duplicates(self, documents: list[dict[str, Any]]) -> list[list[int]]:
         """Najde near-duplicate skupiny pomocí MinHash"""
         start_time = time.time()
 
@@ -160,7 +156,7 @@ class MinHashDeduplicator:
             group = [idx1]
             processed.add(idx1)
 
-            for j, (idx2, sig2) in enumerate(signatures[i+1:], i+1):
+            for j, (idx2, sig2) in enumerate(signatures[i + 1 :], i + 1):
                 if idx2 in processed:
                     continue
 
@@ -204,16 +200,15 @@ class CosineDeduplicator:
         self.dedup_stats = {
             "embeddings_computed": 0,
             "comparisons_made": 0,
-            "avg_embedding_time": 0.0
+            "avg_embedding_time": 0.0,
         }
 
     async def find_near_duplicates_cosine(
         self,
-        documents: List[Dict[str, Any]],
-        candidate_pairs: Optional[List[Tuple[int, int]]] = None
-    ) -> List[List[int]]:
-        """
-        Najde near-duplicates pomocí cosine similarity
+        documents: list[dict[str, Any]],
+        candidate_pairs: list[tuple[int, int]] | None = None,
+    ) -> list[list[int]]:
+        """Najde near-duplicates pomocí cosine similarity
         candidate_pairs: Páry pro kontrolu (z MinHash pre-filtering)
         """
         if not self.config.enabled or not self.config.use_cosine:
@@ -251,11 +246,13 @@ class CosineDeduplicator:
             duplicate_groups = self._find_duplicates_full_comparison(embeddings, doc_mapping)
 
         elapsed_time = time.time() - start_time
-        logger.info(f"Cosine deduplication completed in {elapsed_time:.2f}s: {len(duplicate_groups)} groups")
+        logger.info(
+            f"Cosine deduplication completed in {elapsed_time:.2f}s: {len(duplicate_groups)} groups"
+        )
 
         return duplicate_groups
 
-    async def _compute_embeddings(self, documents: List[Dict[str, Any]]) -> List[np.ndarray]:
+    async def _compute_embeddings(self, documents: list[dict[str, Any]]) -> list[np.ndarray]:
         """Vypočítá embeddings pro dokumenty"""
         embeddings = []
         start_time = time.time()
@@ -273,7 +270,7 @@ class CosineDeduplicator:
         # Batch processing pro efektivitu
         batch_size = self.config.batch_size
         for i in range(0, len(documents), batch_size):
-            batch = documents[i:i + batch_size]
+            batch = documents[i : i + batch_size]
             batch_contents = [doc.get(self.config.content_field, "") for doc in batch]
 
             try:
@@ -303,10 +300,10 @@ class CosineDeduplicator:
 
     def _find_duplicates_from_pairs(
         self,
-        embeddings: List[np.ndarray],
-        candidate_pairs: List[Tuple[int, int]],
-        doc_mapping: Dict[int, int]
-    ) -> List[List[int]]:
+        embeddings: list[np.ndarray],
+        candidate_pairs: list[tuple[int, int]],
+        doc_mapping: dict[int, int],
+    ) -> list[list[int]]:
         """Najde duplicates z candidate pairs"""
         duplicate_groups = []
         processed = set()
@@ -337,10 +334,8 @@ class CosineDeduplicator:
         return duplicate_groups
 
     def _find_duplicates_full_comparison(
-        self,
-        embeddings: List[np.ndarray],
-        doc_mapping: Dict[int, int]
-    ) -> List[List[int]]:
+        self, embeddings: list[np.ndarray], doc_mapping: dict[int, int]
+    ) -> list[list[int]]:
         """Najde duplicates pomocí full pairwise comparison"""
         duplicate_groups = []
         processed = set()
@@ -388,21 +383,18 @@ class CosineDeduplicator:
 class QdrantCollectionOptimizer:
     """Optimalizace per-collection ef_search parametrů pro Qdrant"""
 
-    def __init__(self, config: Dict[str, QdrantCollectionConfig]):
+    def __init__(self, config: dict[str, QdrantCollectionConfig]):
         self.collection_configs = config
         self.performance_history = defaultdict(list)
         self.optimization_stats = {
             "collections_tuned": 0,
             "total_queries_monitored": 0,
-            "avg_improvement_percent": 0.0
+            "avg_improvement_percent": 0.0,
         }
 
     async def optimize_collection(
-        self,
-        collection_name: str,
-        qdrant_client,
-        test_queries: List[str] = None
-    ) -> Dict[str, Any]:
+        self, collection_name: str, qdrant_client, test_queries: list[str] = None
+    ) -> dict[str, Any]:
         """Optimalizuje ef_search pro konkrétní kolekci"""
         if collection_name not in self.collection_configs:
             logger.warning(f"Collection {collection_name} not configured for optimization")
@@ -441,7 +433,9 @@ class QdrantCollectionOptimizer:
                 if self._is_better_performance(metrics, best_metrics, config):
                     best_ef_search = ef_value
                     best_metrics = metrics
-                    logger.info(f"Collection {collection_name}: ef_search {ef_value} shows improvement")
+                    logger.info(
+                        f"Collection {collection_name}: ef_search {ef_value} shows improvement"
+                    )
 
             except Exception as e:
                 logger.warning(f"Failed to test ef_search {ef_value} for {collection_name}: {e}")
@@ -460,7 +454,7 @@ class QdrantCollectionOptimizer:
             "baseline_metrics": baseline_metrics,
             "optimized_metrics": best_metrics,
             "optimization_time_seconds": elapsed_time,
-            "improvement_percent": self._calculate_improvement(baseline_metrics, best_metrics)
+            "improvement_percent": self._calculate_improvement(baseline_metrics, best_metrics),
         }
 
         self.optimization_stats["collections_tuned"] += 1
@@ -471,12 +465,8 @@ class QdrantCollectionOptimizer:
         return optimization_result
 
     async def _measure_performance(
-        self,
-        collection_name: str,
-        qdrant_client,
-        ef_search: int,
-        test_queries: List[str] = None
-    ) -> Dict[str, float]:
+        self, collection_name: str, qdrant_client, ef_search: int, test_queries: list[str] = None
+    ) -> dict[str, float]:
         """Změří performance pro danou ef_search hodnotu"""
         if not test_queries:
             # Generuj test queries
@@ -485,7 +475,7 @@ class QdrantCollectionOptimizer:
                 "neural network architecture",
                 "data processing pipeline",
                 "optimization techniques",
-                "research methodology"
+                "research methodology",
             ]
 
         latencies = []
@@ -513,17 +503,17 @@ class QdrantCollectionOptimizer:
             return {"error": "no_valid_measurements"}
 
         # Vypočítaj metriky
-        p95_latency = np.percentile(latencies, 95) if latencies else float('inf')
+        p95_latency = np.percentile(latencies, 95) if latencies else float("inf")
         avg_recall = np.mean(recall_scores) if recall_scores else 0.0
 
         return {
             "ef_search": ef_search,
             "p95_latency_ms": p95_latency,
             "avg_recall": avg_recall,
-            "measurement_count": len(latencies)
+            "measurement_count": len(latencies),
         }
 
-    def _generate_test_values(self, current_ef: int) -> List[int]:
+    def _generate_test_values(self, current_ef: int) -> list[int]:
         """Generuje test hodnoty pro ef_search"""
         step = self.collection_configs.get("step_size", 16)
 
@@ -546,16 +536,16 @@ class QdrantCollectionOptimizer:
 
     def _is_better_performance(
         self,
-        new_metrics: Dict[str, float],
-        best_metrics: Dict[str, float],
-        config: QdrantCollectionConfig
+        new_metrics: dict[str, float],
+        best_metrics: dict[str, float],
+        config: QdrantCollectionConfig,
     ) -> bool:
         """Určí, zda nové metriky jsou lepší"""
         if "error" in new_metrics or "error" in best_metrics:
             return False
 
-        new_latency = new_metrics.get("p95_latency_ms", float('inf'))
-        best_latency = best_metrics.get("p95_latency_ms", float('inf'))
+        new_latency = new_metrics.get("p95_latency_ms", float("inf"))
+        best_latency = best_metrics.get("p95_latency_ms", float("inf"))
 
         new_recall = new_metrics.get("avg_recall", 0.0)
         best_recall = best_metrics.get("avg_recall", 0.0)
@@ -570,7 +560,7 @@ class QdrantCollectionOptimizer:
         # Preference: nejdříve recall, pak latency
         if new_recall > best_recall + 0.01:  # Significant recall improvement
             return True
-        elif abs(new_recall - best_recall) <= 0.01:  # Similar recall
+        if abs(new_recall - best_recall) <= 0.01:  # Similar recall
             return new_latency < best_latency
 
         return False
@@ -582,9 +572,7 @@ class QdrantCollectionOptimizer:
         await asyncio.sleep(0.01)  # Simulate API call
 
     def _calculate_improvement(
-        self,
-        baseline: Dict[str, float],
-        optimized: Dict[str, float]
+        self, baseline: dict[str, float], optimized: dict[str, float]
     ) -> float:
         """Vypočítá improvement percentage"""
         if "error" in baseline or "error" in optimized:
@@ -599,7 +587,7 @@ class QdrantCollectionOptimizer:
         improvement = ((optimized_recall - baseline_recall) / baseline_recall) * 100
         return improvement
 
-    def _update_optimization_stats(self, result: Dict[str, Any]):
+    def _update_optimization_stats(self, result: dict[str, Any]):
         """Aktualizuje optimization statistiky"""
         improvement = result.get("improvement_percent", 0.0)
 
@@ -609,8 +597,8 @@ class QdrantCollectionOptimizer:
             self.optimization_stats["avg_improvement_percent"] = improvement
         else:
             self.optimization_stats["avg_improvement_percent"] = (
-                alpha * improvement +
-                (1 - alpha) * self.optimization_stats["avg_improvement_percent"]
+                alpha * improvement
+                + (1 - alpha) * self.optimization_stats["avg_improvement_percent"]
             )
 
 
@@ -622,18 +610,12 @@ class IntegratedDeduplication:
         self.minhash_dedup = MinHashDeduplicator(config)
         self.cosine_dedup = CosineDeduplicator(config, embedding_model)
 
-        self.merge_stats = {
-            "total_merges": 0,
-            "documents_merged": 0,
-            "avg_group_size": 0.0
-        }
+        self.merge_stats = {"total_merges": 0, "documents_merged": 0, "avg_group_size": 0.0}
 
     async def deduplicate_documents(
-        self,
-        documents: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        """
-        Kompletní deduplikace s MinHash pre-filtering a Cosine validation
+        self, documents: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Kompletní deduplikace s MinHash pre-filtering a Cosine validation
         """
         start_time = time.time()
 
@@ -680,21 +662,21 @@ class IntegratedDeduplication:
             "merge_mapping": merge_mapping if self.config.keep_merge_info else {},
             "processing_time_seconds": elapsed_time,
             "minhash_stats": self.minhash_dedup.dedup_stats,
-            "cosine_stats": self.cosine_dedup.dedup_stats
+            "cosine_stats": self.cosine_dedup.dedup_stats,
         }
 
         # 5. Update stats
         self._update_merge_stats(final_groups)
 
-        logger.info(f"Deduplication completed: {len(documents)} -> {len(deduplicated_docs)} documents")
+        logger.info(
+            f"Deduplication completed: {len(documents)} -> {len(deduplicated_docs)} documents"
+        )
 
         return deduplicated_docs, dedup_metadata
 
     def _merge_duplicate_groups(
-        self,
-        documents: List[Dict[str, Any]],
-        duplicate_groups: List[List[int]]
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        self, documents: list[dict[str, Any]], duplicate_groups: list[list[int]]
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Merge duplicate dokumenty podle konfigurace"""
         if not duplicate_groups:
             return documents, {}
@@ -725,7 +707,7 @@ class IntegratedDeduplication:
 
         return merged_docs, merge_mapping
 
-    def _merge_documents(self, docs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _merge_documents(self, docs: list[dict[str, Any]]) -> dict[str, Any]:
         """Merge skupiny duplicate dokumentů"""
         if len(docs) == 1:
             return docs[0]
@@ -754,12 +736,12 @@ class IntegratedDeduplication:
             merged["merge_info"] = {
                 "merged_count": len(docs),
                 "strategy": self.config.merge_strategy,
-                "original_ids": [doc.get("id", i) for i, doc in enumerate(docs)]
+                "original_ids": [doc.get("id", i) for i, doc in enumerate(docs)],
             }
 
         return merged
 
-    def _update_merge_stats(self, duplicate_groups: List[List[int]]):
+    def _update_merge_stats(self, duplicate_groups: list[list[int]]):
         """Aktualizuje merge statistiky"""
         if not duplicate_groups:
             return
@@ -780,19 +762,18 @@ class IntegratedDeduplication:
                 alpha * avg_group_size + (1 - alpha) * self.merge_stats["avg_group_size"]
             )
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Získá statistiky deduplikace"""
         return {
             "merge_stats": self.merge_stats,
             "minhash_stats": self.minhash_dedup.dedup_stats,
-            "cosine_stats": self.cosine_dedup.dedup_stats
+            "cosine_stats": self.cosine_dedup.dedup_stats,
         }
 
 
 # Factory funkce
 def create_deduplication_system(
-    config: Dict[str, Any],
-    embedding_model=None
+    config: dict[str, Any], embedding_model=None
 ) -> IntegratedDeduplication:
     """Factory funkce pro deduplikační systém"""
     dedup_config_dict = config.get("retrieval", {}).get("deduplication", {})
@@ -801,9 +782,7 @@ def create_deduplication_system(
     return IntegratedDeduplication(dedup_config, embedding_model)
 
 
-def create_qdrant_optimizer(
-    config: Dict[str, Any]
-) -> QdrantCollectionOptimizer:
+def create_qdrant_optimizer(config: dict[str, Any]) -> QdrantCollectionOptimizer:
     """Factory funkce pro Qdrant optimizer"""
     collections_config = config.get("qdrant", {}).get("collections", {})
 
@@ -818,9 +797,9 @@ def create_qdrant_optimizer(
 # Export hlavních tříd
 __all__ = [
     "DeduplicationConfig",
-    "QdrantCollectionConfig",
     "IntegratedDeduplication",
+    "QdrantCollectionConfig",
     "QdrantCollectionOptimizer",
     "create_deduplication_system",
-    "create_qdrant_optimizer"
+    "create_qdrant_optimizer",
 ]

@@ -28,11 +28,7 @@ class Phase2Tester:
     """Test suite pro FÁZE 2 komponenty"""
 
     def __init__(self):
-        self.test_results = {
-            "phase": 2,
-            "start_time": datetime.now().isoformat(),
-            "tests": []
-        }
+        self.test_results = {"phase": 2, "start_time": datetime.now().isoformat(), "tests": []}
         self.config = self._get_test_config()
 
     def _get_test_config(self):
@@ -42,38 +38,21 @@ class Phase2Tester:
                 "hyde": {
                     "enabled": True,
                     "budget_tokens": 512,
-                    "model": "llama3.2:3b-instruct-q4_K_M"
+                    "model": "llama3.2:3b-instruct-q4_K_M",
                 },
                 "qdrant": {
                     "url": ":memory:",
-                    "ef_search": {
-                        "arxiv": 128,
-                        "pubmed": 64,
-                        "default": 32
-                    }
-                }
+                    "ef_search": {"arxiv": 128, "pubmed": 64, "default": 32},
+                },
             },
             "ranking": {
-                "rrf": {
-                    "k": 60,
-                    "priors": {
-                        "authority": 0.3,
-                        "recency": 0.2
-                    }
-                },
-                "mmr": {
-                    "lambda": 0.6,
-                    "diversity_k": 10
-                }
+                "rrf": {"k": 60, "priors": {"authority": 0.3, "recency": 0.2}},
+                "mmr": {"lambda": 0.6, "diversity_k": 10},
             },
             "compression": {
                 "token_budget": 4096,
-                "source_weights": {
-                    "primary": 1.0,
-                    "secondary": 0.7,
-                    "aggregator": 0.3
-                }
-            }
+                "source_weights": {"primary": 1.0, "secondary": 0.7, "aggregator": 0.3},
+            },
         }
 
     async def test_hyde_generation(self):
@@ -94,9 +73,9 @@ class Phase2Tester:
                 "status": "passed",
                 "metrics": {
                     "doc_length": len(hypothetical_doc),
-                    "contains_keywords": "climate" in hypothetical_doc.lower()
+                    "contains_keywords": "climate" in hypothetical_doc.lower(),
                 },
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             self.test_results["tests"].append(test_result)
@@ -107,7 +86,7 @@ class Phase2Tester:
                 "test": "hyde_generation",
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             self.test_results["tests"].append(test_result)
             print(f"❌ HyDE generation test failed: {e}")
@@ -123,13 +102,13 @@ class Phase2Tester:
             dense_results = [
                 {"doc_id": "doc1", "score": 0.95, "metadata": {"authority": 0.8, "recency": 0.9}},
                 {"doc_id": "doc2", "score": 0.85, "metadata": {"authority": 0.6, "recency": 0.7}},
-                {"doc_id": "doc3", "score": 0.75, "metadata": {"authority": 0.9, "recency": 0.5}}
+                {"doc_id": "doc3", "score": 0.75, "metadata": {"authority": 0.9, "recency": 0.5}},
             ]
 
             bm25_results = [
                 {"doc_id": "doc2", "score": 0.9, "metadata": {"authority": 0.6, "recency": 0.7}},
                 {"doc_id": "doc1", "score": 0.8, "metadata": {"authority": 0.8, "recency": 0.9}},
-                {"doc_id": "doc4", "score": 0.7, "metadata": {"authority": 0.5, "recency": 0.8}}
+                {"doc_id": "doc4", "score": 0.7, "metadata": {"authority": 0.5, "recency": 0.8}},
             ]
 
             fused_results = rrf.fuse_rankings([dense_results, bm25_results])
@@ -143,9 +122,9 @@ class Phase2Tester:
                 "metrics": {
                     "results_count": len(fused_results),
                     "top_doc": fused_results[0]["doc_id"],
-                    "top_score": fused_results[0]["rrf_score"]
+                    "top_score": fused_results[0]["rrf_score"],
                 },
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             self.test_results["tests"].append(test_result)
@@ -156,7 +135,7 @@ class Phase2Tester:
                 "test": "rrf_with_priors",
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             self.test_results["tests"].append(test_result)
             print(f"❌ RRF with priors test failed: {e}")
@@ -170,16 +149,34 @@ class Phase2Tester:
 
             # Mock podobné dokumenty (by měly být diversifikovány)
             results = [
-                {"doc_id": "doc1", "score": 0.95, "content": "Climate change affects Arctic ice significantly"},
-                {"doc_id": "doc2", "score": 0.90, "content": "Arctic ice melting due to climate change"},
-                {"doc_id": "doc3", "score": 0.85, "content": "Ocean acidification from CO2 emissions"},
-                {"doc_id": "doc4", "score": 0.80, "content": "Renewable energy solutions for climate"}
+                {
+                    "doc_id": "doc1",
+                    "score": 0.95,
+                    "content": "Climate change affects Arctic ice significantly",
+                },
+                {
+                    "doc_id": "doc2",
+                    "score": 0.90,
+                    "content": "Arctic ice melting due to climate change",
+                },
+                {
+                    "doc_id": "doc3",
+                    "score": 0.85,
+                    "content": "Ocean acidification from CO2 emissions",
+                },
+                {
+                    "doc_id": "doc4",
+                    "score": 0.80,
+                    "content": "Renewable energy solutions for climate",
+                },
             ]
 
             diversified = mmr.diversify_results(results, "climate change Arctic")
 
             assert len(diversified) > 0, "MMR vrátil prázdné výsledky"
-            assert len(diversified) <= self.config["ranking"]["mmr"]["diversity_k"], "MMR překročil diversity_k"
+            assert (
+                len(diversified) <= self.config["ranking"]["mmr"]["diversity_k"]
+            ), "MMR překročil diversity_k"
 
             test_result = {
                 "test": "mmr_diversification",
@@ -187,9 +184,9 @@ class Phase2Tester:
                 "metrics": {
                     "original_count": len(results),
                     "diversified_count": len(diversified),
-                    "diversity_ratio": len(diversified) / len(results)
+                    "diversity_ratio": len(diversified) / len(results),
                 },
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             self.test_results["tests"].append(test_result)
@@ -200,7 +197,7 @@ class Phase2Tester:
                 "test": "mmr_diversification",
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             self.test_results["tests"].append(test_result)
             print(f"❌ MMR diversification test failed: {e}")
@@ -215,9 +212,18 @@ class Phase2Tester:
             # Mock duplikované dokumenty
             documents = [
                 {"doc_id": "doc1", "content": "Climate change is a major global issue"},
-                {"doc_id": "doc2", "content": "Climate change is a major global issue"},  # exact duplicate
-                {"doc_id": "doc3", "content": "Global warming is a significant worldwide problem"},  # near duplicate
-                {"doc_id": "doc4", "content": "Renewable energy solutions are important"}  # different
+                {
+                    "doc_id": "doc2",
+                    "content": "Climate change is a major global issue",
+                },  # exact duplicate
+                {
+                    "doc_id": "doc3",
+                    "content": "Global warming is a significant worldwide problem",
+                },  # near duplicate
+                {
+                    "doc_id": "doc4",
+                    "content": "Renewable energy solutions are important",
+                },  # different
             ]
 
             deduplicated, merge_map = deduplicator.deduplicate_documents(documents)
@@ -232,9 +238,9 @@ class Phase2Tester:
                     "original_count": len(documents),
                     "deduplicated_count": len(deduplicated),
                     "dedup_ratio": len(deduplicated) / len(documents),
-                    "merges": len(merge_map)
+                    "merges": len(merge_map),
                 },
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             self.test_results["tests"].append(test_result)
@@ -245,7 +251,7 @@ class Phase2Tester:
                 "test": "enhanced_deduplication",
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             self.test_results["tests"].append(test_result)
             print(f"❌ Enhanced deduplication test failed: {e}")
@@ -263,14 +269,14 @@ class Phase2Tester:
                     "doc_id": "doc1",
                     "content": "This is a very long document about climate change. " * 50,
                     "source_type": "primary",
-                    "relevance_score": 0.9
+                    "relevance_score": 0.9,
                 },
                 {
                     "doc_id": "doc2",
                     "content": "Another document with useful information. " * 30,
                     "source_type": "secondary",
-                    "relevance_score": 0.7
-                }
+                    "relevance_score": 0.7,
+                },
             ]
 
             query = "climate change effects"
@@ -281,7 +287,9 @@ class Phase2Tester:
             compressed_tokens = sum(len(ctx["content"].split()) for ctx in compressed)
 
             assert compressed_tokens < original_tokens, "Komprese nesnížila počet tokenů"
-            assert compressed_tokens <= self.config["compression"]["token_budget"], "Komprese překročila budget"
+            assert (
+                compressed_tokens <= self.config["compression"]["token_budget"]
+            ), "Komprese překročila budget"
 
             efficiency = compressed_tokens / original_tokens
 
@@ -292,9 +300,9 @@ class Phase2Tester:
                     "original_tokens": original_tokens,
                     "compressed_tokens": compressed_tokens,
                     "compression_ratio": 1 - efficiency,
-                    "context_usage_efficiency": efficiency
+                    "context_usage_efficiency": efficiency,
                 },
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
             self.test_results["tests"].append(test_result)
@@ -305,7 +313,7 @@ class Phase2Tester:
                 "test": "contextual_compression",
                 "status": "failed",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             self.test_results["tests"].append(test_result)
             print(f"❌ Contextual compression test failed: {e}")
@@ -319,7 +327,7 @@ class Phase2Tester:
             self.test_rrf_with_priors(),
             self.test_mmr_diversification(),
             self.test_enhanced_deduplication(),
-            self.test_contextual_compression()
+            self.test_contextual_compression(),
         ]
 
         await asyncio.gather(*tests)
@@ -333,7 +341,7 @@ class Phase2Tester:
             "passed_tests": passed_tests,
             "failed_tests": total_tests - passed_tests,
             "success_rate": passed_tests / total_tests if total_tests > 0 else 0,
-            "end_time": datetime.now().isoformat()
+            "end_time": datetime.now().isoformat(),
         }
 
         # Ulož výsledky

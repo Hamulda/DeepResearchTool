@@ -1,14 +1,12 @@
-"""
-FÁZE 7: Robots.txt Compliance Engine
+"""FÁZE 7: Robots.txt Compliance Engine
 Respektování robotů pravidel s allow/deny lists a cache mechanismy
 """
 
 import asyncio
+from dataclasses import dataclass, field
 import logging
 import time
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
 import aiohttp
@@ -20,36 +18,38 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RobotsRule:
     """Reprezentace robots.txt pravidla"""
+
     user_agent: str
-    allowed_paths: Set[str] = field(default_factory=set)
-    disallowed_paths: Set[str] = field(default_factory=set)
-    crawl_delay: Optional[float] = None
-    request_rate: Optional[str] = None
+    allowed_paths: set[str] = field(default_factory=set)
+    disallowed_paths: set[str] = field(default_factory=set)
+    crawl_delay: float | None = None
+    request_rate: str | None = None
 
 
 @dataclass
 class RobotsCache:
     """Cache pro robots.txt pravidla"""
-    rules: Dict[str, RobotsRule]
+
+    rules: dict[str, RobotsRule]
     last_updated: float
     fetch_success: bool
-    retry_after: Optional[float] = None
+    retry_after: float | None = None
 
 
 @dataclass
 class DomainPolicy:
     """Per-domain policy konfigurace"""
+
     domain: str
     allowed: bool = True
     max_requests_per_minute: int = 30
     respect_robots: bool = True
     user_agent: str = "DeepResearchTool/1.0"
-    custom_rules: Optional[List[str]] = None
+    custom_rules: list[str] | None = None
 
 
 class RobotsComplianceEngine:
-    """
-    Robots.txt compliance engine s inteligentním cachingem
+    """Robots.txt compliance engine s inteligentním cachingem
 
     Features:
     - Asynchronní robots.txt fetching
@@ -64,7 +64,7 @@ class RobotsComplianceEngine:
         cache_ttl_hours: int = 24,
         default_crawl_delay: float = 1.0,
         max_cache_size: int = 1000,
-        user_agent: str = "DeepResearchTool/1.0"
+        user_agent: str = "DeepResearchTool/1.0",
     ):
         self.cache_ttl_hours = cache_ttl_hours
         self.default_crawl_delay = default_crawl_delay
@@ -72,25 +72,24 @@ class RobotsComplianceEngine:
         self.user_agent = user_agent
 
         # Cache pro robots.txt pravidla
-        self.robots_cache: Dict[str, RobotsCache] = {}
+        self.robots_cache: dict[str, RobotsCache] = {}
 
         # Domain policies
-        self.domain_policies: Dict[str, DomainPolicy] = {}
+        self.domain_policies: dict[str, DomainPolicy] = {}
 
         # Global allow/deny lists
-        self.global_allow_domains: Set[str] = set()
-        self.global_deny_domains: Set[str] = set()
+        self.global_allow_domains: set[str] = set()
+        self.global_deny_domains: set[str] = set()
 
         # Session pro HTTP requests
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
 
         logger.info(f"RobotsComplianceEngine initialized with TTL={cache_ttl_hours}h")
 
     async def __aenter__(self):
         """Async context manager entry"""
         self.session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=10),
-            headers={'User-Agent': self.user_agent}
+            timeout=aiohttp.ClientTimeout(total=10), headers={"User-Agent": self.user_agent}
         )
         return self
 
@@ -123,11 +122,8 @@ class RobotsComplianceEngine:
         age_hours = (time.time() - cache.last_updated) / 3600
         return age_hours < self.cache_ttl_hours
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10)
-    )
-    async def _fetch_robots_txt(self, domain: str) -> Optional[str]:
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+    async def _fetch_robots_txt(self, domain: str) -> str | None:
         """Asynchronní stažení robots.txt"""
         robots_url = f"https://{domain}/robots.txt"
 
@@ -140,9 +136,8 @@ class RobotsComplianceEngine:
                     content = await response.text()
                     logger.info(f"Successfully fetched robots.txt for {domain}")
                     return content
-                else:
-                    logger.warning(f"Failed to fetch robots.txt for {domain}: {response.status}")
-                    return None
+                logger.warning(f"Failed to fetch robots.txt for {domain}: {response.status}")
+                return None
 
         except Exception as e:
             logger.error(f"Error fetching robots.txt for {domain}: {e}")
@@ -173,7 +168,6 @@ class RobotsComplianceEngine:
 
     async def get_robots_rule(self, domain: str) -> RobotsRule:
         """Získání robots.txt pravidla pro doménu"""
-
         # Kontrola cache
         if domain in self.robots_cache:
             cache = self.robots_cache[domain]
@@ -187,21 +181,16 @@ class RobotsComplianceEngine:
             # Úspěšné stažení
             rule = self._parse_robots_content(content, domain)
             self.robots_cache[domain] = RobotsCache(
-                rules={domain: rule},
-                last_updated=time.time(),
-                fetch_success=True
+                rules={domain: rule}, last_updated=time.time(), fetch_success=True
             )
         else:
             # Fallback pravidlo
-            rule = RobotsRule(
-                user_agent=self.user_agent,
-                crawl_delay=self.default_crawl_delay
-            )
+            rule = RobotsRule(user_agent=self.user_agent, crawl_delay=self.default_crawl_delay)
             self.robots_cache[domain] = RobotsCache(
                 rules={domain: rule},
                 last_updated=time.time(),
                 fetch_success=False,
-                retry_after=time.time() + 3600  # Retry za hodinu
+                retry_after=time.time() + 3600,  # Retry za hodinu
             )
 
         # Cache cleanup
@@ -213,10 +202,7 @@ class RobotsComplianceEngine:
         """Čištění cache při překročení limitu"""
         if len(self.robots_cache) > self.max_cache_size:
             # Smazání nejstarších záznamů
-            sorted_cache = sorted(
-                self.robots_cache.items(),
-                key=lambda x: x[1].last_updated
-            )
+            sorted_cache = sorted(self.robots_cache.items(), key=lambda x: x[1].last_updated)
 
             # Ponechání pouze posledních max_cache_size/2 záznamů
             keep_count = self.max_cache_size // 2
@@ -227,12 +213,12 @@ class RobotsComplianceEngine:
 
             logger.info(f"Cleaned up robots cache: removed {removed_count} entries")
 
-    async def is_url_allowed(self, url: str) -> Tuple[bool, str]:
-        """
-        Kontrola, zda je URL povolená podle robots.txt a policies
+    async def is_url_allowed(self, url: str) -> tuple[bool, str]:
+        """Kontrola, zda je URL povolená podle robots.txt a policies
 
         Returns:
             Tuple[bool, str]: (allowed, reason)
+
         """
         domain = self._extract_domain(url)
 
@@ -266,13 +252,12 @@ class RobotsComplianceEngine:
             can_fetch = True  # Simplified pro demonstraci
 
             if can_fetch:
-                return True, f"URL allowed by robots.txt"
-            else:
-                return False, f"URL disallowed by robots.txt"
+                return True, "URL allowed by robots.txt"
+            return False, "URL disallowed by robots.txt"
 
         except Exception as e:
             logger.error(f"Error checking robots.txt for {url}: {e}")
-            return True, f"Robots.txt check failed - allowing by default"
+            return True, "Robots.txt check failed - allowing by default"
 
     async def get_crawl_delay(self, domain: str) -> float:
         """Získání crawl delay pro doménu"""
@@ -283,7 +268,7 @@ class RobotsComplianceEngine:
             logger.error(f"Error getting crawl delay for {domain}: {e}")
             return self.default_crawl_delay
 
-    def get_compliance_stats(self) -> Dict[str, any]:
+    def get_compliance_stats(self) -> dict[str, any]:
         """Statistiky compliance engine"""
         total_domains = len(self.robots_cache)
         successful_fetches = sum(1 for cache in self.robots_cache.values() if cache.fetch_success)
@@ -295,7 +280,7 @@ class RobotsComplianceEngine:
             "global_allow_domains": len(self.global_allow_domains),
             "global_deny_domains": len(self.global_deny_domains),
             "domain_policies": len(self.domain_policies),
-            "cache_hit_rate": successful_fetches / max(total_domains, 1)
+            "cache_hit_rate": successful_fetches / max(total_domains, 1),
         }
 
 
@@ -307,20 +292,19 @@ async def create_robots_compliance_engine(**kwargs) -> RobotsComplianceEngine:
 
 # Demo použití
 if __name__ == "__main__":
+
     async def demo():
         async with RobotsComplianceEngine() as engine:
             # Přidání domain policy
-            engine.add_domain_policy(DomainPolicy(
-                domain="example.com",
-                allowed=True,
-                max_requests_per_minute=60
-            ))
+            engine.add_domain_policy(
+                DomainPolicy(domain="example.com", allowed=True, max_requests_per_minute=60)
+            )
 
             # Test URL allowance
             test_urls = [
                 "https://example.com/page1",
                 "https://blocked-domain.com/page2",
-                "https://research-site.edu/data"
+                "https://research-site.edu/data",
             ]
 
             for url in test_urls:

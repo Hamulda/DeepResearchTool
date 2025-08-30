@@ -1,594 +1,537 @@
 #!/usr/bin/env python3
-"""
-Gated Reranking Engine
-Bi-encoder → Cross-encoder pipeline for efficient reranking
+"""Gated Reranking Engine - OPTIMALIZOVÁNO pro M1
+Dvoufázový re-ranking: BM25 (rychlá pre-filtrace) → LLM (precizní hodnocení)
+Dramaticky snižuje počet dokumentů pro pomalý LLM (až 85% redukce)
 
 Author: Senior Python/MLOps Agent
 """
 
-from typing import Dict, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass
 from enum import Enum
-import numpy as np
 import logging
+import re
 import time
-from pathlib import Path
+from typing import Any
+
+# NOVÉ IMPORTY pro optimalizovaný re-ranking
+from rank_bm25 import BM25Okapi
 
 logger = logging.getLogger(__name__)
 
 
 class RerankingStage(Enum):
-    """Reranking stages in the pipeline"""
-    BI_ENCODER = "bi_encoder"
-    CROSS_ENCODER = "cross_encoder"
+    """Reranking stages in the optimized pipeline"""
+
+    BM25_PREFILTER = "bm25_prefilter"          # FÁZE 1: Rychlý BM25 filter
+    LLM_PRECISION = "llm_precision"            # FÁZE 2: Precizní LLM hodnocení
     UNCERTAINTY_GATE = "uncertainty_gate"
     FINAL_RANKING = "final_ranking"
 
 
 @dataclass
-class RerankingConfig:
-    """Configuration for gated reranking"""
-    # Gate configuration
-    top_n_for_cross_encoder: int = 50  # How many docs to send to cross-encoder
-    uncertainty_threshold: float = 0.3  # Uncertainty threshold for gating
-    min_cross_encoder_candidates: int = 10  # Minimum docs for cross-encoder
+class OptimizedRerankingConfig:
+    """Konfigurace pro optimalizovaný dvoufázový re-ranking"""
 
-    # Bi-encoder configuration
-    bi_encoder_enabled: bool = True
-    bi_encoder_batch_size: int = 32
-    bi_encoder_max_length: int = 256
+    # KLÍČOVÉ OPTIMALIZACE: Dvoufázový systém
+    bm25_candidates: int = 100              # Kolik dokumentů z retrievalu
+    llm_candidates: int = 15                # Kolik top BM25 kandidátů pro LLM (85% redukce!)
 
-    # Cross-encoder configuration
-    cross_encoder_enabled: bool = True
-    cross_encoder_batch_size: int = 8
-    cross_encoder_max_length: int = 512
+    # BM25 konfigurace (Fáze 1)
+    bm25_enabled: bool = True
+    bm25_k1: float = 1.2                   # BM25 parameter k1
+    bm25_b: float = 0.75                   # BM25 parameter b
 
-    # Performance thresholds
-    bi_encoder_timeout: float = 5.0  # seconds
-    cross_encoder_timeout: float = 30.0  # seconds
+    # LLM konfigurace (Fáze 2)
+    llm_enabled: bool = True
+    confidence_threshold: float = 0.7
+    relevance_threshold: float = 0.3
 
-    # Profile-specific overrides
-    profile_configs: Dict[str, Dict[str, Any]] = None
+    # Uncertainty gating
+    uncertainty_threshold: float = 0.1
+    uncertainty_enabled: bool = True
 
-    def __post_init__(self):
-        if self.profile_configs is None:
-            self.profile_configs = {
-                "quick": {
-                    "top_n_for_cross_encoder": 20,
-                    "cross_encoder_timeout": 10.0,
-                    "uncertainty_threshold": 0.4
-                },
-                "thorough": {
-                    "top_n_for_cross_encoder": 100,
-                    "cross_encoder_timeout": 60.0,
-                    "uncertainty_threshold": 0.2
-                }
-            }
+    # Performance optimalizace
+    parallel_processing: bool = True
+    max_workers: int = 4
+    timeout_seconds: int = 30
 
 
 @dataclass
-class RerankingResult:
-    """Result of reranking operation"""
-    documents: List[Dict[str, Any]]
-    metadata: Dict[str, Any]
-    stage_times: Dict[str, float]
-    total_time: float
+class DocumentCandidate:
+    """Reprezentace dokumentu v re-ranking pipeline"""
 
-    @property
-    def reranked_count(self) -> int:
-        return len(self.documents)
+    id: str
+    content: str
+    title: str
+    source: str
+    metadata: dict[str, Any]
+
+    # Skóre z různých fází
+    initial_score: float = 0.0
+    bm25_score: float = 0.0
+    llm_score: float = 0.0
+    final_score: float = 0.0
+
+    # Metriky hodnocení
+    confidence: float = 0.0
+    uncertainty: float = 0.0
+    relevance_reasons: list[str] = None
+
+    # Pipeline tracking
+    processed_stages: list[str] = None
+    processing_time_ms: float = 0.0
+
+    def __post_init__(self):
+        if self.relevance_reasons is None:
+            self.relevance_reasons = []
+        if self.processed_stages is None:
+            self.processed_stages = []
 
 
-class BiEncoderReranker:
-    """Lightweight bi-encoder for initial reranking"""
+class OptimizedGatedReranker:
+    """OPTIMALIZOVANÝ Gated Reranker s dvoufázovým systemem
 
-    def __init__(self, config: RerankingConfig):
+    KLÍČOVÁ OPTIMALIZACE:
+    1. BM25 pre-filtrace (rychlá, na CPU) - redukuje kandidáty o 85%
+    2. LLM precision ranking (pomalý, na GPU) - pouze na top kandidátech
+
+    Výsledek: Dramatické zrychlení při zachování kvality
+    """
+
+    def __init__(self, config: OptimizedRerankingConfig, llm_client=None):
         self.config = config
-        self.model = None
-        self.tokenizer = None
-        self._initialize_model()
+        self.llm_client = llm_client
 
-    def _initialize_model(self):
-        """Initialize bi-encoder model (placeholder for actual model)"""
-        # In production, this would load a sentence transformer model
-        # For now, use simple similarity scoring
-        logger.info("Bi-encoder reranker initialized (mock implementation)")
+        # BM25 komponenty
+        self.bm25_index: BM25Okapi | None = None
+        self.corpus_processed: list[list[str]] = []
+        self.document_mapping: dict[int, str] = {}
 
-    def rerank(
-        self,
-        query: str,
-        documents: List[Dict[str, Any]],
-        top_k: Optional[int] = None
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        """Rerank documents using bi-encoder"""
-
-        start_time = time.time()
-
-        if not documents:
-            return documents, {"stage": "bi_encoder", "processing_time": 0.0}
-
-        top_k = top_k or len(documents)
-
-        # Mock bi-encoder scoring (in production, use actual embeddings)
-        scored_docs = []
-        for doc in documents:
-            content = doc.get("content", "")
-
-            # Simple similarity score (placeholder)
-            similarity_score = self._calculate_mock_similarity(query, content)
-
-            # Add uncertainty estimate
-            uncertainty = self._estimate_uncertainty(similarity_score)
-
-            doc_copy = doc.copy()
-            doc_copy["bi_encoder_score"] = float(similarity_score)
-            doc_copy["bi_encoder_uncertainty"] = float(uncertainty)
-            doc_copy["reranking_stage"] = RerankingStage.BI_ENCODER.value
-
-            scored_docs.append(doc_copy)
-
-        # Sort by bi-encoder score
-        scored_docs.sort(key=lambda x: x["bi_encoder_score"], reverse=True)
-
-        # Take top-k
-        top_docs = scored_docs[:top_k]
-
-        processing_time = time.time() - start_time
-
-        metadata = {
-            "stage": "bi_encoder",
-            "input_count": len(documents),
-            "output_count": len(top_docs),
-            "processing_time": processing_time,
-            "avg_score": np.mean([d["bi_encoder_score"] for d in top_docs]),
-            "score_std": np.std([d["bi_encoder_score"] for d in top_docs])
+        # Performance tracking
+        self.performance_stats = {
+            "total_documents_processed": 0,
+            "bm25_filtering_time_ms": 0.0,
+            "llm_ranking_time_ms": 0.0,
+            "total_processing_time_ms": 0.0,
+            "reduction_ratio": 0.0
         }
 
-        logger.info(f"Bi-encoder reranking: {len(documents)} → {len(top_docs)} docs ({processing_time:.2f}s)")
+        logger.info(f"✅ Optimalizovaný Reranker inicializován: "
+                   f"BM25({config.bm25_candidates}) → LLM({config.llm_candidates}) "
+                   f"= {((config.bm25_candidates - config.llm_candidates) / config.bm25_candidates * 100):.1f}% redukce")
 
-        return top_docs, metadata
+    async def rerank_documents(self,
+                             query: str,
+                             documents: list[dict[str, Any]]) -> list[DocumentCandidate]:
+        """HLAVNÍ OPTIMALIZOVANÁ METODA: Dvoufázový re-ranking
 
-    def _calculate_mock_similarity(self, query: str, content: str) -> float:
-        """Mock similarity calculation (replace with actual embeddings)"""
+        Args:
+            query: Uživatelský dotaz
+            documents: Seznam dokumentů k re-rankingu
 
-        query_words = set(query.lower().split())
-        content_words = set(content.lower().split()[:100])  # First 100 words
+        Returns:
+            Seřazené dokumenty s optimalizovaným skóre
 
-        if not query_words:
-            return 0.0
-
-        # Jaccard similarity + length penalty
-        intersection = len(query_words.intersection(content_words))
-        union = len(query_words.union(content_words))
-
-        jaccard = intersection / union if union > 0 else 0.0
-
-        # Add some noise to simulate embedding similarity
-        noise = np.random.normal(0, 0.1)
-        similarity = np.clip(jaccard + noise, 0.0, 1.0)
-
-        return similarity
-
-    def _estimate_uncertainty(self, score: float) -> float:
-        """Estimate prediction uncertainty"""
-        # High uncertainty for scores near decision boundary (0.5)
-        return 1.0 - 2 * abs(score - 0.5)
-
-
-class CrossEncoderReranker:
-    """Heavy cross-encoder for precise reranking"""
-
-    def __init__(self, config: RerankingConfig):
-        self.config = config
-        self.model = None
-        self.tokenizer = None
-        self._initialize_model()
-
-    def _initialize_model(self):
-        """Initialize cross-encoder model (placeholder)"""
-        # In production, this would load a cross-encoder model
-        logger.info("Cross-encoder reranker initialized (mock implementation)")
-
-    def rerank(
-        self,
-        query: str,
-        documents: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        """Rerank documents using cross-encoder"""
-
+        """
         start_time = time.time()
+        logger.info(f"🚀 Spouštím optimalizovaný re-ranking: {len(documents)} dokumentů")
 
-        if not documents:
-            return documents, {"stage": "cross_encoder", "processing_time": 0.0}
+        # Konverze na DocumentCandidate objekty
+        candidates = [self._create_candidate(doc, i) for i, doc in enumerate(documents)]
 
-        # Process in batches
-        scored_docs = []
-        batch_size = self.config.cross_encoder_batch_size
+        # FÁZE 1: BM25 Pre-filtrace (KLÍČOVÁ OPTIMALIZACE!)
+        if self.config.bm25_enabled and len(candidates) > self.config.llm_candidates:
+            candidates = await self._bm25_prefilter_phase(query, candidates)
+            logger.info(f"✅ BM25 pre-filtrace: {len(candidates)} kandidátů (z {len(documents)})")
 
-        for i in range(0, len(documents), batch_size):
-            batch = documents[i:i + batch_size]
-            batch_scores = self._score_batch(query, batch)
+        # FÁZE 2: LLM Precision Ranking (pouze na top kandidátech)
+        if self.config.llm_enabled and self.llm_client:
+            candidates = await self._llm_precision_phase(query, candidates)
+            logger.info("✅ LLM precision ranking dokončen")
 
-            for doc, score in zip(batch, batch_scores):
-                doc_copy = doc.copy()
-                doc_copy["cross_encoder_score"] = float(score)
-                doc_copy["reranking_stage"] = RerankingStage.CROSS_ENCODER.value
+        # FÁZE 3: Uncertainty Gating a finální ranking
+        if self.config.uncertainty_enabled:
+            candidates = await self._uncertainty_gating_phase(candidates)
 
-                # Combine with bi-encoder score if available
-                bi_score = doc.get("bi_encoder_score", 0.5)
-                combined_score = 0.3 * bi_score + 0.7 * score  # Weighted combination
-                doc_copy["combined_rerank_score"] = float(combined_score)
+        # Finální seřazení podle kombinovaného skóre
+        candidates = self._final_ranking_phase(candidates)
 
-                scored_docs.append(doc_copy)
+        # Performance statistiky
+        total_time = (time.time() - start_time) * 1000
+        self._update_performance_stats(total_time, len(documents), len(candidates))
 
-        # Sort by combined score
-        scored_docs.sort(key=lambda x: x["combined_rerank_score"], reverse=True)
+        logger.info(f"🎉 Optimalizovaný re-ranking dokončen za {total_time:.1f}ms, "
+                   f"redukce: {self.performance_stats['reduction_ratio']:.1f}%")
 
-        processing_time = time.time() - start_time
+        return candidates
 
-        metadata = {
-            "stage": "cross_encoder",
-            "input_count": len(documents),
-            "output_count": len(scored_docs),
-            "processing_time": processing_time,
-            "batches_processed": (len(documents) + batch_size - 1) // batch_size,
-            "avg_score": np.mean([d["cross_encoder_score"] for d in scored_docs]),
-            "score_std": np.std([d["cross_encoder_score"] for d in scored_docs])
-        }
+    async def _bm25_prefilter_phase(self,
+                                   query: str,
+                                   candidates: list[DocumentCandidate]) -> list[DocumentCandidate]:
+        """FÁZE 1: BM25 Pre-filtrace - rychlé odstranění irelevantních dokumentů
 
-        logger.info(f"Cross-encoder reranking: {len(documents)} docs ({processing_time:.2f}s)")
-
-        return scored_docs, metadata
-
-    def _score_batch(self, query: str, documents: List[Dict[str, Any]]) -> List[float]:
-        """Score a batch of documents (mock implementation)"""
-
-        scores = []
-        for doc in documents:
-            content = doc.get("content", "")
-
-            # Mock cross-encoder scoring (more sophisticated than bi-encoder)
-            query_words = query.lower().split()
-            content_words = content.lower().split()
-
-            # Term frequency matching
-            tf_score = 0.0
-            for word in query_words:
-                tf_score += content_words.count(word) / max(len(content_words), 1)
-
-            # Position bonus for early matches
-            position_bonus = 0.0
-            for i, word in enumerate(content_words[:50]):  # First 50 words
-                if word in query_words:
-                    position_bonus += (50 - i) / 50 * 0.1
-
-            # Length normalization
-            length_penalty = min(len(content) / 1000, 1.0) * 0.1
-
-            # Combine scores
-            final_score = tf_score + position_bonus + length_penalty
-
-            # Add noise and normalize
-            noise = np.random.normal(0, 0.05)
-            score = np.clip(final_score + noise, 0.0, 1.0)
-
-            scores.append(score)
-
-        return scores
-
-
-class GatedReranker:
-    """Main gated reranking engine"""
-
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.reranking_config = self._load_reranking_config(config)
-
-        # Initialize rerankers
-        self.bi_encoder = BiEncoderReranker(self.reranking_config)
-        self.cross_encoder = CrossEncoderReranker(self.reranking_config)
-
-        # Statistics
-        self.stats = {
-            "total_queries": 0,
-            "bi_encoder_only": 0,
-            "cross_encoder_used": 0,
-            "avg_bi_encoder_time": 0.0,
-            "avg_cross_encoder_time": 0.0
-        }
-
-        logger.info("Gated reranker initialized")
-
-    def _load_reranking_config(self, config: Dict[str, Any]) -> RerankingConfig:
-        """Load reranking configuration"""
-        rerank_cfg = config.get("reranking", {})
-        profile = config.get("profile", "quick")
-
-        base_config = RerankingConfig(
-            top_n_for_cross_encoder=rerank_cfg.get("top_n_for_cross_encoder", 50),
-            uncertainty_threshold=rerank_cfg.get("uncertainty_threshold", 0.3),
-            bi_encoder_enabled=rerank_cfg.get("bi_encoder_enabled", True),
-            cross_encoder_enabled=rerank_cfg.get("cross_encoder_enabled", True)
-        )
-
-        # Apply profile-specific overrides
-        if profile in base_config.profile_configs:
-            profile_overrides = base_config.profile_configs[profile]
-            for key, value in profile_overrides.items():
-                if hasattr(base_config, key):
-                    setattr(base_config, key, value)
-
-        return base_config
-
-    def rerank(
-        self,
-        query: str,
-        documents: List[Dict[str, Any]],
-        context: Optional[Dict[str, Any]] = None
-    ) -> RerankingResult:
-        """Main reranking pipeline with gating logic"""
-
+        Tato fáze běží na CPU a je extrémně rychlá
+        """
         start_time = time.time()
-        stage_times = {}
-        all_metadata = {}
+        logger.debug(f"🔍 BM25 pre-filtrace: {len(candidates)} → {self.config.bm25_candidates}")
 
-        if not documents:
-            return RerankingResult(
-                documents=[],
-                metadata={"message": "No documents to rerank"},
-                stage_times={},
-                total_time=0.0
-            )
+        # Příprava korpusu pro BM25
+        corpus = []
+        for candidate in candidates:
+            # Kombinace title + content pro lepší matching
+            text = f"{candidate.title} {candidate.content}"
+            # Tokenizace (jednoduchá ale efektivní)
+            tokens = self._tokenize_for_bm25(text)
+            corpus.append(tokens)
 
-        self.stats["total_queries"] += 1
-        current_docs = documents.copy()
+        # Inicializace BM25 indexu
+        self.bm25_index = BM25Okapi(corpus, k1=self.config.bm25_k1, b=self.config.bm25_b)
 
-        # Stage 1: Bi-encoder reranking (if enabled)
-        if self.reranking_config.bi_encoder_enabled:
-            logger.info(f"Stage 1: Bi-encoder reranking {len(current_docs)} documents")
+        # Tokenizace dotazu
+        query_tokens = self._tokenize_for_bm25(query)
 
-            bi_start = time.time()
-            current_docs, bi_metadata = self.bi_encoder.rerank(
-                query, current_docs, top_k=None
-            )
-            stage_times["bi_encoder"] = time.time() - bi_start
-            all_metadata["bi_encoder"] = bi_metadata
+        # BM25 skórování
+        bm25_scores = self.bm25_index.get_scores(query_tokens)
 
-        # Stage 2: Uncertainty-based gating
-        gate_decision = self._should_use_cross_encoder(current_docs, context)
+        # Přiřazení BM25 skóre kandidátům
+        for i, candidate in enumerate(candidates):
+            candidate.bm25_score = float(bm25_scores[i])
+            candidate.processed_stages.append(RerankingStage.BM25_PREFILTER.value)
 
-        if gate_decision["use_cross_encoder"] and self.reranking_config.cross_encoder_enabled:
-            logger.info(f"Stage 2: Cross-encoder reranking top {gate_decision['candidates_count']} documents")
+        # Seřazení podle BM25 skóre a výběr top kandidátů
+        candidates_sorted = sorted(candidates, key=lambda x: x.bm25_score, reverse=True)
+        top_candidates = candidates_sorted[:self.config.bm25_candidates]
 
-            # Select candidates for cross-encoder
-            candidates = current_docs[:gate_decision["candidates_count"]]
-            remaining = current_docs[gate_decision["candidates_count"]:]
+        # Performance tracking
+        bm25_time = (time.time() - start_time) * 1000
+        self.performance_stats["bm25_filtering_time_ms"] = bm25_time
 
-            # Cross-encoder reranking
-            cross_start = time.time()
-            reranked_candidates, cross_metadata = self.cross_encoder.rerank(query, candidates)
-            stage_times["cross_encoder"] = time.time() - cross_start
-            all_metadata["cross_encoder"] = cross_metadata
+        logger.debug(f"⚡ BM25 pre-filtrace dokončena za {bm25_time:.1f}ms")
 
-            # Combine reranked candidates with remaining documents
-            current_docs = reranked_candidates + remaining
+        return top_candidates
 
-            self.stats["cross_encoder_used"] += 1
+    async def _llm_precision_phase(self,
+                                  query: str,
+                                  candidates: list[DocumentCandidate]) -> list[DocumentCandidate]:
+        """FÁZE 2: LLM Precision Ranking - precizní hodnocení pouze top kandidátů
+
+        Tato fáze je pomalá ale velmi přesná, běží pouze na pre-filtrovaných kandidátech
+        """
+        start_time = time.time()
+        logger.debug(f"🧠 LLM precision ranking: {len(candidates)} kandidátů")
+
+        # Omezení na LLM kandidáty (další redukce)
+        llm_candidates = candidates[:self.config.llm_candidates]
+        logger.debug(f"🎯 LLM hodnotí pouze top {len(llm_candidates)} kandidátů "
+                    f"(85% redukce z původního počtu)")
+
+        # Paralelní zpracování LLM hodnocení
+        if self.config.parallel_processing:
+            llm_candidates = await self._parallel_llm_evaluation(query, llm_candidates)
         else:
-            logger.info("Stage 2: Skipping cross-encoder (gating decision)")
-            self.stats["bi_encoder_only"] += 1
+            llm_candidates = await self._sequential_llm_evaluation(query, llm_candidates)
 
-        # Final ranking
-        final_docs = self._finalize_ranking(current_docs)
+        # Kandidáti, kteří nebyli hodnoceni LLM, dostanou skóre založené na BM25
+        remaining_candidates = candidates[len(llm_candidates):]
+        for candidate in remaining_candidates:
+            candidate.llm_score = candidate.bm25_score * 0.5  # Penalizace za nehodnocení
+            candidate.confidence = 0.3  # Nízká confidence
 
-        total_time = time.time() - start_time
+        # Sloučení hodnocených a nehodnocených kandidátů
+        all_candidates = llm_candidates + remaining_candidates
 
-        # Update statistics
-        if "bi_encoder" in stage_times:
-            self.stats["avg_bi_encoder_time"] = (
-                self.stats["avg_bi_encoder_time"] * (self.stats["total_queries"] - 1) +
-                stage_times["bi_encoder"]
-            ) / self.stats["total_queries"]
+        # Performance tracking
+        llm_time = (time.time() - start_time) * 1000
+        self.performance_stats["llm_ranking_time_ms"] = llm_time
 
-        if "cross_encoder" in stage_times:
-            self.stats["avg_cross_encoder_time"] = (
-                self.stats["avg_cross_encoder_time"] * (self.stats["cross_encoder_used"] - 1) +
-                stage_times["cross_encoder"]
-            ) / self.stats["cross_encoder_used"]
+        logger.debug(f"🧠 LLM precision ranking dokončen za {llm_time:.1f}ms")
 
-        # Compile metadata
-        result_metadata = {
-            "total_input_docs": len(documents),
-            "total_output_docs": len(final_docs),
-            "gate_decision": gate_decision,
-            "stages_used": list(stage_times.keys()),
-            "stage_metadata": all_metadata,
-            "config": {
-                "top_n_for_cross_encoder": self.reranking_config.top_n_for_cross_encoder,
-                "uncertainty_threshold": self.reranking_config.uncertainty_threshold
-            }
-        }
+        return all_candidates
 
-        logger.info(f"Gated reranking completed: {len(documents)} → {len(final_docs)} docs ({total_time:.2f}s)")
+    async def _parallel_llm_evaluation(self,
+                                      query: str,
+                                      candidates: list[DocumentCandidate]) -> list[DocumentCandidate]:
+        """Paralelní LLM hodnocení pro rychlejší zpracování"""
+        import asyncio
 
-        return RerankingResult(
-            documents=final_docs,
-            metadata=result_metadata,
-            stage_times=stage_times,
-            total_time=total_time
+        async def evaluate_candidate(candidate: DocumentCandidate) -> DocumentCandidate:
+            """Hodnocení jednoho kandidáta"""
+            try:
+                # LLM prompt pro hodnocení relevance
+                evaluation_prompt = self._create_evaluation_prompt(query, candidate)
+
+                # Volání LLM (asynchronní)
+                response = await self.llm_client.generate_async(
+                    evaluation_prompt,
+                    max_tokens=100,
+                    temperature=0.1  # Nízká teplota pro konzistentní hodnocení
+                )
+
+                # Parsování LLM odpovědi
+                score, confidence, reasons = self._parse_llm_evaluation(response)
+
+                candidate.llm_score = score
+                candidate.confidence = confidence
+                candidate.relevance_reasons = reasons
+                candidate.processed_stages.append(RerankingStage.LLM_PRECISION.value)
+
+                return candidate
+
+            except Exception as e:
+                logger.warning(f"LLM hodnocení selhalo pro kandidáta {candidate.id}: {e}")
+                candidate.llm_score = candidate.bm25_score * 0.5
+                candidate.confidence = 0.1
+                return candidate
+
+        # Paralelní zpracování s limitem workerů
+        semaphore = asyncio.Semaphore(self.config.max_workers)
+
+        async def evaluate_with_semaphore(candidate):
+            async with semaphore:
+                return await evaluate_candidate(candidate)
+
+        # Spuštění paralelního hodnocení
+        tasks = [evaluate_with_semaphore(candidate) for candidate in candidates]
+
+        try:
+            evaluated_candidates = await asyncio.wait_for(
+                asyncio.gather(*tasks),
+                timeout=self.config.timeout_seconds
+            )
+            return evaluated_candidates
+        except TimeoutError:
+            logger.warning(f"LLM hodnocení timeout po {self.config.timeout_seconds}s")
+            return candidates
+
+    async def _sequential_llm_evaluation(self,
+                                        query: str,
+                                        candidates: list[DocumentCandidate]) -> list[DocumentCandidate]:
+        """Sekvenční LLM hodnocení (fallback)"""
+        for candidate in candidates:
+            try:
+                evaluation_prompt = self._create_evaluation_prompt(query, candidate)
+                response = await self.llm_client.generate_async(evaluation_prompt, max_tokens=100)
+
+                score, confidence, reasons = self._parse_llm_evaluation(response)
+                candidate.llm_score = score
+                candidate.confidence = confidence
+                candidate.relevance_reasons = reasons
+                candidate.processed_stages.append(RerankingStage.LLM_PRECISION.value)
+
+            except Exception as e:
+                logger.warning(f"LLM hodnocení selhalo pro kandidáta {candidate.id}: {e}")
+                candidate.llm_score = candidate.bm25_score * 0.5
+                candidate.confidence = 0.1
+
+        return candidates
+
+    def _create_evaluation_prompt(self, query: str, candidate: DocumentCandidate) -> str:
+        """Vytvoření prompt pro LLM hodnocení relevance"""
+        prompt = f"""Evaluate the relevance of this document to the given query.
+
+Query: {query}
+
+Document Title: {candidate.title}
+Document Content: {candidate.content[:500]}...
+
+Rate the relevance on a scale of 0.0 to 1.0 and provide your confidence level.
+
+Response format:
+Score: [0.0-1.0]
+Confidence: [0.0-1.0]
+Reasons: [brief explanation]
+
+Response:"""
+
+        return prompt
+
+    def _parse_llm_evaluation(self, response: str) -> tuple[float, float, list[str]]:
+        """Parsování LLM odpovědi na skóre, confidence a důvody"""
+        try:
+            lines = response.strip().split('\n')
+            score = 0.5
+            confidence = 0.5
+            reasons = []
+
+            for line in lines:
+                line = line.strip()
+                if line.startswith('Score:'):
+                    score = float(re.search(r'(\d+\.?\d*)', line).group(1))
+                    score = max(0.0, min(1.0, score))
+                elif line.startswith('Confidence:'):
+                    confidence = float(re.search(r'(\d+\.?\d*)', line).group(1))
+                    confidence = max(0.0, min(1.0, confidence))
+                elif line.startswith('Reasons:'):
+                    reason_text = line.replace('Reasons:', '').strip()
+                    reasons = [reason_text] if reason_text else []
+
+            return score, confidence, reasons
+
+        except Exception as e:
+            logger.warning(f"Chyba při parsování LLM odpovědi: {e}")
+            return 0.5, 0.3, []
+
+    async def _uncertainty_gating_phase(self,
+                                       candidates: list[DocumentCandidate]) -> list[DocumentCandidate]:
+        """FÁZE 3: Uncertainty Gating - filtrování nejistých výsledků
+        """
+        logger.debug(f"🚪 Uncertainty gating: {len(candidates)} kandidátů")
+
+        for candidate in candidates:
+            # Výpočet uncertainty na základě confidence a konzistence skóre
+            score_variance = abs(candidate.bm25_score - candidate.llm_score)
+            uncertainty = 1.0 - candidate.confidence + (score_variance * 0.1)
+            candidate.uncertainty = max(0.0, min(1.0, uncertainty))
+
+            candidate.processed_stages.append(RerankingStage.UNCERTAINTY_GATE.value)
+
+        # Filtrování kandidátů s vysokou uncertainty
+        filtered_candidates = [
+            candidate for candidate in candidates
+            if candidate.uncertainty <= self.config.uncertainty_threshold
+        ]
+
+        if len(filtered_candidates) < len(candidates):
+            logger.debug(f"🚪 Uncertainty gate odfiltroval "
+                        f"{len(candidates) - len(filtered_candidates)} nejistých kandidátů")
+
+        return filtered_candidates if filtered_candidates else candidates[:5]  # Minimálně 5 výsledků
+
+    def _final_ranking_phase(self, candidates: list[DocumentCandidate]) -> list[DocumentCandidate]:
+        """FÁZE 4: Finální ranking - kombinace všech skóre
+        """
+        logger.debug(f"🏁 Finální ranking: {len(candidates)} kandidátů")
+
+        for candidate in candidates:
+            # Vážená kombinace BM25 a LLM skóre
+            bm25_weight = 0.3
+            llm_weight = 0.7
+
+            # Základní kombinované skóre
+            combined_score = (candidate.bm25_score * bm25_weight +
+                            candidate.llm_score * llm_weight)
+
+            # Confidence boost
+            confidence_boost = candidate.confidence * 0.1
+
+            # Finální skóre
+            candidate.final_score = combined_score + confidence_boost
+            candidate.processed_stages.append(RerankingStage.FINAL_RANKING.value)
+
+        # Finální seřazení
+        final_candidates = sorted(candidates, key=lambda x: x.final_score, reverse=True)
+
+        logger.debug("🏁 Finální ranking dokončen")
+
+        return final_candidates
+
+    def _tokenize_for_bm25(self, text: str) -> list[str]:
+        """Rychlá tokenizace pro BM25"""
+        # Normalizace textu
+        text = text.lower()
+        # Odebrání speciálních znaků a rozdělení na slova
+        tokens = re.findall(r'\b[a-z]{2,}\b', text)
+        # Filtrování velmi častých slov (stop words)
+        stop_words = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had'}
+        tokens = [token for token in tokens if token not in stop_words and len(token) > 2]
+
+        return tokens
+
+    def _create_candidate(self, document: dict[str, Any], index: int) -> DocumentCandidate:
+        """Vytvoření DocumentCandidate z dokumentu"""
+        return DocumentCandidate(
+            id=document.get('id', f'doc_{index}'),
+            content=document.get('content', ''),
+            title=document.get('title', ''),
+            source=document.get('source', ''),
+            metadata=document.get('metadata', {}),
+            initial_score=document.get('score', 0.0)
         )
 
-    def _should_use_cross_encoder(
-        self,
-        documents: List[Dict[str, Any]],
-        context: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """Decide whether to use cross-encoder based on uncertainty and other factors"""
+    def _update_performance_stats(self, total_time_ms: float, initial_count: int, final_count: int):
+        """Aktualizace performance statistik"""
+        self.performance_stats.update({
+            "total_documents_processed": initial_count,
+            "total_processing_time_ms": total_time_ms,
+            "reduction_ratio": ((initial_count - final_count) / initial_count * 100) if initial_count > 0 else 0.0
+        })
 
-        if not documents:
-            return {"use_cross_encoder": False, "reason": "no_documents", "candidates_count": 0}
-
-        # Check if we have bi-encoder scores and uncertainties
-        has_bi_scores = all("bi_encoder_score" in doc for doc in documents)
-        has_uncertainties = all("bi_encoder_uncertainty" in doc for doc in documents)
-
-        if not has_bi_scores:
-            # No bi-encoder scores, use cross-encoder for top-N
-            candidates_count = min(
-                self.reranking_config.top_n_for_cross_encoder,
-                len(documents)
-            )
-            return {
-                "use_cross_encoder": True,
-                "reason": "no_bi_encoder_scores",
-                "candidates_count": candidates_count
-            }
-
-        # Calculate uncertainty metrics
-        if has_uncertainties:
-            uncertainties = [doc["bi_encoder_uncertainty"] for doc in documents[:self.reranking_config.top_n_for_cross_encoder]]
-            avg_uncertainty = np.mean(uncertainties)
-            max_uncertainty = max(uncertainties)
-
-            if avg_uncertainty > self.reranking_config.uncertainty_threshold:
-                candidates_count = min(
-                    self.reranking_config.top_n_for_cross_encoder,
-                    len(documents)
-                )
-                return {
-                    "use_cross_encoder": True,
-                    "reason": "high_uncertainty",
-                    "avg_uncertainty": avg_uncertainty,
-                    "max_uncertainty": max_uncertainty,
-                    "candidates_count": candidates_count
-                }
-
-        # Check score distribution
-        scores = [doc["bi_encoder_score"] for doc in documents[:self.reranking_config.top_n_for_cross_encoder]]
-        score_std = np.std(scores)
-
-        if score_std < 0.1:  # Very similar scores, need better discrimination
-            candidates_count = min(
-                self.reranking_config.top_n_for_cross_encoder,
-                len(documents)
-            )
-            return {
-                "use_cross_encoder": True,
-                "reason": "low_score_variance",
-                "score_std": score_std,
-                "candidates_count": candidates_count
-            }
-
-        # Context-based decisions
-        if context:
-            query_type = context.get("query_type")
-            if query_type in ["verification", "navigational"]:
-                # High-precision queries benefit from cross-encoder
-                candidates_count = min(
-                    self.reranking_config.top_n_for_cross_encoder,
-                    len(documents)
-                )
-                return {
-                    "use_cross_encoder": True,
-                    "reason": "high_precision_query",
-                    "query_type": query_type,
-                    "candidates_count": candidates_count
-                }
-
-        # Default: skip cross-encoder
+    def get_performance_report(self) -> dict[str, Any]:
+        """Získání performance reportu"""
         return {
-            "use_cross_encoder": False,
-            "reason": "sufficient_bi_encoder_confidence",
-            "candidates_count": 0
-        }
-
-    def _finalize_ranking(self, documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Finalize document ranking and clean up metadata"""
-
-        # Determine final score field
-        final_docs = []
-        for doc in documents:
-            doc_copy = doc.copy()
-
-            # Choose best available score
-            if "combined_rerank_score" in doc:
-                doc_copy["final_rerank_score"] = doc["combined_rerank_score"]
-                doc_copy["reranking_method"] = "cross_encoder"
-            elif "bi_encoder_score" in doc:
-                doc_copy["final_rerank_score"] = doc["bi_encoder_score"]
-                doc_copy["reranking_method"] = "bi_encoder"
-            else:
-                doc_copy["final_rerank_score"] = doc.get("score", 0.5)
-                doc_copy["reranking_method"] = "original"
-
-            final_docs.append(doc_copy)
-
-        # Final sort
-        final_docs.sort(key=lambda x: x["final_rerank_score"], reverse=True)
-
-        # Add rank positions
-        for i, doc in enumerate(final_docs):
-            doc["rerank_position"] = i + 1
-
-        return final_docs
-
-    def get_reranking_stats(self) -> Dict[str, Any]:
-        """Get reranking statistics"""
-        if self.stats["total_queries"] == 0:
-            return {"message": "No queries processed yet"}
-
-        cross_encoder_usage_rate = self.stats["cross_encoder_used"] / self.stats["total_queries"]
-
-        return {
-            "total_queries": self.stats["total_queries"],
-            "bi_encoder_only": self.stats["bi_encoder_only"],
-            "cross_encoder_used": self.stats["cross_encoder_used"],
-            "cross_encoder_usage_rate": cross_encoder_usage_rate,
-            "avg_bi_encoder_time": self.stats["avg_bi_encoder_time"],
-            "avg_cross_encoder_time": self.stats["avg_cross_encoder_time"],
-            "config": {
-                "top_n_for_cross_encoder": self.reranking_config.top_n_for_cross_encoder,
-                "uncertainty_threshold": self.reranking_config.uncertainty_threshold
+            "optimization_summary": {
+                "bm25_candidates": self.config.bm25_candidates,
+                "llm_candidates": self.config.llm_candidates,
+                "theoretical_reduction_percent": ((self.config.bm25_candidates - self.config.llm_candidates) / self.config.bm25_candidates * 100),
+                "actual_reduction_percent": self.performance_stats["reduction_ratio"]
+            },
+            "timing_breakdown": {
+                "bm25_filtering_ms": self.performance_stats["bm25_filtering_time_ms"],
+                "llm_ranking_ms": self.performance_stats["llm_ranking_time_ms"],
+                "total_processing_ms": self.performance_stats["total_processing_time_ms"],
+                "speedup_factor": self._calculate_speedup_factor()
+            },
+            "efficiency_metrics": {
+                "documents_per_second": self._calculate_throughput(),
+                "llm_calls_saved": self.config.bm25_candidates - self.config.llm_candidates,
+                "estimated_cost_savings_percent": self._estimate_cost_savings()
             }
         }
 
+    def _calculate_speedup_factor(self) -> float:
+        """Výpočet faktoru zrychlení oproti full LLM ranking"""
+        # Odhad času, který by trval full LLM ranking
+        estimated_full_llm_time = self.performance_stats["llm_ranking_time_ms"] * (
+            self.config.bm25_candidates / max(1, self.config.llm_candidates)
+        )
 
-def create_gated_reranker(config: Dict[str, Any]) -> GatedReranker:
-    """Factory function for gated reranker"""
-    return GatedReranker(config)
+        actual_time = self.performance_stats["total_processing_time_ms"]
+
+        return estimated_full_llm_time / max(1, actual_time)
+
+    def _calculate_throughput(self) -> float:
+        """Výpočet propustnosti dokumentů za sekundu"""
+        if self.performance_stats["total_processing_time_ms"] > 0:
+            return (self.performance_stats["total_documents_processed"] * 1000.0 /
+                   self.performance_stats["total_processing_time_ms"])
+        return 0.0
+
+    def _estimate_cost_savings(self) -> float:
+        """Odhad úspory nákladů (méně LLM volání)"""
+        llm_calls_saved = self.config.bm25_candidates - self.config.llm_candidates
+        total_potential_calls = self.config.bm25_candidates
+
+        return (llm_calls_saved / max(1, total_potential_calls)) * 100.0
 
 
-# Usage example
-if __name__ == "__main__":
-    config = {
-        "reranking": {
-            "top_n_for_cross_encoder": 30,
-            "uncertainty_threshold": 0.3,
-            "bi_encoder_enabled": True,
-            "cross_encoder_enabled": True
-        },
-        "profile": "thorough"
-    }
+# Convenience funkce pro snadné použití
+async def create_optimized_reranker(config: dict[str, Any], llm_client=None) -> OptimizedGatedReranker:
+    """Factory funkce pro vytvoření optimalizovaného rerankeru
 
-    reranker = GatedReranker(config)
+    Args:
+        config: Konfigurační slovník
+        llm_client: LLM klient pro precision ranking
 
-    # Test documents
-    test_docs = [
-        {"content": "COVID-19 vaccine effectiveness in clinical trials", "score": 0.8},
-        {"content": "Vaccine development and approval process", "score": 0.7},
-        {"content": "Side effects of mRNA vaccines", "score": 0.6},
-        {"content": "Public health vaccination campaigns", "score": 0.5}
-    ]
+    Returns:
+        Nakonfigurovaný OptimizedGatedReranker
 
-    result = reranker.rerank("COVID vaccine effectiveness", test_docs)
+    """
+    reranking_config = config.get("reranking", {})
 
-    print(f"Reranked {result.reranked_count} documents in {result.total_time:.2f}s")
-    print(f"Stages: {list(result.stage_times.keys())}")
+    optimized_config = OptimizedRerankingConfig(
+        bm25_candidates=reranking_config.get("bm25_candidates", 100),
+        llm_candidates=reranking_config.get("llm_candidates", 15),
+        bm25_k1=reranking_config.get("bm25_k1", 1.2),
+        bm25_b=reranking_config.get("bm25_b", 0.75),
+        confidence_threshold=reranking_config.get("confidence_threshold", 0.7),
+        relevance_threshold=reranking_config.get("relevance_threshold", 0.3),
+        uncertainty_threshold=reranking_config.get("uncertainty_threshold", 0.1)
+    )
 
-    for i, doc in enumerate(result.documents[:3]):
-        score = doc.get("final_rerank_score", 0)
-        method = doc.get("reranking_method", "unknown")
-        print(f"{i+1}. Score: {score:.3f} ({method}) - {doc['content'][:50]}...")
+    reranker = OptimizedGatedReranker(optimized_config, llm_client)
 
-    stats = reranker.get_reranking_stats()
-    print(f"\nReranking stats: {stats}")
+    logger.info(f"✅ Optimalizovaný reranker vytvořen: "
+               f"{optimized_config.bm25_candidates} → {optimized_config.llm_candidates} dokumentů "
+               f"({((optimized_config.bm25_candidates - optimized_config.llm_candidates) / optimized_config.bm25_candidates * 100):.1f}% redukce LLM volání)")
+
+    return reranker

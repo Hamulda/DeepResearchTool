@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""
-FÁZE 6: Streaming Engine with Progressive Context Building
+"""FÁZE 6: Streaming Engine with Progressive Context Building
 Streaming inference s early-exit a adaptive batch sizing pro M1
 
 Author: Senior Python/MLOps Agent
 """
 
 import asyncio
-import time
-import json
-from typing import Dict, List, Any, Optional, Tuple, AsyncGenerator
-from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from datetime import datetime
+import time
+from typing import Any
+
 import numpy as np
-from pathlib import Path
 
 try:
     import torch
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -25,6 +25,7 @@ except ImportError:
 @dataclass
 class StreamingChunk:
     """Chunk dat pro streaming"""
+
     chunk_id: int
     content: str
     tokens: int
@@ -37,6 +38,7 @@ class StreamingChunk:
 @dataclass
 class ProgressiveContext:
     """Progressive context building state"""
+
     accumulated_context: str
     context_length: int
     quality_score: float
@@ -48,6 +50,7 @@ class ProgressiveContext:
 @dataclass
 class StreamingMetrics:
     """Streaming performance metriky"""
+
     total_chunks: int
     total_tokens: int
     streaming_time_s: float
@@ -67,16 +70,18 @@ class AdaptiveBatchSizer:
         self.max_batch = max_batch
         self.performance_history = []
 
-    def adjust_batch_size(self, latency_ms: float, memory_usage_mb: float,
-                         memory_limit_mb: float) -> int:
+    def adjust_batch_size(
+        self, latency_ms: float, memory_usage_mb: float, memory_limit_mb: float
+    ) -> int:
         """Adjustuje batch size na základě performance"""
-
-        self.performance_history.append({
-            "batch_size": self.current_batch_size,
-            "latency_ms": latency_ms,
-            "memory_usage_mb": memory_usage_mb,
-            "timestamp": time.time()
-        })
+        self.performance_history.append(
+            {
+                "batch_size": self.current_batch_size,
+                "latency_ms": latency_ms,
+                "memory_usage_mb": memory_usage_mb,
+                "timestamp": time.time(),
+            }
+        )
 
         # Keep only recent history
         if len(self.performance_history) > 10:
@@ -106,7 +111,6 @@ class EarlyExitController:
 
     def should_exit_early(self, chunk: StreamingChunk, total_chunks: int) -> bool:
         """Rozhodne, zda ukončit stream early"""
-
         if total_chunks < self.min_chunks:
             return False
 
@@ -125,7 +129,6 @@ class EarlyExitController:
 
     def calculate_novelty_score(self, new_content: str, existing_context: str) -> float:
         """Vypočítá novelty score pro nový content"""
-
         if not existing_context or not new_content:
             return 1.0
 
@@ -146,13 +149,13 @@ class EarlyExitController:
 class M1StreamingEngine:
     """M1 optimalizovaný streaming engine"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.batch_sizer = AdaptiveBatchSizer(
-            initial_batch_size=config.get('streaming', {}).get('initial_batch_size', 8)
+            initial_batch_size=config.get("streaming", {}).get("initial_batch_size", 8)
         )
         self.early_exit_controller = EarlyExitController(
-            novelty_threshold=config.get('streaming', {}).get('novelty_threshold', 0.15)
+            novelty_threshold=config.get("streaming", {}).get("novelty_threshold", 0.15)
         )
         self.ollama_client = None
         self._initialize_streaming()
@@ -161,19 +164,21 @@ class M1StreamingEngine:
         """Inicializuje streaming components"""
         try:
             import ollama
+
             self.ollama_client = ollama.Client()
             print("✅ Streaming engine initialized with Ollama")
         except ImportError:
             print("⚠️ Ollama not available - using mock streaming")
 
-    async def stream_with_progressive_context(self,
-                                            query: str,
-                                            model: str = "qwen2.5:7b-q4_K_M",
-                                            context_window: int = 8192,
-                                            max_tokens: int = 4096,
-                                            memory_limit_mb: int = 8192) -> Tuple[ProgressiveContext, StreamingMetrics]:
+    async def stream_with_progressive_context(
+        self,
+        query: str,
+        model: str = "qwen2.5:7b-q4_K_M",
+        context_window: int = 8192,
+        max_tokens: int = 4096,
+        memory_limit_mb: int = 8192,
+    ) -> tuple[ProgressiveContext, StreamingMetrics]:
         """Streaming s progressive context building"""
-
         print(f"🚀 Starting progressive streaming for: {query[:50]}...")
 
         start_time = time.time()
@@ -183,7 +188,7 @@ class M1StreamingEngine:
             quality_score=0.0,
             information_density=0.0,
             chunks_processed=0,
-            early_exits=0
+            early_exits=0,
         )
 
         streaming_chunks = []
@@ -192,7 +197,9 @@ class M1StreamingEngine:
         try:
             if self.ollama_client:
                 # Real Ollama streaming
-                async for chunk in self._ollama_stream_generator(query, model, context_window, max_tokens):
+                async for chunk in self._ollama_stream_generator(
+                    query, model, context_window, max_tokens
+                ):
                     streaming_chunks.append(chunk)
                     total_tokens += chunk.tokens
 
@@ -210,12 +217,16 @@ class M1StreamingEngine:
                     if self.early_exit_controller.should_exit_early(chunk, len(streaming_chunks)):
                         chunk.is_early_exit = True
                         progressive_context.early_exits += 1
-                        print(f"🛑 Early exit triggered at chunk {len(streaming_chunks)} (novelty: {chunk.novelty_score:.3f})")
+                        print(
+                            f"🛑 Early exit triggered at chunk {len(streaming_chunks)} (novelty: {chunk.novelty_score:.3f})"
+                        )
                         break
 
                     # Memory pressure check
                     if current_memory > memory_limit_mb:
-                        print(f"⚠️ Memory limit reached: {current_memory:.0f}MB > {memory_limit_mb}MB")
+                        print(
+                            f"⚠️ Memory limit reached: {current_memory:.0f}MB > {memory_limit_mb}MB"
+                        )
                         break
             else:
                 # Mock streaming for testing
@@ -233,7 +244,7 @@ class M1StreamingEngine:
                         break
 
         except Exception as e:
-            print(f"❌ Streaming error: {str(e)}")
+            print(f"❌ Streaming error: {e!s}")
 
         total_time = time.time() - start_time
 
@@ -244,40 +255,44 @@ class M1StreamingEngine:
             streaming_time_s=total_time,
             tokens_per_second=total_tokens / total_time if total_time > 0 else 0,
             context_efficiency=progressive_context.information_density,
-            early_exit_rate=progressive_context.early_exits / len(streaming_chunks) if streaming_chunks else 0,
+            early_exit_rate=(
+                progressive_context.early_exits / len(streaming_chunks) if streaming_chunks else 0
+            ),
             memory_usage_mb=self._estimate_memory_usage(),
-            progressive_quality_score=progressive_context.quality_score
+            progressive_quality_score=progressive_context.quality_score,
         )
 
-        print(f"✅ Streaming completed: {len(streaming_chunks)} chunks, {total_tokens} tokens, {total_time:.1f}s")
+        print(
+            f"✅ Streaming completed: {len(streaming_chunks)} chunks, {total_tokens} tokens, {total_time:.1f}s"
+        )
 
         return progressive_context, metrics
 
-    async def _ollama_stream_generator(self, query: str, model: str,
-                                     context_window: int, max_tokens: int) -> AsyncGenerator[StreamingChunk, None]:
+    async def _ollama_stream_generator(
+        self, query: str, model: str, context_window: int, max_tokens: int
+    ) -> AsyncGenerator[StreamingChunk, None]:
         """Generator pro Ollama streaming"""
-
         try:
             stream = self.ollama_client.generate(
                 model=model,
                 prompt=query,
                 stream=True,
                 options={
-                    'num_ctx': context_window,
-                    'num_predict': max_tokens,
-                    'temperature': 0.7,
-                    'top_p': 0.9
-                }
+                    "num_ctx": context_window,
+                    "num_predict": max_tokens,
+                    "temperature": 0.7,
+                    "top_p": 0.9,
+                },
             )
 
             chunk_id = 0
             accumulated_context = ""
 
             for response_chunk in stream:
-                if response_chunk.get('done', False):
+                if response_chunk.get("done", False):
                     break
 
-                content = response_chunk.get('response', '')
+                content = response_chunk.get("response", "")
                 if not content:
                     continue
 
@@ -292,7 +307,7 @@ class M1StreamingEngine:
                     tokens=len(content.split()),
                     timestamp=time.time(),
                     novelty_score=novelty_score,
-                    context_window_used=len(accumulated_context.split())
+                    context_window_used=len(accumulated_context.split()),
                 )
 
                 accumulated_context += " " + content
@@ -304,11 +319,12 @@ class M1StreamingEngine:
                 await asyncio.sleep(0.01)
 
         except Exception as e:
-            print(f"❌ Ollama streaming error: {str(e)}")
+            print(f"❌ Ollama streaming error: {e!s}")
 
-    async def _mock_stream_generator(self, query: str, max_tokens: int) -> AsyncGenerator[StreamingChunk, None]:
+    async def _mock_stream_generator(
+        self, query: str, max_tokens: int
+    ) -> AsyncGenerator[StreamingChunk, None]:
         """Mock generator pro testing"""
-
         # Generate realistic streaming chunks
         sample_responses = [
             "Based on recent research,",
@@ -319,7 +335,7 @@ class M1StreamingEngine:
             "These developments show promise for",
             "building more stable quantum systems.",
             "However, challenges remain in scaling",
-            "to practical quantum advantage."
+            "to practical quantum advantage.",
         ]
 
         accumulated_context = ""
@@ -339,7 +355,7 @@ class M1StreamingEngine:
                 tokens=len(response.split()),
                 timestamp=time.time(),
                 novelty_score=novelty_score,
-                context_window_used=len(accumulated_context.split())
+                context_window_used=len(accumulated_context.split()),
             )
 
             accumulated_context += " " + response
@@ -349,10 +365,10 @@ class M1StreamingEngine:
             # Simulate streaming delay
             await asyncio.sleep(0.1)
 
-    def _update_progressive_context(self, context: ProgressiveContext,
-                                  chunk: StreamingChunk) -> ProgressiveContext:
+    def _update_progressive_context(
+        self, context: ProgressiveContext, chunk: StreamingChunk
+    ) -> ProgressiveContext:
         """Update progressive context s novým chunkem"""
-
         # Add content to context
         context.accumulated_context += " " + chunk.content
         context.context_length = len(context.accumulated_context.split())
@@ -366,8 +382,7 @@ class M1StreamingEngine:
             context.information_density = unique_words / total_words if total_words > 0 else 0
 
             # Quality score based on novelty and information density
-            context.quality_score = (chunk.novelty_score * 0.6 +
-                                   context.information_density * 0.4)
+            context.quality_score = chunk.novelty_score * 0.6 + context.information_density * 0.4
 
         return context
 
@@ -375,16 +390,16 @@ class M1StreamingEngine:
         """Odhad memory usage v MB"""
         try:
             import psutil
+
             process = psutil.Process()
             return process.memory_info().rss / (1024 * 1024)
         except:
             return 1024.0  # Default estimate
 
-    async def benchmark_streaming_performance(self,
-                                            test_queries: List[str],
-                                            profile_config: Dict[str, Any]) -> Dict[str, Any]:
+    async def benchmark_streaming_performance(
+        self, test_queries: list[str], profile_config: dict[str, Any]
+    ) -> dict[str, Any]:
         """Benchmark streaming performance"""
-
         print(f"🏁 Benchmarking streaming performance with {len(test_queries)} queries...")
 
         results = []
@@ -396,10 +411,10 @@ class M1StreamingEngine:
             try:
                 context, metrics = await self.stream_with_progressive_context(
                     query=query,
-                    model=profile_config.get('model', 'qwen2.5:7b-q4_K_M'),
-                    context_window=profile_config.get('context_window', 8192),
-                    max_tokens=profile_config.get('max_tokens', 4096),
-                    memory_limit_mb=profile_config.get('memory_limit_mb', 8192)
+                    model=profile_config.get("model", "qwen2.5:7b-q4_K_M"),
+                    context_window=profile_config.get("context_window", 8192),
+                    max_tokens=profile_config.get("max_tokens", 4096),
+                    memory_limit_mb=profile_config.get("memory_limit_mb", 8192),
                 )
 
                 result = {
@@ -411,26 +426,25 @@ class M1StreamingEngine:
                     "early_exit_rate": metrics.early_exit_rate,
                     "context_efficiency": metrics.context_efficiency,
                     "memory_usage_mb": metrics.memory_usage_mb,
-                    "quality_score": metrics.progressive_quality_score
+                    "quality_score": metrics.progressive_quality_score,
                 }
 
                 results.append(result)
 
-                print(f"✅ Query {i+1}: {metrics.streaming_time_s:.1f}s, {metrics.tokens_per_second:.1f} tok/s")
+                print(
+                    f"✅ Query {i+1}: {metrics.streaming_time_s:.1f}s, {metrics.tokens_per_second:.1f} tok/s"
+                )
 
             except Exception as e:
-                print(f"❌ Query {i+1} failed: {str(e)}")
-                results.append({
-                    "query": query,
-                    "error": str(e),
-                    "execution_time_s": 0,
-                    "total_tokens": 0
-                })
+                print(f"❌ Query {i+1} failed: {e!s}")
+                results.append(
+                    {"query": query, "error": str(e), "execution_time_s": 0, "total_tokens": 0}
+                )
 
         total_time = time.time() - total_start
 
         # Calculate aggregate metrics
-        successful_results = [r for r in results if 'error' not in r]
+        successful_results = [r for r in results if "error" not in r]
 
         benchmark_report = {
             "streaming_benchmark": {
@@ -440,26 +454,34 @@ class M1StreamingEngine:
                 "total_benchmark_time_s": total_time,
                 "profile_config": profile_config,
                 "aggregate_metrics": {},
-                "individual_results": results
+                "individual_results": results,
             }
         }
 
         if successful_results:
             benchmark_report["streaming_benchmark"]["aggregate_metrics"] = {
-                "avg_execution_time_s": np.mean([r["execution_time_s"] for r in successful_results]),
-                "avg_tokens_per_second": np.mean([r["tokens_per_second"] for r in successful_results]),
+                "avg_execution_time_s": np.mean(
+                    [r["execution_time_s"] for r in successful_results]
+                ),
+                "avg_tokens_per_second": np.mean(
+                    [r["tokens_per_second"] for r in successful_results]
+                ),
                 "avg_early_exit_rate": np.mean([r["early_exit_rate"] for r in successful_results]),
-                "avg_context_efficiency": np.mean([r["context_efficiency"] for r in successful_results]),
+                "avg_context_efficiency": np.mean(
+                    [r["context_efficiency"] for r in successful_results]
+                ),
                 "avg_memory_usage_mb": np.mean([r["memory_usage_mb"] for r in successful_results]),
-                "p95_execution_time_s": np.percentile([r["execution_time_s"] for r in successful_results], 95),
-                "success_rate": len(successful_results) / len(test_queries)
+                "p95_execution_time_s": np.percentile(
+                    [r["execution_time_s"] for r in successful_results], 95
+                ),
+                "success_rate": len(successful_results) / len(test_queries),
             }
 
         return benchmark_report
 
 
 # Factory function
-def create_m1_streaming_engine(config: Dict[str, Any]) -> M1StreamingEngine:
+def create_m1_streaming_engine(config: dict[str, Any]) -> M1StreamingEngine:
     """Factory function pro vytvoření M1 streaming engine"""
     return M1StreamingEngine(config)
 
@@ -471,7 +493,7 @@ if __name__ == "__main__":
             "initial_batch_size": 8,
             "novelty_threshold": 0.15,
             "enable_early_exit": True,
-            "progressive_context": True
+            "progressive_context": True,
         }
     }
 
@@ -482,14 +504,15 @@ if __name__ == "__main__":
     test_queries = [
         "What are quantum computing error correction advances?",
         "Explain machine learning model compression techniques",
-        "Recent developments in renewable energy storage"
+        "Recent developments in renewable energy storage",
     ]
 
     async def test_streaming():
         context, metrics = await engine.stream_with_progressive_context(
-            "Test query for streaming engine",
-            max_tokens=1000
+            "Test query for streaming engine", max_tokens=1000
         )
-        print(f"Streaming test completed: {metrics.total_chunks} chunks, {metrics.tokens_per_second:.1f} tok/s")
+        print(
+            f"Streaming test completed: {metrics.total_chunks} chunks, {metrics.tokens_per_second:.1f} tok/s"
+        )
 
     # asyncio.run(test_streaming())

@@ -1,19 +1,17 @@
-"""
-RAG Pipeline pro zpracování dokumentů s chunking strategiemi
+"""RAG Pipeline pro zpracování dokumentů s chunking strategiemi
 Implementace kompletního procesu ingesci a retrievalu
 
 Author: Senior Python/MLOps Agent
 """
 
-import asyncio
-import logging
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+import logging
+from typing import Any
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document as LangChainDocument
 
-from .memory import BaseMemoryStore, Document, get_memory_store
+from .memory import Document, get_memory_store
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +19,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RAGConfig:
     """Konfigurace pro RAG pipeline"""
+
     chunk_size: int = 1000
     chunk_overlap: int = 150
-    separators: List[str] = None
+    separators: list[str] = None
 
     def __post_init__(self):
         if self.separators is None:
@@ -40,12 +39,11 @@ class DocumentProcessor:
             chunk_overlap=config.chunk_overlap,
             separators=config.separators,
             length_function=len,
-            is_separator_regex=False
+            is_separator_regex=False,
         )
 
-    def chunk_text(self, text: str, metadata: Dict[str, Any] = None) -> List[Document]:
-        """
-        Rozdělení textu na chunky pomocí RecursiveCharacterTextSplitter
+    def chunk_text(self, text: str, metadata: dict[str, Any] = None) -> list[Document]:
+        """Rozdělení textu na chunky pomocí RecursiveCharacterTextSplitter
 
         Args:
             text: Text k rozdělení
@@ -53,15 +51,13 @@ class DocumentProcessor:
 
         Returns:
             Seznam Document objektů reprezentujících chunky
+
         """
         if metadata is None:
             metadata = {}
 
         # Vytvoření LangChain dokumentu
-        langchain_doc = LangChainDocument(
-            page_content=text,
-            metadata=metadata
-        )
+        langchain_doc = LangChainDocument(page_content=text, metadata=metadata)
 
         # Rozdělení na chunky
         chunks = self.text_splitter.split_documents([langchain_doc])
@@ -71,30 +67,29 @@ class DocumentProcessor:
         for i, chunk in enumerate(chunks):
             # Přidání chunk specifických metadat
             chunk_metadata = chunk.metadata.copy()
-            chunk_metadata.update({
-                "chunk_index": i,
-                "total_chunks": len(chunks),
-                "chunk_size": len(chunk.page_content),
-                "original_length": len(text)
-            })
-
-            doc = Document(
-                content=chunk.page_content,
-                metadata=chunk_metadata
+            chunk_metadata.update(
+                {
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                    "chunk_size": len(chunk.page_content),
+                    "original_length": len(text),
+                }
             )
+
+            doc = Document(content=chunk.page_content, metadata=chunk_metadata)
             documents.append(doc)
 
         return documents
 
-    def chunk_documents(self, documents: List[Dict[str, Any]]) -> List[Document]:
-        """
-        Zpracování seznamu dokumentů a jejich rozdělení na chunky
+    def chunk_documents(self, documents: list[dict[str, Any]]) -> list[Document]:
+        """Zpracování seznamu dokumentů a jejich rozdělení na chunky
 
         Args:
             documents: Seznam dokumentů s 'content' a volitelně 'metadata'
 
         Returns:
             Seznam všech chunků ze všech dokumentů
+
         """
         all_chunks = []
 
@@ -115,14 +110,14 @@ class DocumentProcessor:
 class RAGPipeline:
     """Kompletní RAG pipeline pro ingesci a retrieval"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
 
         # Inicializace komponent
         rag_config = RAGConfig(
             chunk_size=config.get("chunking", {}).get("chunk_size", 1000),
             chunk_overlap=config.get("chunking", {}).get("chunk_overlap", 150),
-            separators=config.get("chunking", {}).get("separators")
+            separators=config.get("chunking", {}).get("separators"),
         )
 
         self.document_processor = DocumentProcessor(rag_config)
@@ -136,9 +131,8 @@ class RAGPipeline:
             self._initialized = True
             logger.info("RAG Pipeline inicializována")
 
-    async def ingest_documents(self, documents: List[Dict[str, Any]]) -> List[str]:
-        """
-        Ingesci dokumentů do knowledge base
+    async def ingest_documents(self, documents: list[dict[str, Any]]) -> list[str]:
+        """Ingesci dokumentů do knowledge base
 
         Proces:
         1. Načtení dokumentů
@@ -151,6 +145,7 @@ class RAGPipeline:
 
         Returns:
             Seznam ID uložených chunků
+
         """
         if not self._initialized:
             await self.initialize()
@@ -167,9 +162,8 @@ class RAGPipeline:
         logger.info(f"Úspěšně uloženo {len(chunk_ids)} chunků do knowledge base")
         return chunk_ids
 
-    async def ingest_text(self, text: str, metadata: Dict[str, Any] = None) -> List[str]:
-        """
-        Ingesci jednotlivého textu
+    async def ingest_text(self, text: str, metadata: dict[str, Any] = None) -> list[str]:
+        """Ingesci jednotlivého textu
 
         Args:
             text: Text k uložení
@@ -177,16 +171,15 @@ class RAGPipeline:
 
         Returns:
             Seznam ID uložených chunků
+
         """
         documents = [{"content": text, "metadata": metadata or {}}]
         return await self.ingest_documents(documents)
 
-    async def search(self,
-                    query: str,
-                    k: int = 5,
-                    filter_metadata: Dict[str, Any] = None) -> List[Document]:
-        """
-        Vyhledání relevantních dokumentů
+    async def search(
+        self, query: str, k: int = 5, filter_metadata: dict[str, Any] = None
+    ) -> list[Document]:
+        """Vyhledání relevantních dokumentů
 
         Proces:
         1. Vytvoření embeddingu z dotazu
@@ -200,6 +193,7 @@ class RAGPipeline:
 
         Returns:
             Seznam nejrelevantnějších dokumentů
+
         """
         if not self._initialized:
             await self.initialize()
@@ -207,21 +201,13 @@ class RAGPipeline:
         logger.info(f"Vyhledávání pro dotaz: '{query}' (k={k})")
 
         # Vyhledání pomocí memory store
-        results = await self.memory_store.search(
-            query=query,
-            k=k,
-            where=filter_metadata
-        )
+        results = await self.memory_store.search(query=query, k=k, where=filter_metadata)
 
         logger.info(f"Nalezeno {len(results)} relevantních dokumentů")
         return results
 
-    async def get_context_for_query(self,
-                                   query: str,
-                                   max_tokens: int = 4000,
-                                   k: int = 10) -> str:
-        """
-        Získání kontextu pro LLM na základě dotazu
+    async def get_context_for_query(self, query: str, max_tokens: int = 4000, k: int = 10) -> str:
+        """Získání kontextu pro LLM na základě dotazu
 
         Args:
             query: Dotaz pro vyhledání kontextu
@@ -230,6 +216,7 @@ class RAGPipeline:
 
         Returns:
             Formátovaný kontext pro LLM
+
         """
         # Vyhledání relevantních dokumentů
         documents = await self.search(query, k=k)
@@ -261,7 +248,9 @@ class RAGPipeline:
 
         context = "\n".join(context_parts)
 
-        logger.info(f"Vytvořen kontext z {len(context_parts)} dokumentů, odhadovaných {current_length} tokenů")
+        logger.info(
+            f"Vytvořen kontext z {len(context_parts)} dokumentů, odhadovaných {current_length} tokenů"
+        )
         return context
 
     async def clear_knowledge_base(self) -> None:
@@ -276,17 +265,15 @@ class RAGPipeline:
 class HybridRAGPipeline(RAGPipeline):
     """Rozšířená RAG pipeline s hybridním vyhledáváním"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self.keyword_weight = config.get("hybrid", {}).get("keyword_weight", 0.3)
         self.semantic_weight = config.get("hybrid", {}).get("semantic_weight", 0.7)
 
-    async def hybrid_search(self,
-                           query: str,
-                           k: int = 5,
-                           filter_metadata: Dict[str, Any] = None) -> List[Document]:
-        """
-        Hybridní vyhledávání kombinující sémantické a keyword vyhledávání
+    async def hybrid_search(
+        self, query: str, k: int = 5, filter_metadata: dict[str, Any] = None
+    ) -> list[Document]:
+        """Hybridní vyhledávání kombinující sémantické a keyword vyhledávání
 
         Args:
             query: Vyhledávací dotaz
@@ -295,28 +282,30 @@ class HybridRAGPipeline(RAGPipeline):
 
         Returns:
             Seznam dokumentů seřazených podle kombinovaného skóre
+
         """
         # Sémantické vyhledávání
-        semantic_results = await self.search(query, k=k*2, filter_metadata=filter_metadata)
+        semantic_results = await self.search(query, k=k * 2, filter_metadata=filter_metadata)
 
         # Keyword vyhledávání (jednoduchá implementace)
-        keyword_results = await self._keyword_search(query, k=k*2, filter_metadata=filter_metadata)
+        keyword_results = await self._keyword_search(
+            query, k=k * 2, filter_metadata=filter_metadata
+        )
 
         # Kombinace výsledků pomocí RRF (Reciprocal Rank Fusion)
         combined_results = self._combine_results_rrf(semantic_results, keyword_results, k)
 
         return combined_results[:k]
 
-    async def _keyword_search(self,
-                             query: str,
-                             k: int,
-                             filter_metadata: Dict[str, Any] = None) -> List[Document]:
+    async def _keyword_search(
+        self, query: str, k: int, filter_metadata: dict[str, Any] = None
+    ) -> list[Document]:
         """Jednoduchá keyword vyhledávání implementace"""
         # Pro skutečnou implementaci by se použil např. BM25 nebo Elasticsearch
         # Zde používáme zjednodušenou verzi
 
         query_words = set(query.lower().split())
-        all_docs = await self.memory_store.search("", k=k*5)  # Získání více dokumentů
+        all_docs = await self.memory_store.search("", k=k * 5)  # Získání více dokumentů
 
         scored_docs = []
         for doc in all_docs:
@@ -332,12 +321,10 @@ class HybridRAGPipeline(RAGPipeline):
         scored_docs.sort(key=lambda x: x.metadata.get("keyword_score", 0), reverse=True)
         return scored_docs[:k]
 
-    def _combine_results_rrf(self,
-                            semantic_results: List[Document],
-                            keyword_results: List[Document],
-                            k: int) -> List[Document]:
-        """
-        Kombinace výsledků pomocí Reciprocal Rank Fusion
+    def _combine_results_rrf(
+        self, semantic_results: list[Document], keyword_results: list[Document], k: int
+    ) -> list[Document]:
+        """Kombinace výsledků pomocí Reciprocal Rank Fusion
 
         Args:
             semantic_results: Výsledky sémantického vyhledávání
@@ -346,6 +333,7 @@ class HybridRAGPipeline(RAGPipeline):
 
         Returns:
             Kombinované a seřazené výsledky
+
         """
         rrf_k = 60  # Standardní konstanta pro RRF
 

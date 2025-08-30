@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""
-Enhanced Retrieval Engine - FÁZE 1 Integration
+"""Enhanced Retrieval Engine - FÁZE 1 Integration
 Integruje HyDE, MMR, Enhanced RRF a Qdrant optimization
 
 Author: Senior Python/MLOps Agent
 """
 
-import asyncio
-import logging
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
+import logging
 import time
+from typing import Any
+
 import numpy as np
+
+from .enhanced_rrf import EnhancedRRFEngine
 
 # FÁZE 1 imports
 from .hyde_expansion import HyDEQueryExpander, HyDEResult
 from .mmr_diversification import MMRDiversifier, MMRResult
-from .enhanced_rrf import EnhancedRRFEngine
 from .qdrant_optimizer import QdrantOptimizer
 
 logger = logging.getLogger(__name__)
@@ -25,19 +25,20 @@ logger = logging.getLogger(__name__)
 @dataclass
 class EnhancedRetrievalResult:
     """Enhanced výsledek retrievalu s FÁZE 1 metrikami"""
-    results: List[Dict[str, Any]]
-    hyde_expansion: Optional[HyDEResult]
-    mmr_diversification: List[MMRResult]
-    rrf_fusion_metrics: Dict[str, Any]
-    qdrant_performance: Dict[str, Any]
+
+    results: list[dict[str, Any]]
+    hyde_expansion: HyDEResult | None
+    mmr_diversification: list[MMRResult]
+    rrf_fusion_metrics: dict[str, Any]
+    qdrant_performance: dict[str, Any]
     total_processing_time: float
-    phase1_metrics: Dict[str, Any]
+    phase1_metrics: dict[str, Any]
 
 
 class EnhancedRetrievalEngine:
     """Enhanced Retrieval Engine s FÁZE 1 funkcionalitou"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.retrieval_config = config.get("retrieval", {})
 
@@ -57,7 +58,6 @@ class EnhancedRetrievalEngine:
 
     async def initialize(self, llm_client=None, embedding_model=None):
         """Inicializace všech FÁZE 1 komponent"""
-
         logger.info("Initializing Enhanced Retrieval Engine (FÁZE 1)...")
         start_time = time.time()
 
@@ -91,13 +91,14 @@ class EnhancedRetrievalEngine:
             logger.error(f"Failed to initialize Enhanced Retrieval Engine: {e}")
             raise
 
-    async def enhanced_retrieve(self,
-                               query: str,
-                               domain: str = "general",
-                               k_results: int = 20,
-                               retrieval_sources: List[str] = None) -> EnhancedRetrievalResult:
-        """
-        Enhanced retrieval s kompletní FÁZE 1 pipeline
+    async def enhanced_retrieve(
+        self,
+        query: str,
+        domain: str = "general",
+        k_results: int = 20,
+        retrieval_sources: list[str] = None,
+    ) -> EnhancedRetrievalResult:
+        """Enhanced retrieval s kompletní FÁZE 1 pipeline
 
         Pipeline:
         1. HyDE query expansion (optional)
@@ -106,7 +107,6 @@ class EnhancedRetrievalEngine:
         4. MMR diversification
         5. Qdrant performance monitoring
         """
-
         start_time = time.time()
         logger.info(f"Starting enhanced retrieval for query: {query[:100]}...")
 
@@ -122,9 +122,11 @@ class EnhancedRetrievalEngine:
             effective_query = hyde_result.expanded_query if not hyde_result.fallback_used else query
 
             hyde_time = time.time() - hyde_start
-            logger.info(f"HyDE expansion completed in {hyde_time:.2f}s, "
-                       f"fallback: {hyde_result.fallback_used}, "
-                       f"confidence: {hyde_result.confidence_score:.2f}")
+            logger.info(
+                f"HyDE expansion completed in {hyde_time:.2f}s, "
+                f"fallback: {hyde_result.fallback_used}, "
+                f"confidence: {hyde_result.confidence_score:.2f}"
+            )
 
         # STEP 2: Multi-source Retrieval
         logger.debug("Executing multi-source retrieval...")
@@ -137,8 +139,10 @@ class EnhancedRetrievalEngine:
         )
 
         retrieval_time = time.time() - retrieval_start
-        logger.info(f"Multi-source retrieval completed in {retrieval_time:.2f}s, "
-                   f"sources: {len(retrieval_results)}")
+        logger.info(
+            f"Multi-source retrieval completed in {retrieval_time:.2f}s, "
+            f"sources: {len(retrieval_results)}"
+        )
 
         # STEP 3: Enhanced RRF Fusion
         logger.debug("Applying Enhanced RRF fusion...")
@@ -165,8 +169,10 @@ class EnhancedRetrievalEngine:
             )
 
             mmr_time = time.time() - mmr_start
-            logger.info(f"MMR diversification completed in {mmr_time:.2f}s, "
-                       f"diverse selections: {sum(1 for r in mmr_results if r.selected_for_diversity)}")
+            logger.info(
+                f"MMR diversification completed in {mmr_time:.2f}s, "
+                f"diverse selections: {sum(1 for r in mmr_results if r.selected_for_diversity)}"
+            )
 
         # STEP 5: Qdrant Performance Monitoring
         qdrant_performance = await self._monitor_qdrant_performance()
@@ -179,7 +185,7 @@ class EnhancedRetrievalEngine:
                     **rrf_result["results"][mmr_r.original_rank],
                     "mmr_rank": mmr_r.mmr_rank,
                     "diversity_score": mmr_r.diversity_score,
-                    "mmr_score": mmr_r.mmr_score
+                    "mmr_score": mmr_r.mmr_score,
                 }
                 for mmr_r in mmr_results[:k_results]
             ]
@@ -200,21 +206,25 @@ class EnhancedRetrievalEngine:
             "total_processing_time": total_time,
             "pipeline_efficiency": k_results / total_time if total_time > 0 else 0,
             "query_expansion_ratio": len(effective_query) / len(query) if query else 1,
-            "final_result_count": len(final_results)
+            "final_result_count": len(final_results),
         }
 
         # Log performance
-        self.performance_logs.append({
-            "timestamp": time.time(),
-            "query": query[:100],
-            "domain": domain,
-            "metrics": phase1_metrics,
-            "hyde_used": hyde_result is not None and not hyde_result.fallback_used,
-            "mmr_used": len(mmr_results) > 0
-        })
+        self.performance_logs.append(
+            {
+                "timestamp": time.time(),
+                "query": query[:100],
+                "domain": domain,
+                "metrics": phase1_metrics,
+                "hyde_used": hyde_result is not None and not hyde_result.fallback_used,
+                "mmr_used": len(mmr_results) > 0,
+            }
+        )
 
-        logger.info(f"Enhanced retrieval completed in {total_time:.2f}s, "
-                   f"returned {len(final_results)} results")
+        logger.info(
+            f"Enhanced retrieval completed in {total_time:.2f}s, "
+            f"returned {len(final_results)} results"
+        )
 
         return EnhancedRetrievalResult(
             results=final_results,
@@ -223,15 +233,13 @@ class EnhancedRetrievalEngine:
             rrf_fusion_metrics=rrf_result["metrics"],
             qdrant_performance=qdrant_performance,
             total_processing_time=total_time,
-            phase1_metrics=phase1_metrics
+            phase1_metrics=phase1_metrics,
         )
 
-    async def _execute_multi_source_retrieval(self,
-                                            query: str,
-                                            domain: str,
-                                            sources: List[str] = None) -> List[List[Dict[str, Any]]]:
+    async def _execute_multi_source_retrieval(
+        self, query: str, domain: str, sources: list[str] = None
+    ) -> list[list[dict[str, Any]]]:
         """Mock multi-source retrieval pro demonstraci"""
-
         # V reálné implementaci by se zde volaly skutečné retrieval enginy
         # Pro FÁZE 1 demo vytvořím mock data
 
@@ -255,8 +263,8 @@ class EnhancedRetrievalEngine:
                     "metadata": {
                         "publication_date": "2024-01-01",
                         "domain": domain,
-                        "source_type": self._map_source_to_type(source)
-                    }
+                        "source_type": self._map_source_to_type(source),
+                    },
                 }
                 source_results.append(mock_result)
 
@@ -268,13 +276,12 @@ class EnhancedRetrievalEngine:
 
     def _map_source_to_type(self, source: str) -> str:
         """Mapování zdroje na typ pro RRF priors"""
-
         mapping = {
             "academic_db": "academic",
             "news_api": "news",
             "government_db": "government",
             "social_api": "social_media",
-            "wikipedia": "wikipedia"
+            "wikipedia": "wikipedia",
         }
 
         for pattern, source_type in mapping.items():
@@ -283,9 +290,8 @@ class EnhancedRetrievalEngine:
 
         return "wikipedia"  # Default
 
-    async def _monitor_qdrant_performance(self) -> Dict[str, Any]:
+    async def _monitor_qdrant_performance(self) -> dict[str, Any]:
         """Monitoring Qdrant performance"""
-
         try:
             # V reálné implementaci by se zde měřil skutečný výkon
             # Pro demo vrátím mock metriky
@@ -295,16 +301,15 @@ class EnhancedRetrievalEngine:
                 "average_latency_ms": np.random.uniform(20, 100),
                 "current_ef_search": 64,
                 "estimated_recall": np.random.uniform(0.7, 0.9),
-                "monitoring_timestamp": time.time()
+                "monitoring_timestamp": time.time(),
             }
 
         except Exception as e:
             logger.warning(f"Qdrant performance monitoring failed: {e}")
             return {"error": str(e)}
 
-    async def optimize_qdrant_collections(self) -> Dict[str, Any]:
+    async def optimize_qdrant_collections(self) -> dict[str, Any]:
         """Spuštění Qdrant optimalizace"""
-
         if not self.qdrant_optimizer:
             return {"error": "Qdrant optimizer not initialized"}
 
@@ -314,21 +319,22 @@ class EnhancedRetrievalEngine:
 
             optimization_report = self.qdrant_optimizer.get_optimization_report()
 
-            logger.info(f"Qdrant optimization completed: {len(optimizations)} collections optimized")
+            logger.info(
+                f"Qdrant optimization completed: {len(optimizations)} collections optimized"
+            )
 
             return {
                 "optimizations": optimizations,
                 "report": optimization_report,
-                "status": "success"
+                "status": "success",
             }
 
         except Exception as e:
             logger.error(f"Qdrant optimization failed: {e}")
             return {"error": str(e), "status": "failed"}
 
-    def get_performance_analysis(self) -> Dict[str, Any]:
+    def get_performance_analysis(self) -> dict[str, Any]:
         """Analýza výkonu FÁZE 1 funkcí"""
-
         if not self.performance_logs:
             return {"message": "No performance data available"}
 
@@ -338,9 +344,23 @@ class EnhancedRetrievalEngine:
         hyde_usage = sum(1 for log in self.performance_logs if log["hyde_used"])
         mmr_usage = sum(1 for log in self.performance_logs if log["mmr_used"])
 
-        avg_total_time = np.mean([log["metrics"]["total_processing_time"] for log in self.performance_logs])
-        avg_hyde_time = np.mean([log["metrics"]["hyde_processing_time"] for log in self.performance_logs if log["hyde_used"]])
-        avg_mmr_time = np.mean([log["metrics"]["mmr_processing_time"] for log in self.performance_logs if log["mmr_used"]])
+        avg_total_time = np.mean(
+            [log["metrics"]["total_processing_time"] for log in self.performance_logs]
+        )
+        avg_hyde_time = np.mean(
+            [
+                log["metrics"]["hyde_processing_time"]
+                for log in self.performance_logs
+                if log["hyde_used"]
+            ]
+        )
+        avg_mmr_time = np.mean(
+            [
+                log["metrics"]["mmr_processing_time"]
+                for log in self.performance_logs
+                if log["mmr_used"]
+            ]
+        )
 
         # Domain analysis
         domain_performance = {}
@@ -352,10 +372,7 @@ class EnhancedRetrievalEngine:
 
         domain_stats = {}
         for domain, times in domain_performance.items():
-            domain_stats[domain] = {
-                "avg_time": np.mean(times),
-                "query_count": len(times)
-            }
+            domain_stats[domain] = {"avg_time": np.mean(times), "query_count": len(times)}
 
         return {
             "total_queries_processed": total_queries,
@@ -364,19 +381,18 @@ class EnhancedRetrievalEngine:
             "performance_metrics": {
                 "avg_total_processing_time": avg_total_time,
                 "avg_hyde_processing_time": avg_hyde_time if hyde_usage > 0 else 0,
-                "avg_mmr_processing_time": avg_mmr_time if mmr_usage > 0 else 0
+                "avg_mmr_processing_time": avg_mmr_time if mmr_usage > 0 else 0,
             },
             "domain_performance": domain_stats,
             "feature_utilization": {
                 "hyde_enabled": self.hyde_enabled,
                 "mmr_enabled": self.mmr_enabled,
-                "enhanced_rrf_enabled": self.enhanced_rrf_enabled
-            }
+                "enhanced_rrf_enabled": self.enhanced_rrf_enabled,
+            },
         }
 
-    async def run_phase1_benchmark(self) -> Dict[str, Any]:
+    async def run_phase1_benchmark(self) -> dict[str, Any]:
         """Spuštění kompletního FÁZE 1 benchmarku"""
-
         logger.info("Starting FÁZE 1 comprehensive benchmark...")
 
         test_queries = [
@@ -384,7 +400,7 @@ class EnhancedRetrievalEngine:
             ("climate change adaptation strategies", "environment"),
             ("artificial intelligence safety research", "technology"),
             ("renewable energy storage solutions", "technology"),
-            ("medical imaging deep learning", "medicine")
+            ("medical imaging deep learning", "medicine"),
         ]
 
         benchmark_results = []
@@ -395,31 +411,42 @@ class EnhancedRetrievalEngine:
             try:
                 result = await self.enhanced_retrieve(query, domain, k_results=10)
 
-                benchmark_results.append({
-                    "query": query,
-                    "domain": domain,
-                    "success": True,
-                    "metrics": result.phase1_metrics,
-                    "hyde_used": result.hyde_expansion is not None and not result.hyde_expansion.fallback_used,
-                    "mmr_diversification_rate": len([r for r in result.mmr_diversification if r.selected_for_diversity]) / len(result.mmr_diversification) if result.mmr_diversification else 0
-                })
+                benchmark_results.append(
+                    {
+                        "query": query,
+                        "domain": domain,
+                        "success": True,
+                        "metrics": result.phase1_metrics,
+                        "hyde_used": result.hyde_expansion is not None
+                        and not result.hyde_expansion.fallback_used,
+                        "mmr_diversification_rate": (
+                            len([r for r in result.mmr_diversification if r.selected_for_diversity])
+                            / len(result.mmr_diversification)
+                            if result.mmr_diversification
+                            else 0
+                        ),
+                    }
+                )
 
             except Exception as e:
                 logger.error(f"Benchmark failed for query '{query}': {e}")
-                benchmark_results.append({
-                    "query": query,
-                    "domain": domain,
-                    "success": False,
-                    "error": str(e)
-                })
+                benchmark_results.append(
+                    {"query": query, "domain": domain, "success": False, "error": str(e)}
+                )
 
         # Aggregate benchmark metrics
         successful_results = [r for r in benchmark_results if r["success"]]
 
         if successful_results:
-            avg_processing_time = np.mean([r["metrics"]["total_processing_time"] for r in successful_results])
-            avg_pipeline_efficiency = np.mean([r["metrics"]["pipeline_efficiency"] for r in successful_results])
-            hyde_success_rate = sum(1 for r in successful_results if r["hyde_used"]) / len(successful_results)
+            avg_processing_time = np.mean(
+                [r["metrics"]["total_processing_time"] for r in successful_results]
+            )
+            avg_pipeline_efficiency = np.mean(
+                [r["metrics"]["pipeline_efficiency"] for r in successful_results]
+            )
+            hyde_success_rate = sum(1 for r in successful_results if r["hyde_used"]) / len(
+                successful_results
+            )
 
             benchmark_summary = {
                 "total_queries": len(test_queries),
@@ -428,7 +455,7 @@ class EnhancedRetrievalEngine:
                 "avg_processing_time": avg_processing_time,
                 "avg_pipeline_efficiency": avg_pipeline_efficiency,
                 "hyde_success_rate": hyde_success_rate,
-                "results": benchmark_results
+                "results": benchmark_results,
             }
         else:
             benchmark_summary = {
@@ -436,15 +463,17 @@ class EnhancedRetrievalEngine:
                 "successful_queries": 0,
                 "success_rate": 0,
                 "error": "All benchmark queries failed",
-                "results": benchmark_results
+                "results": benchmark_results,
             }
 
-        logger.info(f"FÁZE 1 benchmark completed: {benchmark_summary['success_rate']*100:.1f}% success rate")
+        logger.info(
+            f"FÁZE 1 benchmark completed: {benchmark_summary['success_rate']*100:.1f}% success rate"
+        )
 
         return benchmark_summary
 
 
 # Factory function
-def create_enhanced_retrieval_engine(config: Dict[str, Any]) -> EnhancedRetrievalEngine:
+def create_enhanced_retrieval_engine(config: dict[str, Any]) -> EnhancedRetrievalEngine:
     """Factory function pro Enhanced Retrieval Engine"""
     return EnhancedRetrievalEngine(config)

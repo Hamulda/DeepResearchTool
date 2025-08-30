@@ -1,348 +1,456 @@
-#!/usr/bin/env python3
-"""
-Context Manager for Deep Research Tool
-Handles intelligent chunking, prioritization and memory management
-
-Author: Advanced IT Specialist
+"""Context Manager for Large Document Processing
+Hierarchical chunking and semantic compression for limited context windows
+Optimized for MacBook Air M1 8GB RAM constraints
 """
 
-import re
-import hashlib
-from typing import List, Dict, Any, Tuple, Optional
+from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from dataclasses import dataclass
-from collections import deque
-import nltk
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+import logging
+import re
+from typing import Any
+
 import numpy as np
+import polars as pl
 
-from .priority_scorer import InformationPriorityScorer
+from .memory_optimizer import MemoryOptimizer
 
-# Download required NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class DocumentChunk:
-    """Represents a chunk of a document with metadata"""
-    content: str
-    start_position: int
-    end_position: int
-    source_document: str
-    priority_score: float
-    metadata: Dict[str, Any]
-    coherence_score: float = 0.0
+    """Single document chunk with metadata"""
 
-class ContextManager:
-    """Advanced context management system with intelligent chunking and prioritization"""
+    text: str
+    chunk_id: str
+    document_id: str
+    chunk_index: int
+    start_char: int
+    end_char: int
+    token_count: int
+    embedding: np.ndarray | None = None
+    importance_score: float | None = None
+    section_type: str | None = None
+    metadata: dict[str, Any] | None = None
 
-    def __init__(self, max_context_size: int = 4096, chunk_size: int = 512, chunk_overlap: int = 50):
-        """
-        Initialize the context manager
 
-        Args:
-            max_context_size: Maximum context size in tokens
-            chunk_size: Size of each chunk in characters
-            chunk_overlap: Overlap between chunks in characters
-        """
-        self.max_context_size = max_context_size
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.priority_scorer = InformationPriorityScorer()
-        self.conversation_memory = deque(maxlen=10)
-        self.vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
+@dataclass
+class ChunkingConfig:
+    """Configuration for chunking strategy"""
 
-    def chunk_document(self, text: str, source_document: str,
-                      preserve_coherence: bool = True) -> List[DocumentChunk]:
-        """
-        Intelligent document chunking with coherence preservation
+    chunk_size: int = 512
+    overlap_size: int = 50
+    min_chunk_size: int = 100
+    max_chunk_size: int = 1024
+    respect_sentence_boundaries: bool = True
+    respect_paragraph_boundaries: bool = True
+    section_aware: bool = True
+    token_counter: str = "simple"  # simple, tiktoken, huggingface
 
-        Args:
-            text: Text to chunk
-            source_document: Source document identifier
-            preserve_coherence: Whether to preserve sentence coherence
 
-        Returns:
-            List of DocumentChunk objects
-        """
-        if preserve_coherence:
-            return self._chunk_with_coherence(text, source_document)
-        else:
-            return self._chunk_simple(text, source_document)
+class BaseChunker(ABC):
+    """Abstract base class for document chunkers"""
 
-    def _chunk_with_coherence(self, text: str, source_document: str) -> List[DocumentChunk]:
-        """Chunk text while preserving sentence coherence"""
-        # Split into sentences
-        sentences = nltk.sent_tokenize(text)
+    def __init__(self, config: ChunkingConfig, optimizer: MemoryOptimizer):
+        self.config = config
+        self.optimizer = optimizer
+
+    @abstractmethod
+    def chunk_document(self, text: str, document_id: str) -> list[DocumentChunk]:
+        """Chunk a document into smaller pieces"""
+
+    def count_tokens(self, text: str) -> int:
+        """Count tokens in text (simple approximation)"""
+        if self.config.token_counter == "simple":
+            # Rough approximation: 1 token ≈ 4 characters
+            return len(text) // 4
+        # Could integrate tiktoken or transformers tokenizer here
+        return len(text.split())
+
+
+class HierarchicalChunker(BaseChunker):
+    """Hierarchical document chunker with section awareness"""
+
+    def __init__(self, config: ChunkingConfig, optimizer: MemoryOptimizer):
+        super().__init__(config, optimizer)
+
+        # Section patterns (markdown-like)
+        self.section_patterns = [
+            (r"^#{1}\s+(.+)$", "h1"),
+            (r"^#{2}\s+(.+)$", "h2"),
+            (r"^#{3}\s+(.+)$", "h3"),
+            (r"^#{4,6}\s+(.+)$", "h4+"),
+            (r"^\s*\n\s*\n", "paragraph_break"),
+        ]
+
+    def chunk_document(self, text: str, document_id: str) -> list[DocumentChunk]:
+        """Chunk document using hierarchical strategy"""
+        # First, identify document structure
+        sections = self._identify_sections(text) if self.config.section_aware else []
+
+        if sections:
+            return self._chunk_by_sections(text, document_id, sections)
+        return self._chunk_by_sliding_window(text, document_id)
+
+    def _identify_sections(self, text: str) -> list[tuple[int, int, str]]:
+        """Identify document sections by headers and structure"""
+        sections = []
+        lines = text.split("\n")
+        current_start = 0
+        current_type = "content"
+
+        for i, line in enumerate(lines):
+            for pattern, section_type in self.section_patterns:
+                if re.match(pattern, line, re.MULTILINE):
+                    # End previous section
+                    if current_start < i:
+                        char_start = sum(len(l) + 1 for l in lines[:current_start])
+                        char_end = sum(len(l) + 1 for l in lines[:i])
+                        sections.append((char_start, char_end, current_type))
+
+                    # Start new section
+                    current_start = i
+                    current_type = section_type
+                    break
+
+        # Add final section
+        if current_start < len(lines):
+            char_start = sum(len(l) + 1 for l in lines[:current_start])
+            sections.append((char_start, len(text), current_type))
+
+        return sections
+
+    def _chunk_by_sections(
+        self, text: str, document_id: str, sections: list[tuple[int, int, str]]
+    ) -> list[DocumentChunk]:
+        """Chunk document respecting section boundaries"""
         chunks = []
+        chunk_index = 0
+
+        for start_char, end_char, section_type in sections:
+            section_text = text[start_char:end_char].strip()
+
+            if not section_text:
+                continue
+
+            # Check if section fits in one chunk
+            section_token_count = self.count_tokens(section_text)
+
+            if section_token_count <= self.config.chunk_size:
+                # Single chunk for this section
+                chunk = DocumentChunk(
+                    text=section_text,
+                    chunk_id=f"{document_id}_chunk_{chunk_index:04d}",
+                    document_id=document_id,
+                    chunk_index=chunk_index,
+                    start_char=start_char,
+                    end_char=end_char,
+                    token_count=section_token_count,
+                    section_type=section_type,
+                )
+                chunks.append(chunk)
+                chunk_index += 1
+            else:
+                # Split large section with sliding window
+                section_chunks = self._chunk_by_sliding_window(
+                    section_text,
+                    document_id,
+                    start_char=start_char,
+                    chunk_index_offset=chunk_index,
+                    section_type=section_type,
+                )
+                chunks.extend(section_chunks)
+                chunk_index += len(section_chunks)
+
+        return chunks
+
+    def _chunk_by_sliding_window(
+        self,
+        text: str,
+        document_id: str,
+        start_char: int = 0,
+        chunk_index_offset: int = 0,
+        section_type: str | None = None,
+    ) -> list[DocumentChunk]:
+        """Chunk text using sliding window approach"""
+        chunks = []
+
+        # Split into sentences if configured
+        if self.config.respect_sentence_boundaries:
+            sentences = self._split_sentences(text)
+        else:
+            # Simple word-based splitting
+            words = text.split()
+            sentences = [" ".join(words[i : i + 50]) for i in range(0, len(words), 50)]
+
         current_chunk = ""
-        start_pos = 0
+        current_start = start_char
+        chunk_index = chunk_index_offset
 
         for sentence in sentences:
             # Check if adding this sentence would exceed chunk size
-            if len(current_chunk) + len(sentence) > self.chunk_size and current_chunk:
-                # Create chunk
-                chunk = DocumentChunk(
-                    content=current_chunk.strip(),
-                    start_position=start_pos,
-                    end_position=start_pos + len(current_chunk),
-                    source_document=source_document,
-                    priority_score=0.0,  # Will be calculated later
-                    metadata={"type": "coherent_chunk"},
-                    coherence_score=self._calculate_coherence_score(current_chunk)
-                )
-                chunks.append(chunk)
+            test_chunk = current_chunk + " " + sentence if current_chunk else sentence
+            test_token_count = self.count_tokens(test_chunk)
+
+            if test_token_count > self.config.chunk_size and current_chunk:
+                # Finalize current chunk
+                chunk_text = current_chunk.strip()
+                if len(chunk_text) >= self.config.min_chunk_size:
+                    chunk = DocumentChunk(
+                        text=chunk_text,
+                        chunk_id=f"{document_id}_chunk_{chunk_index:04d}",
+                        document_id=document_id,
+                        chunk_index=chunk_index,
+                        start_char=current_start,
+                        end_char=current_start + len(chunk_text),
+                        token_count=self.count_tokens(chunk_text),
+                        section_type=section_type,
+                    )
+                    chunks.append(chunk)
+                    chunk_index += 1
 
                 # Start new chunk with overlap
-                overlap_text = self._get_overlap_text(current_chunk, self.chunk_overlap)
-                start_pos = start_pos + len(current_chunk) - len(overlap_text)
-                current_chunk = overlap_text + " " + sentence
+                if self.config.overlap_size > 0:
+                    overlap_text = self._get_overlap_text(current_chunk, self.config.overlap_size)
+                    current_chunk = overlap_text + " " + sentence
+                else:
+                    current_chunk = sentence
+
+                current_start = (
+                    current_start + len(chunk_text) - len(overlap_text)
+                    if self.config.overlap_size > 0
+                    else current_start + len(chunk_text)
+                )
             else:
-                current_chunk += " " + sentence if current_chunk else sentence
+                current_chunk = test_chunk
 
         # Add final chunk
-        if current_chunk:
+        if current_chunk.strip() and len(current_chunk.strip()) >= self.config.min_chunk_size:
             chunk = DocumentChunk(
-                content=current_chunk.strip(),
-                start_position=start_pos,
-                end_position=start_pos + len(current_chunk),
-                source_document=source_document,
-                priority_score=0.0,
-                metadata={"type": "coherent_chunk"},
-                coherence_score=self._calculate_coherence_score(current_chunk)
+                text=current_chunk.strip(),
+                chunk_id=f"{document_id}_chunk_{chunk_index:04d}",
+                document_id=document_id,
+                chunk_index=chunk_index,
+                start_char=current_start,
+                end_char=start_char + len(text),
+                token_count=self.count_tokens(current_chunk),
+                section_type=section_type,
             )
             chunks.append(chunk)
 
         return chunks
 
-    def _chunk_simple(self, text: str, source_document: str) -> List[DocumentChunk]:
-        """Simple character-based chunking"""
-        chunks = []
-        start = 0
+    def _split_sentences(self, text: str) -> list[str]:
+        """Split text into sentences"""
+        # Simple sentence splitting (could be improved with spaCy/NLTK)
+        sentence_endings = r"[.!?]+\s+"
+        sentences = re.split(sentence_endings, text)
+        return [s.strip() for s in sentences if s.strip()]
 
-        while start < len(text):
-            end = min(start + self.chunk_size, len(text))
-            chunk_text = text[start:end]
-
-            chunk = DocumentChunk(
-                content=chunk_text,
-                start_position=start,
-                end_position=end,
-                source_document=source_document,
-                priority_score=0.0,
-                metadata={"type": "simple_chunk"}
-            )
-            chunks.append(chunk)
-
-            start = end - self.chunk_overlap
-
-        return chunks
-
-    def _get_overlap_text(self, text: str, overlap_size: int) -> str:
-        """Get overlap text from the end of a chunk"""
-        if len(text) <= overlap_size:
+    def _get_overlap_text(self, text: str, overlap_tokens: int) -> str:
+        """Get overlapping text from end of previous chunk"""
+        words = text.split()
+        if len(words) <= overlap_tokens:
             return text
-        return text[-overlap_size:]
+        return " ".join(words[-overlap_tokens:])
 
-    def _calculate_coherence_score(self, text: str) -> float:
-        """Calculate coherence score for a text chunk"""
-        sentences = nltk.sent_tokenize(text)
-        if len(sentences) < 2:
-            return 1.0
 
-        # Simple coherence based on sentence length variation
-        lengths = [len(s.split()) for s in sentences]
-        if not lengths:
-            return 0.0
+class SemanticCompressor:
+    """Semantic compression for large context windows"""
 
-        mean_length = np.mean(lengths)
-        std_length = np.std(lengths)
+    def __init__(self, optimizer: MemoryOptimizer, target_ratio: float = 0.5):
+        self.optimizer = optimizer
+        self.target_ratio = target_ratio
 
-        # Lower variation = higher coherence
-        coherence = 1.0 / (1.0 + std_length / (mean_length + 1))
-        return min(1.0, max(0.0, coherence))
+    def compress_chunks(
+        self,
+        chunks: list[DocumentChunk],
+        target_token_count: int,
+        importance_scorer: callable | None = None,
+    ) -> list[DocumentChunk]:
+        """Compress chunks to fit target token count"""
+        total_tokens = sum(chunk.token_count for chunk in chunks)
 
-    def prioritize_chunks(self, chunks: List[DocumentChunk],
-                         query_context: str) -> List[DocumentChunk]:
-        """
-        Prioritize chunks based on relevance and importance
+        if total_tokens <= target_token_count:
+            return chunks
 
-        Args:
-            chunks: List of document chunks
-            query_context: Current query context
+        # Score chunk importance
+        scored_chunks = self._score_chunk_importance(chunks, importance_scorer)
 
-        Returns:
-            Sorted list of chunks by priority
-        """
-        # Calculate priority scores
-        for chunk in chunks:
-            chunk.priority_score = self.priority_scorer.score_information(
-                chunk.content, chunk.metadata
+        # Sort by importance and select top chunks
+        scored_chunks.sort(key=lambda x: x.importance_score or 0, reverse=True)
+
+        selected_chunks = []
+        current_tokens = 0
+
+        for chunk in scored_chunks:
+            if current_tokens + chunk.token_count <= target_token_count:
+                selected_chunks.append(chunk)
+                current_tokens += chunk.token_count
+            else:
+                # Try to fit partial chunk
+                remaining_tokens = target_token_count - current_tokens
+                if remaining_tokens > 50:  # Minimum viable chunk
+                    truncated_chunk = self._truncate_chunk(chunk, remaining_tokens)
+                    selected_chunks.append(truncated_chunk)
+                break
+
+        # Re-sort by original order
+        selected_chunks.sort(key=lambda x: x.chunk_index)
+
+        logger.info(
+            f"Compressed {len(chunks)} chunks ({total_tokens} tokens) to {len(selected_chunks)} chunks ({current_tokens} tokens)"
+        )
+
+        return selected_chunks
+
+    def _score_chunk_importance(
+        self, chunks: list[DocumentChunk], scorer: callable | None = None
+    ) -> list[DocumentChunk]:
+        """Score chunks by importance"""
+        if scorer:
+            # Use custom scorer
+            for chunk in chunks:
+                chunk.importance_score = scorer(chunk)
+        else:
+            # Default importance scoring
+            for chunk in chunks:
+                score = 0.0
+
+                # Section type importance
+                section_weights = {
+                    "h1": 1.0,
+                    "h2": 0.8,
+                    "h3": 0.6,
+                    "h4+": 0.4,
+                    "content": 0.5,
+                    "paragraph_break": 0.2,
+                }
+                score += section_weights.get(chunk.section_type or "content", 0.5)
+
+                # Length importance (sweet spot around 200-400 tokens)
+                length_score = 1.0 - abs(chunk.token_count - 300) / 300
+                score += max(0, length_score) * 0.3
+
+                # Position importance (beginning is more important)
+                position_score = 1.0 - (chunk.chunk_index / len(chunks))
+                score += position_score * 0.2
+
+                chunk.importance_score = score
+
+        return chunks
+
+    def _truncate_chunk(self, chunk: DocumentChunk, target_tokens: int) -> DocumentChunk:
+        """Truncate chunk to target token count"""
+        words = chunk.text.split()
+        target_words = min(len(words), target_tokens * 4)  # Rough token-to-word ratio
+
+        truncated_text = " ".join(words[:target_words])
+
+        return DocumentChunk(
+            text=truncated_text,
+            chunk_id=chunk.chunk_id + "_truncated",
+            document_id=chunk.document_id,
+            chunk_index=chunk.chunk_index,
+            start_char=chunk.start_char,
+            end_char=chunk.start_char + len(truncated_text),
+            token_count=target_tokens,
+            importance_score=chunk.importance_score,
+            section_type=chunk.section_type,
+            metadata={**(chunk.metadata or {}), "truncated": True},
+        )
+
+
+class ContextManager:
+    """High-level context management for document processing"""
+
+    def __init__(
+        self, optimizer: MemoryOptimizer, chunking_config: ChunkingConfig | None = None
+    ):
+        self.optimizer = optimizer
+        self.chunking_config = chunking_config or ChunkingConfig()
+        self.chunker = HierarchicalChunker(self.chunking_config, optimizer)
+        self.compressor = SemanticCompressor(optimizer)
+
+    async def process_documents_streaming(
+        self,
+        documents: Iterator[tuple[str, str]],  # (document_id, text)
+        target_context_tokens: int = 4000,
+        batch_size: int | None = None,
+    ) -> AsyncIterator[list[DocumentChunk]]:
+        """Process documents in streaming fashion"""
+        if batch_size is None:
+            batch_size = self.optimizer.get_optimal_batch_size(record_size_bytes=1024)
+
+        document_batch = []
+
+        async for doc_id, text in documents:
+            document_batch.append((doc_id, text))
+
+            if len(document_batch) >= batch_size:
+                processed_chunks = await self._process_document_batch(
+                    document_batch, target_context_tokens
+                )
+                yield processed_chunks
+
+                document_batch = []
+
+                # Memory pressure check
+                if self.optimizer.check_memory_pressure()["pressure"]:
+                    self.optimizer.force_gc()
+
+        # Process remaining documents
+        if document_batch:
+            processed_chunks = await self._process_document_batch(
+                document_batch, target_context_tokens
             )
+            yield processed_chunks
 
-        # Calculate relevance to query
-        if query_context and chunks:
-            chunk_texts = [chunk.content for chunk in chunks]
-            all_texts = chunk_texts + [query_context]
-
-            try:
-                tfidf_matrix = self.vectorizer.fit_transform(all_texts)
-                query_vector = tfidf_matrix[-1]
-                chunk_vectors = tfidf_matrix[:-1]
-
-                # Calculate cosine similarity
-                similarities = cosine_similarity(chunk_vectors, query_vector).flatten()
-
-                # Combine priority score with relevance
-                for i, chunk in enumerate(chunks):
-                    relevance_score = similarities[i] if i < len(similarities) else 0.0
-                    chunk.priority_score = (chunk.priority_score * 0.6 + relevance_score * 0.4)
-
-            except ValueError:
-                # Handle case where vectorization fails
-                pass
-
-        # Sort by priority score (descending)
-        return sorted(chunks, key=lambda x: x.priority_score, reverse=True)
-
-    def prepare_context(self, documents: List[Dict[str, Any]],
-                       query: str, max_tokens: int = None) -> str:
-        """
-        Prepare optimized context for AI model
-
-        Args:
-            documents: List of document dictionaries
-            query: Current query
-            max_tokens: Maximum tokens to use (defaults to self.max_context_size)
-
-        Returns:
-            Optimized context string
-        """
-        if max_tokens is None:
-            max_tokens = self.max_context_size
-
+    async def _process_document_batch(
+        self, documents: list[tuple[str, str]], target_context_tokens: int
+    ) -> list[DocumentChunk]:
+        """Process batch of documents"""
         all_chunks = []
 
         # Chunk all documents
-        for doc in documents:
-            content = doc.get('content', '')
-            source = doc.get('source', 'unknown')
-            metadata = doc.get('metadata', {})
-
-            chunks = self.chunk_document(content, source)
-            # Add document metadata to chunks
-            for chunk in chunks:
-                chunk.metadata.update(metadata)
+        for doc_id, text in documents:
+            chunks = self.chunker.chunk_document(text, doc_id)
             all_chunks.extend(chunks)
 
-        # Prioritize chunks
-        prioritized_chunks = self.prioritize_chunks(all_chunks, query)
+        # Compress if needed
+        total_tokens = sum(chunk.token_count for chunk in all_chunks)
+        if total_tokens > target_context_tokens:
+            all_chunks = self.compressor.compress_chunks(all_chunks, target_context_tokens)
 
-        # Build context within token limit
-        context_parts = []
-        current_length = 0
+        return all_chunks
 
-        for chunk in prioritized_chunks:
-            chunk_length = len(chunk.content.split())  # Rough token estimation
+    def chunks_to_polars(self, chunks: list[DocumentChunk]) -> pl.DataFrame:
+        """Convert chunks to Polars DataFrame for analysis"""
+        data = []
+        for chunk in chunks:
+            data.append(
+                {
+                    "chunk_id": chunk.chunk_id,
+                    "document_id": chunk.document_id,
+                    "chunk_index": chunk.chunk_index,
+                    "text": chunk.text,
+                    "token_count": chunk.token_count,
+                    "start_char": chunk.start_char,
+                    "end_char": chunk.end_char,
+                    "importance_score": chunk.importance_score,
+                    "section_type": chunk.section_type,
+                    "metadata": str(chunk.metadata) if chunk.metadata else None,
+                }
+            )
 
-            if current_length + chunk_length > max_tokens:
-                break
+        return pl.DataFrame(data)
 
-            context_parts.append(f"[Source: {chunk.source_document}]\n{chunk.content}\n")
-            current_length += chunk_length
 
-        return "\n---\n".join(context_parts)
-
-    def add_to_memory(self, query: str, response: str, metadata: Dict[str, Any] = None):
-        """Add interaction to conversation memory"""
-        memory_item = {
-            'query': query,
-            'response': response,
-            'timestamp': metadata.get('timestamp') if metadata else None,
-            'metadata': metadata or {}
-        }
-        self.conversation_memory.append(memory_item)
-
-    def get_memory_context(self, max_items: int = 5) -> str:
-        """Get recent conversation context"""
-        recent_memory = list(self.conversation_memory)[-max_items:]
-        context_parts = []
-
-        for item in recent_memory:
-            context_parts.append(f"Q: {item['query']}\nA: {item['response']}")
-
-        return "\n\n".join(context_parts)
-
-    def summarize_old_context(self, text: str, target_length: int = 200) -> str:
-        """
-        Summarize old context to preserve key information
-
-        Args:
-            text: Text to summarize
-            target_length: Target length in words
-
-        Returns:
-            Summarized text
-        """
-        sentences = nltk.sent_tokenize(text)
-        if len(sentences) <= 3:
-            return text
-
-        # Simple extractive summarization
-        # Calculate sentence scores based on word frequency
-        words = nltk.word_tokenize(text.lower())
-        word_freq = {}
-        for word in words:
-            if word.isalnum():
-                word_freq[word] = word_freq.get(word, 0) + 1
-
-        sentence_scores = {}
-        for sentence in sentences:
-            sentence_words = nltk.word_tokenize(sentence.lower())
-            score = 0
-            word_count = 0
-            for word in sentence_words:
-                if word in word_freq:
-                    score += word_freq[word]
-                    word_count += 1
-            if word_count > 0:
-                sentence_scores[sentence] = score / word_count
-
-        # Select top sentences
-        sorted_sentences = sorted(sentence_scores.items(), key=lambda x: x[1], reverse=True)
-        summary_sentences = []
-        current_length = 0
-
-        for sentence, score in sorted_sentences:
-            sentence_length = len(sentence.split())
-            if current_length + sentence_length <= target_length:
-                summary_sentences.append(sentence)
-                current_length += sentence_length
-            else:
-                break
-
-        return " ".join(summary_sentences)
-
-    def extract_key_entities(self, text: str) -> List[str]:
-        """Extract key entities from text"""
-        # Simple entity extraction based on capitalized words
-        # In production, you might want to use spaCy or similar
-        words = nltk.word_tokenize(text)
-        entities = []
-
-        for word in words:
-            if (word[0].isupper() and len(word) > 2 and
-                not word.isupper() and word.isalpha()):
-                entities.append(word)
-
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_entities = []
-        for entity in entities:
-            if entity not in seen:
-                seen.add(entity)
-                unique_entities.append(entity)
-
-        return unique_entities[:20]  # Limit to top 20 entities
+__all__ = [
+    "ChunkingConfig",
+    "ContextManager",
+    "DocumentChunk",
+    "HierarchicalChunker",
+    "SemanticCompressor",
+]
